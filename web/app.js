@@ -83,6 +83,8 @@ const CURVE_IN = powerCurve('in');
 const CURVE_OUT = powerCurve('out');
 
 // ── Scheduling ──
+// Schedule one song starting at startTime; returns the time the NEXT song should start
+// (overlapping this one's fade-out for an equal-power crossfade).
 function scheduleOneSong(buffer, songN, startTime) {
   const src = ctx.createBufferSource();
   src.buffer = buffer;
@@ -91,17 +93,23 @@ function scheduleOneSong(buffer, songN, startTime) {
   src.connect(g).connect(masterGain);
 
   const songPlay = buffer.duration * LOOPS_PER_SONG;
-  const fadeOutAt = Math.max(startTime, startTime + songPlay - CROSSFADE);
+  // Fade length: never more than (just under) half the play time, so the fade-in and
+  // fade-out curves can't overlap (Web Audio forbids overlapping automation curves).
+  const cf = Math.max(0, Math.min(CROSSFADE, songPlay / 2 - 0.05));
 
-  // fade in (sin), hold at 1, fade out (cos) — neighbours overlap for CROSSFADE seconds.
-  g.gain.setValueCurveAtTime(CURVE_IN, startTime, CROSSFADE);
-  g.gain.setValueAtTime(1, startTime + CROSSFADE);
-  g.gain.setValueCurveAtTime(CURVE_OUT, fadeOutAt, CROSSFADE);
+  if (cf > 0.001) {
+    // equal-power fade in; the curve's final value (1) persists as the "hold"; then fade
+    // out. No setValueAtTime between them — placing one at a curve edge is an overlap error.
+    g.gain.setValueCurveAtTime(CURVE_IN, startTime, cf);
+    g.gain.setValueCurveAtTime(CURVE_OUT, startTime + songPlay - cf, cf);
+  } else {
+    g.gain.setValueAtTime(1, startTime);
+  }
 
   src.start(startTime);
   src.stop(startTime + songPlay + 0.05);
   activeNodes.push(src, g);
-  src.onended = () => { src.disconnect(); g.disconnect(); };
+  src.onended = () => { try { src.disconnect(); g.disconnect(); } catch (_) {} };
 
   // UI: mark this song as the audible one when it begins, and persist n.
   const mySeq = seq;
@@ -115,16 +123,24 @@ function scheduleOneSong(buffer, songN, startTime) {
     renderPlaylist();
   }, delay);
 
-  return songPlay;
+  return startTime + songPlay - cf; // next song overlaps the fade-out
 }
 
 function pump() {
-  if (!playing) return;
-  // Schedule any rendered songs whose start falls within the horizon.
-  while (rendered.has(nextN) && nextTime < ctx.currentTime + SCHEDULE_HORIZON) {
+  if (!playing || !ctx) return;
+  // Schedule any rendered songs whose start falls within the horizon. Cap iterations so a
+  // pathological state can never spin into a scheduling storm.
+  let guard = 0;
+  while (rendered.has(nextN) && nextTime < ctx.currentTime + SCHEDULE_HORIZON && guard++ < 6) {
     const { buffer } = rendered.get(nextN);
-    const songPlay = scheduleOneSong(buffer, nextN, nextTime);
-    nextTime += songPlay - CROSSFADE;
+    let nextStart;
+    try {
+      nextStart = scheduleOneSong(buffer, nextN, nextTime);
+    } catch (e) {
+      console.error('skafinity: schedule failed', e);
+      nextStart = nextTime + buffer.duration * LOOPS_PER_SONG; // still advance, don't wedge
+    }
+    nextTime = nextStart;
     // drop the buffer we just consumed (keep a small trailing cache for the playlist)
     for (const k of rendered.keys()) if (k < nextN - 2) rendered.delete(k);
     firstScheduled = true;
