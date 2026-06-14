@@ -1,5 +1,7 @@
 build/
+dist/
 *.wasm
 *.o
+*.wav
 node_modules/
 .DS_Store

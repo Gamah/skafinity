@@ -77,15 +77,22 @@ Port `MusicController`'s scheduling, not its s&box plumbing.
    own WASM instance, so rendering never blocks the audio/UI thread. `postMessage(seedStr,
    cfg)` → transfer the channel `ArrayBuffer`s back. Mirror `FillAhead`'s "top up to N, drop
    stale on sequence restart (`seq` token)" logic.
-4. **Playback chain.** Maintain a running schedule clock (`ctx.currentTime`-based). For each
-   song: schedule `LoopsPerSong` passes; reserve the final `Crossfade` seconds; when the next
-   song is ready, schedule its head overlapping the reserved tail with equal-power gain ramps
-   (`CrossfadeOverlap` centred), exactly as `PushTransition` computes `W`, `cross`, `ws`,
-   `we`. Advance `n`, persist to `localStorage`.
+4. **Playback chain + rolling playlist.** Maintain a running schedule clock
+   (`ctx.currentTime`-based). For each song: schedule `LoopsPerSong` passes; reserve the final
+   `Crossfade` seconds; when the next song is ready, schedule its head overlapping the reserved
+   tail with equal-power gain ramps (`CrossfadeOverlap` centred), exactly as `PushTransition`
+   computes `W`, `cross`, `ws`, `we`. Then **`n++` and persist** — this is the rolling
+   playlist: the sequence auto-advances forever (`tag:0 → tag:1 → tag:2 …`), mirroring
+   `MusicController`'s `_curN++; data.MusicN = _curN; data.Save()` at line 509.
    - Simplest correct approach: schedule each pass as its own `AudioBufferSourceNode` with
      absolute `start(when)`; crossfade by ramping two `GainNode`s. Avoid sample-stitching in JS.
-5. **Restart** (`StartSequence`): bump `seq`, stop scheduled nodes, clear look-ahead, re-render
-   from current `n`. Debounce vibe-slider edits ~0.35 s like the game.
+   - Keep a `current` song plus the look-ahead queue so the UI can render **"now playing" +
+     "up next"** (the rendered-ahead songs) and a short **history** of recent `n`. `CurrentSeed`
+     is always `"{vibe}:{tag}:{n}"`.
+5. **Manual stepping** (`StepN`/`SetN`): Prev/Next change `n` by ∓1 (clamp ≥ 0); a Jump-to-n
+   field sets `n` directly. Each restarts the sequence from the new `n` (bump `seq`, stop
+   scheduled nodes, clear look-ahead) and persists. `StartSequence` re-renders from current `n`.
+   Debounce vibe-slider edits ~0.35 s like the game.
 
 **Gotcha:** Web Audio scheduling is fire-and-forget in absolute time; keep a small JS timer
 that tops up the schedule a few seconds ahead (like the `_pushedSeconds - _sinceStart < 2`
@@ -95,7 +102,10 @@ check) rather than scheduling the whole infinity up front.
 
 ## Phase D — UI + sharing (`web/index.html` + `style.css`)
 
-1. Transport: Play/Pause, Prev/Next song (`n∓1`), current `vibe:tag:n` shown + Copy.
+1. Transport + **full playlist panel** (decided): Play/Pause, Prev/Next song (`n∓1`), current
+   `vibe:tag:n` shown + Copy. A scrollable list of `n` — current highlighted, look-ahead queue
+   as "up next", recent `n` as history — with a **per-row export (.wav) button** and a
+   **Jump-to-n** field; clicking a row = `SetN`. Auto-advance toggle.
 2. **Seed field**: paste `vibe:tag:n` / `tag:n` / `tag` → `parseSeed` → restart. "Use a word"
    = set tag, clear vibe.
 3. **Vibe editor**: build rows from `vibeFields()`. Continuous knobs → `<input type=range>`
@@ -106,8 +116,17 @@ check) rather than scheduling the whole infinity up front.
 4. **URL as state**: read `location.hash` on load → seed; write it on every change. Reloads and
    shared links reproduce the song. `localStorage` only for "resume where I left off" when the
    hash is empty.
-5. **Save WAV**: reuse `WavFromSamples` logic (port the header writer) to download the current
-   loop — the game's "save song" feature.
+5. **Export song to disk** (the game's `SaveCurrentToFile`): port the `WavFromSamples` header
+   writer to JS (16-bit PCM RIFF/WAVE). On a static site there is **no server to "serve" the
+   file** — generate the WAV bytes in-browser, wrap in a `Blob`, and trigger a download via a
+   temporary `<a download="…">` + `URL.createObjectURL` (revoke after click). Filename mirrors
+   the game: `{tag}_{n}.wav` (e.g. `bd44ac2a_23.wav`), sanitised; empty tag ⇒ `unknown`.
+   - **Mono/stereo toggle, default mono** (decided). Mono = game parity / smaller files
+     (commits `848864c`/`cdd7202`); stereo captures the pan/horn spread the web keeps. Mono =
+     downmix `(L+R)*0.5`; the 16-bit quantise must match `WavFromSamples`' `Clamp(x, -32768,
+     32767)`. The per-row playlist export and the now-playing export share this writer.
+   - Optional: a "copy URL" share and a "download .wav" sit side by side — the URL shares the
+     *recipe*, the WAV shares the *audio*.
 
 ---
 
