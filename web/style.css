@@ -60,7 +60,7 @@ button.big { font-size: 20px; padding: 8px 18px; }
 .export { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .export button { background: var(--accent2); }
 
-.vibe { max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.vibe { display: flex; flex-direction: column; gap: 8px; }
 .vrow { display: grid; grid-template-columns: 96px 1fr 48px; align-items: center; gap: 8px; }
 .vname { color: var(--muted); font-size: 12px; }
 .vval { text-align: right; font-size: 12px; color: var(--accent); }
