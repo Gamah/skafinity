@@ -41,8 +41,8 @@ button.big { font-size: 20px; padding: 8px 18px; }
   border-radius: 8px; padding: 9px 12px; font: inherit;
 }
 
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+/* Stacked full-width panels: vibe on top, playlist below, same width. */
+.cols { display: grid; grid-template-columns: 1fr; gap: 16px; }
 
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
 .panel h2 { margin: 0 0 12px; font-size: 16px; }
