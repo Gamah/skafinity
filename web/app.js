@@ -311,7 +311,8 @@ function onVibeChange(i, norm, valEl) {
   cfg = mod.setVibeField(cfg, i, norm);
   vibe = mod.encodeVibe(cfg);
   valEl.textContent = mod.vibeDisplay(cfg, i);
-  setHash();
+  setHash();          // rewrite the URL hash
+  updateTransport();  // rewrite the visible seed field
   // debounce-restart so a slider drag isn't a generation storm (≈0.35s like the game)
   clearTimeout(restartTimer);
   restartTimer = setTimeout(() => { if (playing) startSequence(); }, 350);
