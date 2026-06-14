@@ -16,18 +16,23 @@ struct Config {
     int   Bars          = 64;     // fallback if TargetSeconds <= 0
 
     // Tempo
-    int   BpmMin = 86, BpmMax = 104;
+    int   BpmMin = 130, BpmMax = 185;
     float FastChance = 0.30f;
     int   FastBpmMin = 150, FastBpmMax = 168;
     float Swing = 0.14f, FastSwing = 0.05f;
 
-    // Mix
-    float BassVol = 0.68f, SkankVol = 0.95f, OrganVol = 0.42f, MelodyVol = 0.34f, HornVol = 0.22f;
+    // Mix — the six "volume" sliders are normalized: same 0..1.5 range, 1.0 default (flat mix).
+    float BassVol = 1.00f, SkankVol = 1.00f, OrganVol = 1.00f, MelodyVol = 1.00f, HornVol = 1.00f;
     float KickVol = 1.00f, SnareVol = 0.70f, TomVol = 0.60f, HatVol = 0.22f, CrashVol = 0.35f;
+    float DrumVol = 1.00f;   // master gain over the whole kit (0..1.5)
 
     // Tone
     float Detune = 14.0f;
     float BassCutoff = 380.0f, SkankCutoff = 3000.0f, SkankHighpass = 500.0f, LeadCutoff = 3200.0f;
+    float SkankChop = 0.5f;     // skank chop length as a fraction of an eighth
+    float OrganCutoff = 1400.0f;// Hz low-pass on the organ bubble
+    float OrganVibrato = 5.5f;  // organ bubble vibrato depth
+    float HornCutoff = 3200.0f; // Hz low-pass on the backing horns
     float Resonance = 1.0f;
     float BassDrive = 1.5f, SkankDrive = 1.3f, MelodyDrive = 1.3f, HornDrive = 1.4f;
     float MasterDrive = 1.1f, MasterPeak = 0.95f;
@@ -35,6 +40,8 @@ struct Config {
     // Feel
     float OctavePopChance = 0.30f, OrganBubbleChance = 0.55f, KickSyncChance = 0.25f, GhostSnareChance = 0.35f;
     float FillChance = 0.6f, DrumBusy = 0.6f, TripletChance = 0.06f;
+    float DrumPush = 0.13f;      // push/pull timing variance magnitude (per-song bias)
+    float BassTriplets = 0.06f;  // 0..0.1 bass-only 16th/triplet ornament rate (own knob)
     float MelodyRestChance = 0.30f, MelodyLeapChance = 0.18f, MelodyVibrato = 5.0f;
 
     // Stereo
@@ -67,8 +74,13 @@ struct Song {
 class MusicGen {
 public:
     static constexpr int Channels = 2;
+    // Drums are short transients fighting a sustained melodic bed; this baseline boost lets
+    // the kit sit in the mix at DRUMS = 1.0 (parity with the other voice sliders).
+    static constexpr float KitPresence = 2.0f;
 
-    explicit MusicGen(const Config& c) : _c(c), _sr(c.SampleRate) {}
+    explicit MusicGen(const Config& c)
+        : _c(c), _sr(c.SampleRate),
+          _drumGain((c.DrumVol < 0.0f ? 0.0f : (c.DrumVol > 1.5f ? 1.5f : c.DrumVol)) * KitPresence) {}
 
     // Render one full loop for `seed` (the resolved "tag:n" string). Master gain is
     // applied so the output is the final normalised audio.
@@ -93,6 +105,8 @@ private:
     int _drumStyle = 0;
     bool _organBubble = false;
     bool _fast = false;
+    float _drumGain = 0.0f;   // master kit gain — clamp(DrumVol,0,1.5) × KitPresence
+    int _drumPush = 0;        // per-song-constant kit timing bias in samples (− ahead / + back)
 
     float compose(const std::string& seed); // returns master gain
 
@@ -100,10 +114,11 @@ private:
     int chordRoot(int c) const;
 
     struct Patch;
-    void renderBassBar(int barStart, int spe, double secPerEighth, int chord, int nextChord, struct Rng& rng);
+    void renderBassBar(int barStart, int spe, double secPerEighth, int chord, int nextChord, struct Rng& rng, struct Rng& bassOrn);
+    void emitBass(int at, int dur, int midi, double decaySec);
     void renderRhythmBar(int barStart, int spe, double secPerEighth, int chord, float swing, struct Rng& rng);
     void renderLeadPhrase(int barStart, int spe, double secPerEighth, int chord, struct Rng& rng);
-    void renderHornStabs(int barStart, int spe, double secPerEighth, int chord);
+    void renderHornStabs(int barStart, int spe, double secPerEighth, int chord, struct Rng& orn);
     int  pickInstrument(struct Rng& rng);
     void renderLead(int at, int dur, int midi, float amp, double decaySec, float drive);
     void renderPatch(int start, int dur, float freq, const Patch& p);

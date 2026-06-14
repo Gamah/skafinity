@@ -31,10 +31,19 @@ static void dump_compose(const std::string& seed) {
            in.barCount, in.sampleRate, s.left.size());
 }
 
+static int g_fails = 0;
+static void check(bool ok, const char* what) {
+    printf("  [%s] %s\n", ok ? "PASS" : "FAIL", what);
+    if (!ok) g_fails++;
+}
+
 int main() {
     printf("=== PRNG golden vectors ===\n");
     dump_rng("rotaliate");
     dump_rng("drums:rotaliate");
+    dump_rng("bass:rotaliate");
+    dump_rng("push:rotaliate");
+    dump_rng("horn:rotaliate");
     dump_rng("bd44ac2a:23");
 
     printf("\n=== Composition choices ===\n");
@@ -54,6 +63,22 @@ int main() {
     printf("looksLikeVibe(default)=%d  looksLikeVibe(\"gamah\")=%d\n",
            vibe_looks_like(v), vibe_looks_like("gamah"));
 
+    printf("\n=== Vibe codec asserts ===\n");
+    check(vibe_length() == 30, "wire length is 30 fields");
+    check(v.size() == 30, "default vibe encodes to 30 chars");
+    check(v == v2, "Encode(Apply(Encode)) round-trips (stable)");
+    check(vibe_looks_like(v), "looksLikeVibe accepts a 30-char vibe");
+    check(vibe_looks_like(std::string(22, 'a')), "looksLikeVibe accepts an older 22-char vibe");
+    check(vibe_looks_like(std::string(16, 'a')), "looksLikeVibe accepts the 16-char floor");
+    check(!vibe_looks_like(std::string(15, 'a')), "looksLikeVibe rejects 15 chars (below floor)");
+    check(!vibe_looks_like(std::string(31, 'a')), "looksLikeVibe rejects 31 chars (over length)");
+    check(!vibe_looks_like("gamah"), "looksLikeVibe rejects an 8-char-ish player tag");
+    // A non-default vibe must survive a full apply→encode round-trip too.
+    Config c3{}; c3.DrumPush = 0.25f; c3.BassTriplets = 0.09f; c3.OrganVibrato = 9.0f; c3.DrumVol = 1.3f;
+    std::string vc3 = vibe_encode(c3);
+    Config c4{}; vibe_apply(vc3, c4);
+    check(vibe_encode(c4) == vc3, "non-default vibe (new fields) round-trips");
+
     // Smoke: write a real stereo WAV so the synthesis can be heard / validated.
     printf("\n=== Synthesis smoke ===\n");
     MusicGen g(Config{});
@@ -65,6 +90,6 @@ int main() {
     printf("wrote build/smoke_gamah_0.wav (%zu bytes, %.1fs)\n",
            wav.size(), song.left.size() / (double)song.sampleRate);
 
-    printf("\nOK\n");
-    return 0;
+    printf("\n%s\n", g_fails == 0 ? "OK" : "FAILED");
+    return g_fails == 0 ? 0 : 1;
 }

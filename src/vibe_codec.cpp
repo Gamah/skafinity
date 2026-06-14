@@ -58,6 +58,15 @@ const std::vector<VibeField>& vibe_fields() {
         {"HORN DENSITY", 0.0f, 1.0f, false, {}, [](const Config& c){return c.HornDensity;}, [](Config& c, float v){c.HornDensity=v;}},
         {"DRUM BUSY", 0.0f, 1.0f, false, {}, [](const Config& c){return c.DrumBusy;}, [](Config& c, float v){c.DrumBusy=v;}},
         {"TRIPLETS", 0.0f, 0.1f, false, {}, [](const Config& c){return c.TripletChance;}, [](Config& c, float v){c.TripletChance=v;}},
+        {"DRUMS", 0.0f, 1.5f, false, {}, [](const Config& c){return c.DrumVol;}, [](Config& c, float v){c.DrumVol=v;}},
+        // instrument-matrix fills (append-only — display order lives in the music panel)
+        {"BASS TRIPLETS", 0.0f, 0.1f, false, {}, [](const Config& c){return c.BassTriplets;}, [](Config& c, float v){c.BassTriplets=v;}},
+        {"SKANK BITE", 0.0f, 2000.0f, false, {}, [](const Config& c){return c.SkankHighpass;}, [](Config& c, float v){c.SkankHighpass=v;}},
+        {"SKANK CHOP", 0.15f, 1.0f, false, {}, [](const Config& c){return c.SkankChop;}, [](Config& c, float v){c.SkankChop=v;}},
+        {"ORGAN TONE", 500.0f, 8000.0f, false, {}, [](const Config& c){return c.OrganCutoff;}, [](Config& c, float v){c.OrganCutoff=v;}},
+        {"ORGAN VIBRATO", 0.0f, 12.0f, false, {}, [](const Config& c){return c.OrganVibrato;}, [](Config& c, float v){c.OrganVibrato=v;}},
+        {"HORN TONE", 500.0f, 8000.0f, false, {}, [](const Config& c){return c.HornCutoff;}, [](Config& c, float v){c.HornCutoff=v;}},
+        {"DRUM PUSH", 0.0f, 0.3f, false, {}, [](const Config& c){return c.DrumPush;}, [](Config& c, float v){c.DrumPush=v;}},
     };
     return f;
 }
@@ -96,8 +105,11 @@ void vibe_apply(const std::string& vibeIn, Config& c) {
 }
 
 bool vibe_looks_like(const std::string& sIn) {
+    // Floor lowered to 16 (was Fields.Count - 4) so older 20/22/23-char shared seeds still
+    // parse; the missing trailing fields keep their config defaults via vibe_apply. The
+    // floor stays well above an 8-char player tag so the two never collide in vibe:tag:n.
     int len = vibe_length();
-    if (sIn.empty() || static_cast<int>(sIn.size()) < len - 4 || static_cast<int>(sIn.size()) > len) return false;
+    if (sIn.empty() || static_cast<int>(sIn.size()) < 16 || static_cast<int>(sIn.size()) > len) return false;
     for (char ch : sIn) {
         if (ch >= 'A' && ch <= 'Z') ch += 32;
         if (alphabet_index(ch) < 0) return false;
