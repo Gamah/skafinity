@@ -97,19 +97,28 @@ float MusicGen::compose(const std::string& seed) {
     _info.bassPatIndex = rng.next_int(static_cast<int>(BassPatterns.size()));
     _bassPat = BassPatterns[_info.bassPatIndex];
     _drumStyle = _fast ? 2 : rng.next_int(2);
-    _organBubble = rng.chance(_c.OrganBubbleChance);
+    // Every song carries all melodic voices — organ bubble, skank, and horns are no longer
+    // rolled on/off. The RNG draws are kept so songs that already had them stay bit-identical
+    // downstream; only previously-bare songs gain the voice (and its extra horn-mask draws).
+    rng.chance(_c.OrganBubbleChance);               // draw kept for stream stability
+    _organBubble = true;
 
-    _hasHorns = rng.chance(_c.HornSectionChance);
+    rng.chance(_c.HornSectionChance);               // draw kept for stream stability
+    _hasHorns = true;
     _hornMask.assign(EighthsPerBar, 0);
-    if (_hasHorns) {
-        _hornMask[0] = 1;
-        for (int e = 1; e < EighthsPerBar; e++)
-            _hornMask[e] = rng.chance(_c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f)) ? 1 : 0;
-    }
+    _hornMask[0] = 1;
+    for (int e = 1; e < EighthsPerBar; e++)
+        _hornMask[e] = rng.chance(_c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f)) ? 1 : 0;
 
     float swing = _fast ? _c.FastSwing : _c.Swing;
     double secPerEighth = 60.0 / bpm / 2.0;
     int spe = static_cast<int>(cs_round(_sr * secPerEighth));
+
+    // Drum push/pull: a per-song-constant timing bias on the whole kit (negative = push
+    // ahead of the beat, positive = lay back). Own RNG stream → main composition order is
+    // untouched. Biased toward pushing so the backbeat never feels "super late".
+    Rng pushRng(xmur3("push:" + seed));   // NB: resolved seed, matching the other colon streams
+    _drumPush = static_cast<int>(cs_round((pushRng.next() - 0.62f) * _c.DrumPush * spe));
 
     int barCount = std::max(1, _c.Bars);
     if (_c.TargetSeconds > 1.0f) {
@@ -120,7 +129,11 @@ float MusicGen::compose(const std::string& seed) {
     int total = spe * EighthsPerBar * barCount;
     _bufL.assign(total, 0.0f);
     _bufR.assign(total, 0.0f);
-    Rng noise(xmur3("drums:" + seed));   // NB: raw seed (not lowercased), as in the C#
+    // Colon-prefixed streams seed off the resolved seed (the existing port's convention —
+    // see CLAUDE.md / PR note; the C# uses the raw player tag). Keeping it consistent here.
+    Rng noise(xmur3("drums:" + seed));
+    Rng bassOrn(xmur3("bass:" + seed));
+    Rng hornOrn(xmur3("horn:" + seed));
 
     for (int bar = 0; bar < barCount; bar++) {
         int chord = (bar / 2) % static_cast<int>(_prog.size());
@@ -128,17 +141,26 @@ float MusicGen::compose(const std::string& seed) {
         int barStart = bar * EighthsPerBar * spe;
         bool phraseEnd = (bar % 4) == 3;
 
-        renderBassBar(barStart, spe, secPerEighth, chord, nextChord, rng);
+        renderBassBar(barStart, spe, secPerEighth, chord, nextChord, rng, bassOrn);
         renderRhythmBar(barStart, spe, secPerEighth, chord, swing, rng);
         renderDrumBar(barStart, spe, chord, phraseEnd, rng, noise);
         if (bar % 2 == 0) renderLeadPhrase(barStart, spe, secPerEighth, chord, rng);
-        if (_hasHorns) renderHornStabs(barStart, spe, secPerEighth, chord);
+        if (_hasHorns) renderHornStabs(barStart, spe, secPerEighth, chord, hornOrn);
     }
+
+    // Master: peak-normalize the mix to 1.0 BEFORE the soft-clipper so it always has
+    // headroom — otherwise a hot sustained bed (all voices flat at 1.0) saturates the tanh
+    // and swallows the drum transients. MasterDrive now sets how hard a peak-normalized
+    // signal hits the clipper, so dynamics stay intact.
+    float rawPeak = 0.0f;
+    for (int i = 0; i < total; i++)
+        rawPeak = std::max(rawPeak, std::max(std::fabs(_bufL[i]), std::fabs(_bufR[i])));
+    float pre = rawPeak > 0.0001f ? _c.MasterDrive / rawPeak : _c.MasterDrive;
 
     float peak = 0.0f;
     for (int i = 0; i < total; i++) {
-        float l = static_cast<float>(std::tanh(_bufL[i] * _c.MasterDrive));
-        float r = static_cast<float>(std::tanh(_bufR[i] * _c.MasterDrive));
+        float l = static_cast<float>(std::tanh(_bufL[i] * pre));
+        float r = static_cast<float>(std::tanh(_bufR[i] * pre));
         _bufL[i] = l; _bufR[i] = r;
         float a = std::max(std::fabs(l), std::fabs(r));
         if (a > peak) peak = a;
@@ -157,8 +179,11 @@ float MusicGen::compose(const std::string& seed) {
     return peak > 0.0001f ? _c.MasterPeak / peak : 1.0f;
 }
 
-void MusicGen::renderBassBar(int barStart, int spe, double secPerEighth, int chord, int nextChord, Rng& rng) {
+void MusicGen::renderBassBar(int barStart, int spe, double secPerEighth, int chord, int nextChord, Rng& rng, Rng& bassOrn) {
     int root = chordRoot(chord);
+    // Bass has its own ornament knob (BASS TRIPLETS), nudged up a touch by overall kit
+    // busyness so a busy vibe gets a busier bass.
+    float ornChance = _c.BassTriplets * 0.5f + _c.DrumBusy * 0.05f;
     for (int e = 0; e < EighthsPerBar; e++) {
         int off = _bassPat[e];
         if (off == Rest) continue;
@@ -172,19 +197,48 @@ void MusicGen::renderBassBar(int barStart, int spe, double secPerEighth, int cho
         }
         int len = 1;
         while (e + len < EighthsPerBar && _bassPat[e + len] == Rest) len++;
-        int dur = static_cast<int>(spe * len * 0.95f);
-        Patch p; p.Osc = 1; p.Voices = 2; p.Detune = _c.Detune * 0.4f;
-        p.Amp = _c.BassVol; p.Attack = 0.004f; p.Decay = secPerEighth * len * 0.8;
-        p.Sustain = 0.55f; p.Sustained = true;
-        p.Cutoff = _c.BassCutoff; p.CutEnv = 350.0f; p.Reso = 0.9f; p.Drive = _c.BassDrive; p.Pan = 0.0f;
-        renderPatch(barStart + e * spe, dur, midi_freq(midi), p);
+
+        // Chop a standalone (non-sustaining) note into a 16th pair or 16th-note triplet.
+        // Driven by a dedicated stream so the main composition RNG order is unchanged.
+        if (off != Approach && len == 1 && bassOrn.chance(ornChance)) {
+            int n = bassOrn.chance(0.65f) ? 2 : 3;          // 16th pair / 16th triplet
+            int step = spe / n;
+            int moves[3] = {0, 7, 12};                      // root / fifth / octave
+            for (int k = 0; k < n; k++) {
+                int bm = midi + (k == 0 ? 0 : moves[bassOrn.next_int(3)]);
+                emitBass(barStart + e * spe + k * step, static_cast<int>(step * 0.9f), bm, secPerEighth / n * 0.8);
+            }
+            continue;
+        }
+
+        emitBass(barStart + e * spe, static_cast<int>(spe * len * 0.95f), midi, secPerEighth * len * 0.8);
     }
+}
+
+void MusicGen::emitBass(int at, int dur, int midi, double decaySec) {
+    // Triangle body for a round, deep reggae/dub bass (saw alone read as too buzzy) — plus a
+    // quieter square layer underneath whose odd harmonics add presence/definition. Both share
+    // the bass low-pass so the tone stays warm.
+    Patch p; p.Osc = 3; p.Voices = 2; p.Detune = _c.Detune * 0.4f;
+    p.Amp = _c.BassVol; p.Attack = 0.004f; p.Decay = decaySec;
+    p.Sustain = 0.55f; p.Sustained = true;
+    p.Cutoff = _c.BassCutoff; p.CutEnv = 350.0f; p.Reso = 0.9f; p.Drive = _c.BassDrive; p.Pan = 0.0f;
+    renderPatch(at, dur, midi_freq(midi), p);
+
+    Patch q; q.Osc = 2; q.Voices = 1; q.Detune = 0.0f;
+    q.Amp = _c.BassVol * 0.4f; q.Attack = 0.004f; q.Decay = decaySec;
+    q.Sustain = 0.55f; q.Sustained = true;
+    q.Cutoff = _c.BassCutoff; q.CutEnv = 350.0f; q.Reso = 0.9f; q.Drive = _c.BassDrive; q.Pan = 0.0f;
+    renderPatch(at, dur, midi_freq(midi), q);
 }
 
 void MusicGen::renderRhythmBar(int barStart, int spe, double secPerEighth, int chord, float swing, Rng& rng) {
     (void)secPerEighth; (void)rng; // matches C#: rng is passed but unused here
-    int gBase = _rootMidi + 12;
+    // +24: skank/organ sit an octave above the old register — at +12 (E2..B2) the chop was
+    // too low/muddy to cut through. Organ stays a further octave down via the -12 below.
+    int gBase = _rootMidi + 24;
     int degs[4] = {_prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 7};
+    int chopDur = static_cast<int>(spe * clampf(_c.SkankChop, 0.15f, 1.0f));
     for (int e = 1; e < EighthsPerBar; e += 2) {
         int at = barStart + e * spe + static_cast<int>(swing * spe);
         for (int d : degs) {
@@ -193,14 +247,14 @@ void MusicGen::renderRhythmBar(int barStart, int spe, double secPerEighth, int c
             p.Sustain = 0.0f; p.Sustained = false;
             p.Cutoff = _c.SkankCutoff; p.CutEnv = 1500.0f; p.Reso = 0.8f;
             p.Highpass = _c.SkankHighpass; p.Drive = _c.SkankDrive; p.Pan = 0.0f;
-            renderPatch(at, static_cast<int>(spe * 0.5f), midi_freq(scaleMidi(gBase, d)), p);
+            renderPatch(at, chopDur, midi_freq(scaleMidi(gBase, d)), p);
         }
         if (_organBubble) {
             for (int d : degs) {
                 Patch p; p.Osc = 0; p.Voices = 2; p.Detune = _c.Detune * 0.5f;
                 p.Amp = _c.OrganVol / 4.0f; p.Attack = 0.004f; p.Decay = 0.16;
                 p.Sustain = 0.3f; p.Sustained = false;
-                p.Cutoff = 1400.0f; p.CutEnv = 0.0f; p.Reso = 1.0f; p.Drive = 1.1f; p.Pan = 0.0f; p.Vibrato = 5.5f;
+                p.Cutoff = _c.OrganCutoff; p.CutEnv = 0.0f; p.Reso = 1.0f; p.Drive = 1.1f; p.Pan = 0.0f; p.Vibrato = _c.OrganVibrato;
                 renderPatch(at, static_cast<int>(spe * 0.55f), midi_freq(scaleMidi(gBase, d) - 12), p);
             }
         }
@@ -261,22 +315,54 @@ void MusicGen::renderLeadPhrase(int barStart, int spe, double secPerEighth, int 
     }
 }
 
-void MusicGen::renderHornStabs(int barStart, int spe, double secPerEighth, int chord) {
-    (void)secPerEighth;
+void MusicGen::renderHornStabs(int barStart, int spe, double secPerEighth, int chord, Rng& orn) {
     int baseMidi = _rootMidi + 19;
     int degs[3] = {_prog[chord], _prog[chord] + 2, _prog[chord] + 4};
     float spread = _c.PanAmount * 0.7f;
+    int six = spe / 2;
+    float ornChance = 0.18f + _c.TripletChance; // ~0.24 default; rides the same knob
+
+    // one chord-tone voice
+    auto Note = [&](int at, int dur, int k, double dec, float gain) {
+        Patch p; p.Osc = 1; p.Voices = 3; p.Detune = _c.Detune;
+        p.Amp = _c.HornVol / 3.0f * gain; p.Attack = 0.008f; p.Decay = dec;
+        p.Sustain = 0.2f; p.Sustained = false;
+        p.Cutoff = _c.HornCutoff; p.CutEnv = 1200.0f; p.Reso = 1.0f; p.Drive = _c.HornDrive;
+        p.Pan = spread * (k / 2.0f * 2.0f - 1.0f);
+        renderPatch(at, dur, midi_freq(scaleMidi(baseMidi, degs[k])), p);
+    };
+    auto Stab = [&](int at, int dur, double dec, float gain) {
+        for (int k = 0; k < 3; k++) Note(at, dur, k, dec, gain);
+    };
+
     for (int e = 0; e < EighthsPerBar; e++) {
         if (!_hornMask[e]) continue;
         int at = barStart + e * spe;
-        for (int k = 0; k < 3; k++) {
-            Patch p; p.Osc = 1; p.Voices = 3; p.Detune = _c.Detune;
-            p.Amp = _c.HornVol / 3.0f; p.Attack = 0.008f; p.Decay = 0.22;
-            p.Sustain = 0.2f; p.Sustained = false;
-            p.Cutoff = _c.LeadCutoff; p.CutEnv = 1200.0f; p.Reso = 1.0f; p.Drive = _c.HornDrive;
-            p.Pan = spread * (k / 2.0f * 2.0f - 1.0f);
-            renderPatch(at, static_cast<int>(spe * 0.6f), midi_freq(scaleMidi(baseMidi, degs[k])), p);
+
+        if (six > 0 && orn.chance(ornChance)) {
+            float r = orn.next();
+            if (r < 0.4f) {
+                // rolling arpeggio: chord tones climb across a 16th-triplet
+                int step = spe / 3;
+                for (int k = 0; k < 3; k++)
+                    Note(at + k * step, static_cast<int>(step * 0.9f), k, secPerEighth / 3 * 0.8, 1.0f);
+                continue;
+            }
+            if (r < 0.75f) {
+                // 16th pair: stab on the beat, softer echo on the "e"
+                Stab(at, static_cast<int>(six * 0.85f), secPerEighth * 0.5 * 0.8, 1.0f);
+                Stab(at + six, static_cast<int>(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f);
+                continue;
+            }
+            // grace pickup: a soft single tone just before the block stab
+            Note(at - six, static_cast<int>(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f);
+            Stab(at, static_cast<int>(spe * 0.6f), 0.22, 1.0f);
+            continue;
         }
+
+        // plain stab — length varies a touch so even straight bars aren't identical
+        float lenMul = 0.45f + orn.next() * 0.35f;
+        Stab(at, static_cast<int>(spe * lenMul), 0.22, 1.0f);
     }
 }
 
@@ -397,7 +483,8 @@ void MusicGen::renderPatch(int start, int dur, float freq, const Patch& p) {
 // ── Drums ──
 void MusicGen::renderDrumBar(int barStart, int spe, int chord, bool phraseEnd, Rng& rng, Rng& noise) {
     (void)chord;
-    float busy = clampf(_c.DrumBusy, 0.0f, 1.0f);
+    // Knob ceiling was too frantic: scale so DRUM BUSY 100% reads as the old 75%.
+    float busy = clampf(_c.DrumBusy, 0.0f, 1.0f) * 0.75f;
     int six = spe / 2;
     for (int e = 0; e < EighthsPerBar; e++) {
         int at = barStart + e * spe;
@@ -451,45 +538,58 @@ void MusicGen::renderFill(int at, int spe, Rng& noise, Rng& rng) {
 }
 
 void MusicGen::renderKick(int start, Rng& noise) {
-    if (start < 0) return;
-    int dur = static_cast<int>(_sr * 0.13f);
-    double decay = dur * 0.28;
-    double phase = 0;
+    start = std::max(0, start + _drumPush);
+    int dur = static_cast<int>(_sr * 0.17f);    // longer tail for thump (was 0.13)
+    double decay = dur * 0.31;                   // slightly slower decay = a touch more boom
+    double subDecay = dur * 0.55;                // sub layer rings longer for weight
+    double phase = 0, subPhase = 0;
+    // noise.next() only fires in the fixed 3ms click below, so changing dur/decay does NOT
+    // shift the drum RNG stream (patterns are preserved).
+    int clickLen = static_cast<int>(_sr * 0.003f);
     int end = std::min(static_cast<int>(_bufL.size()), start + dur);
     for (int i = 0; start + i < end; i++) {
         float t = static_cast<float>(i) / dur;
-        phase += (115.0f - 67.0f * std::min(1.0f, t * 3.0f)) / _sr;
+        phase += (127.0f - 80.0f * std::min(1.0f, t * 2.6f)) / _sr;   // pitch drop 127→47
+        subPhase += 44.0f / _sr;                                      // steady sub fundamental
         float env = static_cast<float>(std::exp(-i / decay));
-        float body = std::sin(static_cast<float>(phase * 2 * PI));
-        float click = i < _sr * 0.003f ? (noise.next() * 2.0f - 1.0f) * 0.5f * (1.0f - i / (_sr * 0.003f)) : 0.0f;
-        float v = (static_cast<float>(std::tanh(body * 1.4f)) + click) * env * _c.KickVol;
+        float subEnv = static_cast<float>(std::exp(-i / subDecay));
+        float body = static_cast<float>(std::tanh(std::sin(static_cast<float>(phase * 2 * PI)) * 1.6f)) * env;
+        float sub = std::sin(static_cast<float>(subPhase * 2 * PI)) * 0.3f * subEnv;
+        float click = i < clickLen ? (noise.next() * 2.0f - 1.0f) * 0.55f * (1.0f - i / static_cast<float>(clickLen)) : 0.0f;
+        float v = (body + sub + click) * _c.KickVol * _drumGain;
         _bufL[start + i] += v; _bufR[start + i] += v;
     }
 }
 
 void MusicGen::renderSnare(int start, Rng& noise, bool ghost) {
-    if (start < 0) return;
+    start = std::max(0, start + _drumPush);
+    // dur and the single noise.next()/sample are kept exactly so the drum RNG stream is
+    // unchanged — only the timbre (more shell body) is rerolled.
     int dur = static_cast<int>(_sr * (ghost ? 0.06f : 0.15f));
-    double decay = dur * 0.3;
-    double phase = 0;
-    float amp = _c.SnareVol * (ghost ? 0.3f : 1.0f);
-    float a = hpCoeff(1200.0f);
+    double decay = dur * (ghost ? 0.3 : 0.32);
+    double phase = 0, phase2 = 0;
+    float amp = _c.SnareVol * (ghost ? 0.3f : 1.0f) * _drumGain;
+    float a = hpCoeff(1350.0f);           // slightly crisper wire crack (was 1200)
     float inPrev = 0.0f, outPrev = 0.0f;
     int end = std::min(static_cast<int>(_bufL.size()), start + dur);
     for (int i = 0; start + i < end; i++) {
+        float t = static_cast<float>(i) / dur;
         float env = static_cast<float>(std::exp(-i / decay));
-        phase += 190.0f / _sr;
+        float drop = 1.0f - 0.14f * t;     // shell pitch sags a touch → "dow"
+        phase += 185.0f * drop / _sr;
+        phase2 += 268.0f * drop / _sr;
         float n = noise.next() * 2.0f - 1.0f;
         float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-        float body = std::sin(static_cast<float>(phase * 2 * PI)) * 0.4f;
-        float v = (static_cast<float>(std::tanh(hp * 1.2f)) * 0.7f + body) * env * amp;
+        // two-tone shell body, a bit fuller than before, vs the wire layer
+        float body = (std::sin(static_cast<float>(phase * 2 * PI)) + std::sin(static_cast<float>(phase2 * 2 * PI)) * 0.6f) * 0.375f;
+        float v = (static_cast<float>(std::tanh(hp * 1.2f)) * 0.6f + body) * env * amp;
         _bufL[start + i] += v; _bufR[start + i] += v;
     }
 }
 
 void MusicGen::renderTom(int start, float baseFreq, Rng& noise) {
     (void)noise;
-    if (start < 0) return;
+    start = std::max(0, start + _drumPush);
     int dur = static_cast<int>(_sr * 0.18f);
     double decay = dur * 0.3;
     double phase = 0;
@@ -498,13 +598,13 @@ void MusicGen::renderTom(int start, float baseFreq, Rng& noise) {
         float t = static_cast<float>(i) / dur;
         phase += (baseFreq * (1.0f - 0.35f * t)) / _sr;
         float env = static_cast<float>(std::exp(-i / decay));
-        float v = std::sin(static_cast<float>(phase * 2 * PI)) * env * _c.TomVol;
+        float v = std::sin(static_cast<float>(phase * 2 * PI)) * env * _c.TomVol * _drumGain;
         _bufL[start + i] += v; _bufR[start + i] += v;
     }
 }
 
 void MusicGen::renderHat(int start, bool open, float amp, Rng& noise) {
-    if (start < 0) return;
+    start = std::max(0, start + _drumPush);
     int dur = static_cast<int>(_sr * (open ? 0.16f : 0.035f));
     double decay = dur * 0.4;
     float a = hpCoeff(7000.0f);
@@ -514,13 +614,13 @@ void MusicGen::renderHat(int start, bool open, float amp, Rng& noise) {
         float env = static_cast<float>(std::exp(-i / decay));
         float n = noise.next() * 2.0f - 1.0f;
         float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-        float v = hp * env * amp;
+        float v = hp * env * amp * _drumGain;
         _bufL[start + i] += v; _bufR[start + i] += v;
     }
 }
 
 void MusicGen::renderCrash(int start, Rng& noise) {
-    if (start < 0) return;
+    start = std::max(0, start + _drumPush);
     int dur = static_cast<int>(_sr * 0.6f);
     double decay = dur * 0.45;
     float a = hpCoeff(4000.0f);
@@ -530,7 +630,7 @@ void MusicGen::renderCrash(int start, Rng& noise) {
         float env = static_cast<float>(std::exp(-i / decay));
         float n = noise.next() * 2.0f - 1.0f;
         float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-        float v = hp * env * _c.CrashVol;
+        float v = hp * env * _c.CrashVol * _drumGain;
         _bufL[start + i] += v; _bufR[start + i] += v;
     }
 }
@@ -637,6 +737,14 @@ static const std::vector<CfgAcc>& cfg_accessors() {
         {[](const Config& c){return (float)c.ForceInstrument;}, [](Config& c, float v){c.ForceInstrument=(int)cs_round(v);}},
         {[](const Config& c){return c.HornSectionChance;}, [](Config& c, float v){c.HornSectionChance=v;}},
         {[](const Config& c){return c.HornDensity;}, [](Config& c, float v){c.HornDensity=v;}},
+        // appended for the QoL-polish port (keep at the end — fixed JS<->WASM order)
+        {[](const Config& c){return c.DrumVol;}, [](Config& c, float v){c.DrumVol=v;}},
+        {[](const Config& c){return c.SkankChop;}, [](Config& c, float v){c.SkankChop=v;}},
+        {[](const Config& c){return c.OrganCutoff;}, [](Config& c, float v){c.OrganCutoff=v;}},
+        {[](const Config& c){return c.OrganVibrato;}, [](Config& c, float v){c.OrganVibrato=v;}},
+        {[](const Config& c){return c.HornCutoff;}, [](Config& c, float v){c.HornCutoff=v;}},
+        {[](const Config& c){return c.DrumPush;}, [](Config& c, float v){c.DrumPush=v;}},
+        {[](const Config& c){return c.BassTriplets;}, [](Config& c, float v){c.BassTriplets=v;}},
     };
     return a;
 }
