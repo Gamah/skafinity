@@ -60,12 +60,30 @@ button.big { font-size: 20px; padding: 8px 18px; }
 .export { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .export button { background: var(--accent2); }
 
-.vibe { display: flex; flex-direction: column; gap: 8px; }
-.vrow { display: grid; grid-template-columns: 96px 1fr 48px; align-items: center; gap: 8px; }
-.vname { color: var(--muted); font-size: 12px; }
-.vval { text-align: right; font-size: 12px; color: var(--accent); }
-.vinput { width: 100%; }
-select.vinput { background: #100e18; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
+.panel h2 .reroll {
+  float: right; background: var(--accent2); padding: 4px 10px; font-size: 12px; border-radius: 6px;
+}
+
+.vibe { display: flex; flex-direction: column; gap: 12px; }
+
+/* per-instrument mixer matrix: a voice label + 4 knob columns */
+.matrix { display: flex; flex-direction: column; gap: 8px; }
+.mrow { display: grid; grid-template-columns: 58px repeat(4, 1fr); align-items: start; gap: 10px; }
+.mvoice { font-weight: 700; font-size: 12px; letter-spacing: 1px; color: var(--ink); padding-top: 2px; }
+.mhead { align-items: center; }
+.mhead .mhlabel { font-size: 10px; letter-spacing: 2px; color: var(--muted); }
+.mcell { min-width: 0; }
+
+.glabel { font-size: 11px; letter-spacing: 2px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+.global-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 16px; }
+
+/* one knob: name + value above its slider/select */
+.knob { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.knob-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.knob-name { font-size: 11px; letter-spacing: 1px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.knob-val { font-size: 11px; color: var(--accent); white-space: nowrap; }
+.knob-input { width: 100%; min-width: 0; }
+select.knob-input { background: #100e18; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px; font: inherit; font-size: 12px; }
 input[type=range] { accent-color: var(--accent); }
 
 .status { color: #ff8a8a; min-height: 20px; }
