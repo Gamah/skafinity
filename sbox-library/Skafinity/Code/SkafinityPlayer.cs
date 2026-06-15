@@ -21,7 +21,7 @@ namespace Skafinity;
 /// dependencies (no player data, networking, or UI). Persistence of the song index is opt-in
 /// via <see cref="PersistProgress"/>.
 /// </summary>
-public sealed class SkaMusicPlayer : Component
+public sealed class SkafinityPlayer : Component
 {
 	// ── Master ──
 	/// <summary>Music master switch. 'new' so it's distinct from <see cref="Component.Enabled"/>.</summary>
@@ -394,7 +394,7 @@ public sealed class SkaMusicPlayer : Component
 				_ahead.Add( song );
 			}
 		}
-		catch ( Exception e ) { Log.Warning( $"SkaMusicPlayer: FillAhead failed: {e.Message}" ); }
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: FillAhead failed: {e.Message}" ); }
 		finally { _fillingAhead = false; }
 	}
 
@@ -475,7 +475,7 @@ public sealed class SkaMusicPlayer : Component
 		}
 		catch ( Exception e )
 		{
-			Log.Warning( $"SkaMusicPlayer: StartSequence failed: {e.Message}" );
+			Log.Warning( $"SkafinityPlayer: StartSequence failed: {e.Message}" );
 		}
 		finally { _starting = false; }
 	}
@@ -527,7 +527,7 @@ public sealed class SkaMusicPlayer : Component
 		}
 		catch ( Exception e )
 		{
-			Log.Warning( $"SkaMusicPlayer: PushTransition failed: {e.Message}" );
+			Log.Warning( $"SkafinityPlayer: PushTransition failed: {e.Message}" );
 		}
 	}
 
@@ -631,7 +631,7 @@ public sealed class SkaMusicPlayer : Component
 		}
 		catch ( Exception e )
 		{
-			Log.Warning( $"SkaMusicPlayer: save failed: {e.Message}" );
+			Log.Warning( $"SkafinityPlayer: save failed: {e.Message}" );
 			return null;
 		}
 	}
@@ -642,7 +642,7 @@ public sealed class SkaMusicPlayer : Component
 	void SaveN( int n )
 	{
 		try { FileSystem.Data.WriteAllText( ProgressFile, n.ToString() ); }
-		catch ( Exception e ) { Log.Warning( $"SkaMusicPlayer: save progress failed: {e.Message}" ); }
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: save progress failed: {e.Message}" ); }
 	}
 
 	int? LoadN()
@@ -653,7 +653,7 @@ public sealed class SkaMusicPlayer : Component
 				&& int.TryParse( FileSystem.Data.ReadAllText( ProgressFile ), out var v ) )
 				return Math.Max( 0, v );
 		}
-		catch ( Exception e ) { Log.Warning( $"SkaMusicPlayer: load progress failed: {e.Message}" ); }
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: load progress failed: {e.Message}" ); }
 		return null;
 	}
 }

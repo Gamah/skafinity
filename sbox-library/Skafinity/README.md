@@ -19,7 +19,7 @@ Copy the `Skafinity/` folder there:
   Code/
     MusicGen.cs        # composer + subtractive synth (portable, deterministic)
     VibeCodec.cs       # base-36 "vibe" knob encoding (the shareable seed fragment)
-    SkaMusicPlayer.cs  # the Component: streaming, looping, crossfade, look-ahead, export
+    SkafinityPlayer.cs  # the Component: streaming, looping, crossfade, look-ahead, export
     Skafinity.csproj
 ```
 
@@ -28,12 +28,12 @@ public types live in the `Skafinity` namespace.
 
 ## Usage
 
-Add a **`SkaMusicPlayer`** component to a GameObject in your scene. It auto-plays on start.
+Add a **`SkafinityPlayer`** component to a GameObject in your scene. It auto-plays on start.
 Everything is tunable from the inspector (grouped: Music, Seed, Output, Crossfade, Tempo,
 Mix, Tone, Feel, Stereo, Instrument, Horns).
 
 ```csharp
-var music = gameObject.Components.Get<SkaMusicPlayer>();
+var music = gameObject.Components.Get<SkafinityPlayer>();
 
 // Play a specific shareable seed: "vibe:tag:n", "tag:n", or just "tag"
 music.PlaySeed( "bd44ac2a:23" );
