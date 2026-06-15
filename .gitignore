@@ -1,7 +1,12 @@
-build/
-dist/
-*.wasm
-*.o
+# .NET build trees
+wasm/bin/
+wasm/obj/
+
+# The published runtime bundle (build/_framework) IS committed so the branch is testable
+# without the toolchain — but the brotli/gzip duplicates the dev server doesn't use are not.
+build/_framework/*.br
+build/_framework/*.gz
+
 *.wav
 node_modules/
 .DS_Store

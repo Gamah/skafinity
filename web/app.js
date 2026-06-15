@@ -1,7 +1,7 @@
 // skafinity — Web Audio sequencer + vibe editor + rolling playlist + WAV export.
 // Port of MusicController's scheduling (not its s&box plumbing). The heavy synthesis runs
 // in worker.js; this file owns the AudioContext, crossfade scheduling, and the UI.
-import Skafinity from '../build/skafinity.js';
+import Skafinity from './engine.js';
 
 // ── Tunables (mirror MusicController defaults) ──
 const LOOPS_PER_SONG = 2;
@@ -469,5 +469,5 @@ async function init() {
 
 init().catch((e) => {
   document.getElementById('status').textContent =
-    'Failed to load the WASM engine — run `make` (needs emscripten) so build/skafinity.js exists. ' + e;
+    'Failed to load the WASM engine — run `make` (needs the .NET wasm-tools workload) so build/_framework exists, and serve over http (make serve). ' + e;
 });
