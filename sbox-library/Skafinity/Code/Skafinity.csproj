@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!--
+	  s&box regenerates this file (Reference / Analyzer / OutputPath lines pointing at your
+	  local sbox install) the first time the library is loaded in the editor, so the absolute
+	  paths are intentionally omitted here. The PropertyGroup below mirrors the conventions of
+	  a code library (see https://sbox.game/dev/doc/code/libraries).
+	-->
+
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<AssemblyName>skafinity</AssemblyName>
+		<PackageId>skafinity</PackageId>
+		<LangVersion>13</LangVersion>
+		<NoWarn>1701;1702;1591;</NoWarn>
+		<TreatWarningsAsErrors>False</TreatWarningsAsErrors>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<DefineConstants>SANDBOX;ADDON</DefineConstants>
+		<AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+		<RootNamespace>Sandbox</RootNamespace>
+		<Nullable>disable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Using Include="Sandbox.Internal.GlobalGameNamespace" Static="true" />
+	</ItemGroup>
+
+</Project>
