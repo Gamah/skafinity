@@ -7,7 +7,7 @@
 // Both the main thread and the generation worker import this and boot their own runtime
 // instance (the runtime is single-realm). Heavy PCM/WAV stay in wasm memory and come back as
 // a MemoryView we copy off-heap immediately (it's only valid synchronously).
-import { dotnet } from '../build/_framework/dotnet.js';
+import { dotnet } from './_framework/dotnet.js';
 
 let _mod = null;
 let _booting = null;

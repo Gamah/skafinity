@@ -2,10 +2,10 @@
 // (the same dotnet.js that runs in the browser) and exercises every JSExport the web layer
 // calls — so a boundary regression is caught by `make test`, without needing a browser.
 //
-//   make            # publish the engine into build/
+//   make            # publish the engine into web/_framework
 //   node test/smoke.mjs
 import { fileURLToPath } from 'node:url';
-import { dotnet } from '../build/_framework/dotnet.js';
+import { dotnet } from '../web/_framework/dotnet.js';
 
 let failures = 0;
 function check(name, cond, detail = '') {

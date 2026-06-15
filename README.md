@@ -22,15 +22,17 @@ dotnet workload install wasm-tools
 Then:
 
 ```sh
-make          # publish the engine → build/_framework  (AOT; ~2 min)
+make          # publish the engine → web/_framework  (AOT; ~2 min)
 make dev      # same but skip AOT — much faster to build, identical composition
-make test     # node smoke test of the JS↔wasm boundary (needs build/)
-make serve    # static server; open http://localhost:8000/web/
+make test     # node smoke test of the JS↔wasm boundary (needs web/_framework/)
+make serve    # static server rooted at web/; open http://localhost:8000/
 ```
 
 > The page must be **served** (the .NET runtime is a bundle fetched over http) — opening
-> `web/index.html` via `file://` won't work. `build/_framework` is committed so a fresh
-> clone is testable with just `make serve`; rebuild it with `make`. A single
+> `web/index.html` via `file://` won't work. `web/` is self-contained (it includes
+> `web/_framework`), so deploy it by pointing any static server's docroot straight at `web/`.
+> `web/_framework` is committed so a fresh clone is testable with just `make serve`; rebuild
+> it with `make`. A single
 > self-contained `.html` (inlining the runtime) is a deferred follow-up — `make dist`.
 
 ## What's here

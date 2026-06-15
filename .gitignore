@@ -2,10 +2,10 @@
 wasm/bin/
 wasm/obj/
 
-# The published runtime bundle (build/_framework) IS committed so the branch is testable
+# The published runtime bundle (web/_framework) IS committed so the branch is testable
 # without the toolchain — but the brotli/gzip duplicates the dev server doesn't use are not.
-build/_framework/*.br
-build/_framework/*.gz
+web/_framework/*.br
+web/_framework/*.gz
 
 *.wav
 node_modules/

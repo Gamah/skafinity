@@ -52,7 +52,7 @@ doubt the C# is right.
 | JS boundary | `[JSExport]` in `wasm/Exports.cs`; `web/engine.js` boots the runtime and adapts the exports |
 | Glue / UI | Vanilla **JS + HTML + CSS** (no framework, no bundler) |
 | Audio | **Web Audio API** — `AudioBufferSourceNode`s scheduled with gain-ramp crossfades |
-| Distribution | A **served** bundle (`web/` + `build/_framework`). The runtime is multi-file and needs http; a single-file inline is a deferred follow-up. |
+| Distribution | A **served** bundle — the self-contained `web/` (which includes `web/_framework`). The runtime is multi-file and needs http; a single-file inline is a deferred follow-up. |
 
 C# is the choice because it *is* the source — same code, two targets, zero port.
 
@@ -75,8 +75,8 @@ skafinity/
     app.js                # Web Audio sequencer (port of the controller's scheduling)
     worker.js             # generation worker (its own runtime instance)
     style.css
+    _framework/           # published runtime bundle (committed; rebuilt by `make`)
   test/smoke.mjs          # node smoke test of the JS↔wasm boundary
-  build/_framework        # published runtime bundle (committed; rebuilt by `make`)
   Makefile
 ```
 
@@ -147,11 +147,14 @@ button.
 
 ## Conventions
 
-- No build framework beyond `make`. `make` → publish + stage `build/_framework`; `make dev`
-  skips AOT for speed; `make serve` → `python3 -m http.server` rooted so `web/` can fetch
-  `build/`. `make test` → node smoke test. `make dist` is a deferred single-file follow-up.
+- No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`
+  skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (the same
+  docroot you'd give nginx). `make test` → node smoke test. `make dist` is a deferred
+  single-file follow-up.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched
-  bundle. `build/_framework` is committed so a clone is testable without the SDK.
+  bundle. `web/` is self-contained (it includes `web/_framework`), so any static server can
+  serve it with the docroot pointed straight at `web/`. `web/_framework` is committed so a
+  clone is testable without the SDK.
 - Keep `MusicGen.cs` / `VibeCodec.cs` framework-free; web-specific code goes in `Exports.cs`.
 - Commit messages end with the Co-Authored-By trailer (see global instructions).
 - Feature work goes on branches.
