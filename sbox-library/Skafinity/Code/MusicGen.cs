@@ -62,12 +62,12 @@ public sealed class MusicGen
 
 		// Rock instruments (Genre 1). Bass + drums reuse the shared knobs above.
 		public float RhythmGtrVol = 1.00f;
-		public float RhythmGtrCutoff = 2200f; // Hz low-pass on the rhythm guitar
-		public float RhythmGtrDrive = 2.2f;   // distortion amount (tanh drive)
+		public float RhythmGtrCutoff = 1700f; // Hz low-pass on the rhythm guitar (darker wall)
+		public float RhythmGtrDrive = 3.2f;   // distortion amount (tanh drive)
 		public float RhythmGtrChug = 0.5f;    // 0 = ringing chords, 1 = tight palm-mute chug
 		public float LeadGtrVol = 1.00f;
-		public float LeadGtrCutoff = 3000f;   // Hz low-pass on the lead guitar
-		public float LeadGtrDrive = 2.6f;     // distortion amount (tanh drive)
+		public float LeadGtrCutoff = 2400f;   // Hz low-pass on the lead guitar
+		public float LeadGtrDrive = 3.6f;     // distortion amount (tanh drive)
 		public float LeadGtrTriplets = 0.06f; // lead-guitar run/triplet ornament rate
 
 		// Tone — low drives + filtering for warmth; detune for width.
@@ -242,6 +242,40 @@ public sealed class MusicGen
 		new[] { 0, Rest, 0, Rest, 5, Rest, 7, Approach },    // root–fifth
 	};
 
+	// ── Rock harmony (Genre 1) ──
+	// Darker, power-chord-friendly modes (minor / dorian / mixolydian) so rock doesn't
+	// share ska's bright major themes. Picked with the SAME RNG draw as the ska tables, so
+	// ska songs are byte-identical — only genre 1 reads these.
+	static readonly int[][] RockScales =
+	{
+		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (aeolian)
+		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian (classic-rock major-ish)
+		new[] { 0, 2, 3, 5, 7, 9, 10 }, // dorian
+		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (weighted twice)
+	};
+
+	// Degrees are read against the (often minor) scale, so 5 = ♭VI, 6 = ♭VII, 3 = iv, 4 = v.
+	static readonly int[][] RockProgressions =
+	{
+		new[] { 0, 6, 5, 6 }, // i–♭VII–♭VI–♭VII (driving rock vamp)
+		new[] { 0, 5, 6, 0 }, // i–♭VI–♭VII–i
+		new[] { 0, 6, 3, 0 }, // i–♭VII–IV–i (mixolydian rock)
+		new[] { 0, 3, 6, 0 }, // i–iv–♭VII–i
+		new[] { 0, 0, 6, 6 }, // i / ♭VII riff vamp
+		new[] { 0, 3, 4, 0 }, // i–iv–v–i
+	};
+
+	// Driving root/octave eighths that lock to the kick — the rock engine room, vs ska's
+	// syncopated off-beat one-drop bass.
+	static readonly int[][] RockBassPatterns =
+	{
+		new[] { 0, 0, 0, 0, 0, 0, 0, Approach },         // straight eighth chug
+		new[] { 0, Rest, 0, Rest, 0, Rest, 0, Approach },// quarter-note pulse
+		new[] { 0, 0, 12, 0, 0, 0, 12, Approach },       // root with octave pushes
+		new[] { 0, 0, 7, 0, 0, 0, 7, Approach },         // root–fifth gallop
+		new[] { 0, Rest, 0, 0, Rest, 0, 12, Approach },  // syncopated driver
+	};
+
 	int[] _scale, _prog;
 	int _rootMidi;
 	Instrument _lead;
@@ -315,12 +349,13 @@ public sealed class MusicGen
 		int bpm = _fast
 			? _c.FastBpmMin + rng.Int( Math.Max( 1, _c.FastBpmMax - _c.FastBpmMin + 1 ) )
 			: _c.BpmMin + rng.Int( Math.Max( 1, _c.BpmMax - _c.BpmMin + 1 ) );
-		_scale = rng.Pick( Scales );
-		_prog = rng.Pick( Progressions );
+		bool rock = _genre == 1;
+		_scale = rng.Pick( rock ? RockScales : Scales );
+		_prog = rng.Pick( rock ? RockProgressions : Progressions );
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
 		_lead = Instrument.Trumpet;                       // ska lead is fixed; rock uses guitar
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
-		_bassPat = rng.Pick( BassPatterns );
+		_bassPat = rng.Pick( rock ? RockBassPatterns : BassPatterns );
 		_drumStyle = _genre == 1 ? 2 : (_fast ? 2 : rng.Int( 2 )); // rock = straight backbeat
 		_organBubble = true;
 		_hasHorns = true;
@@ -697,10 +732,10 @@ public sealed class MusicGen
 		{
 			RenderPatch( at, dur, Midi( midi ), new Patch
 			{
-				Osc = 1, Voices = 2, Detune = _c.Detune * 0.4f, Amp = amp,
-				Attack = 0.005f, Decay = decaySec, Sustain = 0.6f, Sustained = true,
-				Cutoff = _c.LeadGtrCutoff, CutEnv = 1500f, Reso = 1.0f,
-				Drive = MathF.Max( 1f, _c.LeadGtrDrive ), Pan = _leadPan, Vibrato = _c.MelodyVibrato * 0.6f,
+				Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
+				Attack = 0.004f, Decay = decaySec, Sustain = 0.7f, Sustained = true,
+				Cutoff = _c.LeadGtrCutoff, CutEnv = 600f, Reso = 1.2f,
+				Drive = MathF.Max( 1f, _c.LeadGtrDrive ), Pan = _leadPan, Vibrato = _c.MelodyVibrato,
 			} );
 			return;
 		}
@@ -711,7 +746,7 @@ public sealed class MusicGen
 	// Downbeats ring; offbeats are tightened toward a palm-muted chug as RhythmGtrChug rises.
 	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
 	{
-		int root = ChordRoot( chord ) + 24;               // guitar register
+		int root = ChordRoot( chord ) + 12;               // chunky power-chord register (an octave below the ska skank)
 		int[] chordOffs = { 0, 7, 12 };                   // power chord
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		for ( int e = 0; e < EighthsPerBar; e++ )
@@ -726,7 +761,7 @@ public sealed class MusicGen
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 					Amp = _c.RhythmGtrVol / chordOffs.Length * (accent ? 1f : 0.7f),
 					Attack = 0.003f, Decay = dec, Sustain = accent ? 0.5f : 0f, Sustained = accent,
-					Cutoff = _c.RhythmGtrCutoff, CutEnv = 800f, Reso = 1.0f,
+					Cutoff = _c.RhythmGtrCutoff, CutEnv = 250f, Reso = 1.0f,
 					Drive = MathF.Max( 1f, _c.RhythmGtrDrive ), Pan = 0f,
 				} );
 		}
