@@ -183,7 +183,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 67;
+	public const int Size = 71;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -201,8 +201,9 @@ static class Cfg
 		c.HornSectionChance, c.HornDensity,
 		// genre + drum tone/drive + rock instruments (appended)
 		c.Genre, c.DrumTone, c.DrumDrive,
-		c.RhythmGtrVol, c.RhythmGtrCutoff, c.RhythmGtrDrive, c.RhythmGtrChug,
+		c.KeysVol, c.KeysCutoff, c.KeysDrive, c.KeysChug,
 		c.LeadGtrVol, c.LeadGtrCutoff, c.LeadGtrDrive, c.LeadGtrTriplets,
+		c.RhythmGtrVol, c.RhythmGtrCutoff, c.RhythmGtrDrive, c.RhythmGtrChug,
 	};
 
 	public static MusicGen.Config From( double[] a )
@@ -224,8 +225,9 @@ static class Cfg
 		c.TrumpetWeight = (float)a[i++]; c.SaxWeight = (float)a[i++]; c.OrganWeight = (float)a[i++]; c.TromboneWeight = (float)a[i++]; c.ForceInstrument = (int)a[i++];
 		c.HornSectionChance = (float)a[i++]; c.HornDensity = (float)a[i++];
 		c.Genre = (int)a[i++]; c.DrumTone = (float)a[i++]; c.DrumDrive = (float)a[i++];
-		c.RhythmGtrVol = (float)a[i++]; c.RhythmGtrCutoff = (float)a[i++]; c.RhythmGtrDrive = (float)a[i++]; c.RhythmGtrChug = (float)a[i++];
+		c.KeysVol = (float)a[i++]; c.KeysCutoff = (float)a[i++]; c.KeysDrive = (float)a[i++]; c.KeysChug = (float)a[i++];
 		c.LeadGtrVol = (float)a[i++]; c.LeadGtrCutoff = (float)a[i++]; c.LeadGtrDrive = (float)a[i++]; c.LeadGtrTriplets = (float)a[i++];
+		c.RhythmGtrVol = (float)a[i++]; c.RhythmGtrCutoff = (float)a[i++]; c.RhythmGtrDrive = (float)a[i++]; c.RhythmGtrChug = (float)a[i++];
 		return c;
 	}
 }

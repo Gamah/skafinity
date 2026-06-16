@@ -34,8 +34,9 @@ check('DefaultConfig genre is 0', E.GetGenre(cfg) === 0, `${E.GetGenre(cfg)}`);
 // ska (genre 0): 6 globals + 6 instruments × 4 columns
 const skaCount = E.VibeFieldCount(0);
 check('ska VibeFieldCount is 30', skaCount === 30, `${skaCount}`);
+// rock (genre 1): 6 globals + 5 instruments × 4 columns (drums/bass/keys/lead gtr/rhythm gtr)
 const rockCount = E.VibeFieldCount(1);
-check('rock VibeFieldCount is 22', rockCount === 22, `${rockCount}`);
+check('rock VibeFieldCount is 26', rockCount === 26, `${rockCount}`);
 
 const vibe = E.EncodeVibe(cfg);
 check('ska vibe length == fields + genre char', vibe.length === skaCount + 1, `${vibe.length}`);

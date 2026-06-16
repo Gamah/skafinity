@@ -61,12 +61,21 @@ public sealed class MusicGen
 		public float DrumDrive = 0.5f;
 
 		// Rock instruments (Genre 1). Bass + drums reuse the shared knobs above.
+		// KEYS — the offbeat-chord comp (was labelled "rhythm guitar", but it always read as a
+		// keyboard, so it's named for what it sounds like). Power-chord comping on every eighth.
+		public float KeysVol = 1.00f;
+		public float KeysCutoff = 1700f;      // Hz low-pass (darker wall)
+		public float KeysDrive = 3.2f;        // distortion amount (tanh drive)
+		public float KeysChug = 0.5f;         // 0 = ringing chords, 1 = tight palm-mute chug
+		// RHYTHM GTR — twangy distorted power chords. Shares the lead guitar's voice but strums
+		// chords at a lower base distortion than the lead.
 		public float RhythmGtrVol = 1.00f;
-		public float RhythmGtrCutoff = 1700f; // Hz low-pass on the rhythm guitar (darker wall)
-		public float RhythmGtrDrive = 3.2f;   // distortion amount (tanh drive)
+		public float RhythmGtrCutoff = 2600f; // Hz low-pass on the rhythm guitar
+		public float RhythmGtrDrive = 2.8f;   // distortion amount (tanh drive) — under the lead
 		public float RhythmGtrChug = 0.5f;    // 0 = ringing chords, 1 = tight palm-mute chug
+		// LEAD GTR — twangy, heavily distorted single-note lead.
 		public float LeadGtrVol = 1.00f;
-		public float LeadGtrCutoff = 2400f;   // Hz low-pass on the lead guitar
+		public float LeadGtrCutoff = 2600f;   // Hz low-pass on the lead guitar
 		public float LeadGtrDrive = 3.6f;     // distortion amount (tanh drive)
 		public float LeadGtrTriplets = 0.06f; // lead-guitar run/triplet ornament rate
 
@@ -284,6 +293,7 @@ public sealed class MusicGen
 	bool[] _hornMask;
 	int[] _bassPat;
 	int _drumStyle;          // 0 one-drop, 1 steppers, 2 straight backbeat
+	bool _ride;              // per-song: ride cymbal drives the eighth pulse instead of closed hats
 	bool _organBubble;
 	bool _fast;
 	int _genre;              // 0 ska, 1 rock
@@ -363,6 +373,9 @@ public sealed class MusicGen
 		_hornMask[0] = true;
 		for ( int e = 1; e < EighthsPerBar; e++ )
 			_hornMask[e] = rng.Chance( _c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f) );
+		// Some songs ride a ride cymbal instead of closed hats for the main pulse (more common
+		// in rock). Drawn last so it can't shift any earlier musical choice.
+		_ride = rng.Chance( rock ? 0.5f : 0.3f );
 
 		float swing = _fast ? _c.FastSwing : _c.Swing;
 		double secPerEighth = 60.0 / bpm / 2.0;
@@ -419,6 +432,7 @@ public sealed class MusicGen
 			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn );
 			if ( _genre == 1 )
 			{
+				RenderKeysBar( barStart, spe, secPerEighth, chord, rhythmRng );
 				RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng );
 			}
 			else
@@ -730,23 +744,54 @@ public sealed class MusicGen
 	{
 		if ( _genre == 1 )
 		{
+			// Twang = a bright cutoff-envelope snap on each pick (high CutEnv, decays fast) through
+			// a resonant SVF, then a high BASE distortion (3 + the slider) so it reads as an
+			// overdriven electric guitar — twangy and dirty even at the slider minimum.
 			RenderPatch( at, dur, Midi( midi ), new Patch
 			{
 				Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
-				Attack = 0.004f, Decay = decaySec, Sustain = 0.7f, Sustained = true,
-				Cutoff = _c.LeadGtrCutoff, CutEnv = 600f, Reso = 1.2f,
-				Drive = MathF.Max( 1f, _c.LeadGtrDrive ), Pan = _leadPan, Vibrato = _c.MelodyVibrato,
+				Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
+				Cutoff = _c.LeadGtrCutoff, CutEnv = 2200f, Reso = 0.65f,
+				Drive = 3f + MathF.Max( 1f, _c.LeadGtrDrive ), Pan = _leadPan, Vibrato = _c.MelodyVibrato,
 			} );
 			return;
 		}
 		RenderLead( at, dur, midi, amp, decaySec, drive );
 	}
 
-	// ── Rock rhythm guitar — driven power chords (root + fifth + octave) on every eighth.
-	// Downbeats ring; offbeats are tightened toward a palm-muted chug as RhythmGtrChug rises.
-	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
+	// ── Rock KEYS — driven power chords (root + fifth + octave) on every eighth (was labelled
+	// "rhythm guitar"; it reads as a keyboard comp). Downbeats ring; offbeats are tightened
+	// toward a palm-muted chug as KeysChug rises.
+	void RenderKeysBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
 	{
 		int root = ChordRoot( chord ) + 12;               // chunky power-chord register (an octave below the ska skank)
+		int[] chordOffs = { 0, 7, 12 };                   // power chord
+		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
+		for ( int e = 0; e < EighthsPerBar; e++ )
+		{
+			bool accent = (e % 2) == 0;                    // downbeats ring, offbeats chug
+			float lenFrac = accent ? (1f - 0.5f * chug) : (0.35f - 0.2f * chug);
+			int dur = (int)(spe * Math.Max( 0.12f, lenFrac ));
+			double dec = secPerEighth * (accent ? 0.8 : 0.3);
+			foreach ( var o in chordOffs )
+				RenderPatch( barStart + e * spe, dur, Midi( root + o ), new Patch
+				{
+					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
+					Amp = _c.KeysVol / chordOffs.Length * (accent ? 1f : 0.7f),
+					Attack = 0.003f, Decay = dec, Sustain = accent ? 0.5f : 0f, Sustained = accent,
+					Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
+					Drive = MathF.Max( 1f, _c.KeysDrive ), Pan = 0f,
+				} );
+		}
+	}
+
+	// ── Rock rhythm guitar — twangy distorted power chords. Shares the lead guitar's voice (the
+	// bright cutoff-envelope "twang" through a resonant SVF) but strums root+fifth+octave and
+	// runs a LOWER base distortion than the lead so the two layer instead of mush. Downbeats
+	// ring; offbeats tighten toward a palm-muted chug as RhythmGtrChug rises.
+	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
+	{
+		int root = ChordRoot( chord ) + 12;               // chunky power-chord register
 		int[] chordOffs = { 0, 7, 12 };                   // power chord
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		for ( int e = 0; e < EighthsPerBar; e++ )
@@ -760,9 +805,9 @@ public sealed class MusicGen
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 					Amp = _c.RhythmGtrVol / chordOffs.Length * (accent ? 1f : 0.7f),
-					Attack = 0.003f, Decay = dec, Sustain = accent ? 0.5f : 0f, Sustained = accent,
-					Cutoff = _c.RhythmGtrCutoff, CutEnv = 250f, Reso = 1.0f,
-					Drive = MathF.Max( 1f, _c.RhythmGtrDrive ), Pan = 0f,
+					Attack = 0.002f, Decay = dec, Sustain = accent ? 0.45f : 0f, Sustained = accent,
+					Cutoff = _c.RhythmGtrCutoff, CutEnv = 1400f, Reso = 0.8f,   // twang
+					Drive = 1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), Pan = 0f, // less base than lead
 				} );
 		}
 	}
@@ -1091,14 +1136,23 @@ public sealed class MusicGen
 		int hatEnd = fillEnd ? 6 : EighthsPerBar;         // hats stop where the fill begins
 
 		// closed hats on eighths (open on the "and of 4"); busy fills the gaps with
-		// quieter sixteenth-note hats (constant 16th chatter at the top of the range).
+		// quieter sixteenth-note hats (constant 16th chatter at the top of the range). On
+		// ride songs the ride cymbal carries the eighth pulse instead (bell on the beats), with
+		// the open hat still punctuating the "and of 4".
 		for ( int e = 0; e < hatEnd; e++ )
 		{
 			int at = barStart + e * spe;
 			bool open = e == 7;
-			RenderHat( at, open, (e % 2 == 1 ? _c.HatVol : _c.HatVol * 0.6f), noise );
+			float amp = e % 2 == 1 ? _c.HatVol : _c.HatVol * 0.6f;
+			if ( _ride && !open )
+				RenderRide( at, e % 2 == 0, amp, noise );    // bell accent on the downbeats
+			else
+				RenderHat( at, open, amp, noise );
 			if ( !open && six > 0 && noise.Chance( busy ) )
-				RenderHat( at + six, false, _c.HatVol * 0.4f, noise );
+			{
+				if ( _ride ) RenderRide( at + six, false, _c.HatVol * 0.4f, noise );
+				else RenderHat( at + six, false, _c.HatVol * 0.4f, noise );
+			}
 		}
 
 		if ( fillEnd )
@@ -1153,7 +1207,9 @@ public sealed class MusicGen
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
 			else RenderTom( t, toms[i], noise );
 		}
-		RenderCrash( at + n * step, noise ); // crash into the downbeat (may land at bar end)
+		// crash into the downbeat (may land at bar end) — a bright crash or a darker, washier
+		// crash, picked off the fill stream so the cymbal colour varies section to section.
+		RenderCrash( at + n * step, noise, rng.Chance( 0.4f ) );
 	}
 
 	void RenderKick( int start, Rng noise )
@@ -1248,12 +1304,15 @@ public sealed class MusicGen
 		}
 	}
 
-	void RenderCrash( int start, Rng noise )
+	// Two crash colours off one voice: the bright crash (short-ish, high-passed high) and a
+	// dark crash — lower cutoff, longer wash, a touch quieter — for a bigger china/ride-crash.
+	void RenderCrash( int start, Rng noise, bool dark = false )
 	{
 		start = Math.Max( 0, start + _drumPush );
-		int dur = (int)(_sr * 0.6f);
-		double decay = dur * 0.45;
-		float a = HpCoeff( 4000f );
+		int dur = (int)(_sr * (dark ? 0.9f : 0.6f));
+		double decay = dur * (dark ? 0.5 : 0.45);
+		float a = HpCoeff( dark ? 2600f : 4000f );
+		float amp = _c.CrashVol * (dark ? 0.85f : 1f);
 		float inPrev = 0f, outPrev = 0f;
 		int end = Math.Min( _bufL.Length, start + dur );
 		for ( int i = 0; start + i < end; i++ )
@@ -1261,7 +1320,35 @@ public sealed class MusicGen
 			float env = (float)Math.Exp( -i / decay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * env * _c.CrashVol * _drumGain * _drumHighMul;
+			float v = hp * env * amp * _drumGain * _drumHighMul;
+			_bufL[start + i] += v; _bufR[start + i] += v;
+		}
+	}
+
+	// Ride cymbal — a sustained, articulate "ping": metallic inharmonic partials for the stick
+	// strike over a high-passed shimmer. The bell hit (on the beat) is brighter and rings a
+	// touch longer than the bow hit (on the "and"). Tracks CrashVol-free off HatVol via the
+	// caller's amp so the existing DRUMS knobs still balance it.
+	void RenderRide( int start, bool bell, float amp, Rng noise )
+	{
+		start = Math.Max( 0, start + _drumPush );
+		int dur = (int)(_sr * (bell ? 0.34f : 0.22f));
+		double decay = dur * 0.42;
+		float a = HpCoeff( 8000f );
+		float inPrev = 0f, outPrev = 0f;
+		double p1 = 0, p2 = 0, p3 = 0;
+		float f1 = bell ? 540f : 720f;          // bell rings lower/fuller than the bow ping
+		int end = Math.Min( _bufL.Length, start + dur );
+		for ( int i = 0; start + i < end; i++ )
+		{
+			float env = (float)Math.Exp( -i / decay );
+			float n = noise.Next() * 2f - 1f;
+			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
+			p1 += f1 / _sr; p2 += f1 * 1.34 / _sr; p3 += f1 * 1.79 / _sr;
+			float ping = (MathF.Sin( (float)(p1 * 2 * Math.PI) )
+				+ MathF.Sin( (float)(p2 * 2 * Math.PI) ) * 0.7f
+				+ MathF.Sin( (float)(p3 * 2 * Math.PI) ) * 0.5f) * (bell ? 0.5f : 0.3f);
+			float v = (ping + hp * 0.5f) * env * amp * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}

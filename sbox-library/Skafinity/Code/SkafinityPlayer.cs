@@ -137,13 +137,19 @@ public sealed class SkafinityPlayer : Component
 	// ── Genre & rock instruments ──
 	// Genre selects the instrument set: 0 = Ska, 1 = Rock (drums/bass/rhythm-gtr/lead-gtr).
 	[Property, Group( "Genre" ), Range( 0, 1 )] public int Genre { get; set; } = 0;
+	// KEYS — the offbeat-chord comp (was the "rhythm guitar"; it reads as keys).
+	[Property, Group( "Rock" ), Range( 0f, 1.5f )] public float KeysVol { get; set; } = 1.00f;
+	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float KeysCutoff { get; set; } = 1700f;
+	[Property, Group( "Rock" ), Range( 1f, 5f )] public float KeysDrive { get; set; } = 3.2f;
+	[Property, Group( "Rock" ), Range( 0f, 1f )] public float KeysChug { get; set; } = 0.5f;
+	// RHYTHM GTR — twangy distorted power chords (shares the lead voice, lower base distortion).
 	[Property, Group( "Rock" ), Range( 0f, 1.5f )] public float RhythmGtrVol { get; set; } = 1.00f;
-	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float RhythmGtrCutoff { get; set; } = 2200f;
-	[Property, Group( "Rock" ), Range( 1f, 5f )] public float RhythmGtrDrive { get; set; } = 2.2f;
+	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float RhythmGtrCutoff { get; set; } = 2600f;
+	[Property, Group( "Rock" ), Range( 1f, 5f )] public float RhythmGtrDrive { get; set; } = 2.8f;
 	[Property, Group( "Rock" ), Range( 0f, 1f )] public float RhythmGtrChug { get; set; } = 0.5f;
 	[Property, Group( "Rock" ), Range( 0f, 1.5f )] public float LeadGtrVol { get; set; } = 1.00f;
-	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float LeadGtrCutoff { get; set; } = 3000f;
-	[Property, Group( "Rock" ), Range( 1f, 5f )] public float LeadGtrDrive { get; set; } = 2.6f;
+	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float LeadGtrCutoff { get; set; } = 2600f;
+	[Property, Group( "Rock" ), Range( 1f, 5f )] public float LeadGtrDrive { get; set; } = 3.6f;
 	[Property, Group( "Rock" ), Range( 0f, 0.1f )] public float LeadGtrTriplets { get; set; } = 0.06f;
 
 	SoundStream _stream;
@@ -328,6 +334,10 @@ public sealed class SkafinityPlayer : Component
 		Genre = Genre,
 		DrumTone = DrumTone,
 		DrumDrive = DrumDrive,
+		KeysVol = KeysVol,
+		KeysCutoff = KeysCutoff,
+		KeysDrive = KeysDrive,
+		KeysChug = KeysChug,
 		RhythmGtrVol = RhythmGtrVol,
 		RhythmGtrCutoff = RhythmGtrCutoff,
 		RhythmGtrDrive = RhythmGtrDrive,
@@ -359,6 +369,7 @@ public sealed class SkafinityPlayer : Component
 		h.Add( ForceInstrument );
 		h.Add( HornSectionChance ); h.Add( HornDensity );
 		h.Add( Genre );
+		h.Add( KeysVol ); h.Add( KeysCutoff ); h.Add( KeysDrive ); h.Add( KeysChug );
 		h.Add( RhythmGtrVol ); h.Add( RhythmGtrCutoff ); h.Add( RhythmGtrDrive ); h.Add( RhythmGtrChug );
 		h.Add( LeadGtrVol ); h.Add( LeadGtrCutoff ); h.Add( LeadGtrDrive ); h.Add( LeadGtrTriplets );
 		h.Add( Tag ); h.Add( Vibe );

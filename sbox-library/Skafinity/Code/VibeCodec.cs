@@ -154,14 +154,20 @@ public static class VibeCodec
 					tone( "BASS", 80f, 1200f, c => c.BassCutoff, ( c, v ) => c.BassCutoff = v ),
 					F( "DRIVE", 1f, 4f, false, c => c.BassDrive, ( c, v ) => c.BassDrive = v, "BASS", 2 ),
 					F( "OCTAVE POP", 0f, 1f, false, c => c.OctavePopChance, ( c, v ) => c.OctavePopChance = v, "BASS", 3 ) ),
-				Row( "RHYTHM GTR", vol( "RHYTHM GTR", c => c.RhythmGtrVol, ( c, v ) => c.RhythmGtrVol = v ),
-					tone( "RHYTHM GTR", 500f, 8000f, c => c.RhythmGtrCutoff, ( c, v ) => c.RhythmGtrCutoff = v ),
-					F( "DISTORTION", 1f, 5f, false, c => c.RhythmGtrDrive, ( c, v ) => c.RhythmGtrDrive = v, "RHYTHM GTR", 2 ),
-					F( "CHUG", 0f, 1f, false, c => c.RhythmGtrChug, ( c, v ) => c.RhythmGtrChug = v, "RHYTHM GTR", 3 ) ),
+				Row( "KEYS", vol( "KEYS", c => c.KeysVol, ( c, v ) => c.KeysVol = v ),
+					tone( "KEYS", 500f, 8000f, c => c.KeysCutoff, ( c, v ) => c.KeysCutoff = v ),
+					F( "DISTORTION", 1f, 5f, false, c => c.KeysDrive, ( c, v ) => c.KeysDrive = v, "KEYS", 2 ),
+					F( "CHUG", 0f, 1f, false, c => c.KeysChug, ( c, v ) => c.KeysChug = v, "KEYS", 3 ) ),
 				Row( "LEAD GTR", vol( "LEAD GTR", c => c.LeadGtrVol, ( c, v ) => c.LeadGtrVol = v ),
 					tone( "LEAD GTR", 500f, 8000f, c => c.LeadGtrCutoff, ( c, v ) => c.LeadGtrCutoff = v ),
 					F( "DISTORTION", 1f, 5f, false, c => c.LeadGtrDrive, ( c, v ) => c.LeadGtrDrive = v, "LEAD GTR", 2 ),
 					F( "RUNS", 0f, 0.1f, false, c => c.LeadGtrTriplets, ( c, v ) => c.LeadGtrTriplets = v, "LEAD GTR", 3 ) ),
+				// Appended after LEAD GTR to keep the wire instrument-slot order stable (KEYS kept
+				// slot 2's positions; this twangy rhythm guitar takes a fresh appended slot).
+				Row( "RHYTHM GTR", vol( "RHYTHM GTR", c => c.RhythmGtrVol, ( c, v ) => c.RhythmGtrVol = v ),
+					tone( "RHYTHM GTR", 500f, 8000f, c => c.RhythmGtrCutoff, ( c, v ) => c.RhythmGtrCutoff = v ),
+					F( "DISTORTION", 1f, 5f, false, c => c.RhythmGtrDrive, ( c, v ) => c.RhythmGtrDrive = v, "RHYTHM GTR", 2 ),
+					F( "CHUG", 0f, 1f, false, c => c.RhythmGtrChug, ( c, v ) => c.RhythmGtrChug = v, "RHYTHM GTR", 3 ) ),
 			},
 		};
 	}
