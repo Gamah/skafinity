@@ -3,6 +3,8 @@
 #
 #   make            → publish the engine, stage web/_framework for the web layer
 #   make dev        → same, but skip AOT (much faster to build; identical composition)
+#   make deploy     → clean, verified release build: wipes stale artifacts, full AOT
+#                     publish, then runs the smoke test (the cruft-free bundle to ship)
 #   make test       → node smoke test of the JS↔wasm boundary (needs web/_framework/)
 #   make serve      → static server rooted at web/ (same docroot you'd give nginx)
 #   make dist       → (follow-up) single-file bundle; see note below
@@ -18,7 +20,7 @@ PROJECT   = wasm/Skafinity.Wasm.csproj
 PUBDIR    = wasm/bin/Release/net10.0/publish/wwwroot/_framework
 PORT     ?= 8000
 
-.PHONY: all dev stage test serve dist clean
+.PHONY: all dev deploy stage test serve dist clean
 
 all:
 	$(DOTNET) publish $(PROJECT) -c Release
@@ -29,6 +31,16 @@ all:
 dev:
 	$(DOTNET) publish $(PROJECT) -c Release -p:RunAOTCompilation=false
 	@$(MAKE) --no-print-directory stage
+
+# Ship build: `dotnet publish` reuses wasm/bin and never prunes old hashed assemblies, so an
+# incremental `make` can leave stale .wasm cruft in the staged bundle. `deploy` clears
+# wasm/bin + wasm/obj first so the AOT publish regenerates only the canonical files, then
+# runs the smoke test so the staged web/ is verified before it goes out.
+deploy:
+	@$(MAKE) --no-print-directory clean
+	@$(MAKE) --no-print-directory all
+	@$(MAKE) --no-print-directory test
+	@echo "deploy: clean AOT bundle staged in web/ and smoke test passed"
 
 # Copy just the runtime bundle the page loads (web/engine.js imports ./_framework). Staging
 # it under web/ keeps the page self-contained: point any static server's docroot at web/.
