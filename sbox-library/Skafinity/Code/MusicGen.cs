@@ -1334,21 +1334,33 @@ public sealed class MusicGen
 		start = Math.Max( 0, start + _drumPush );
 		int dur = (int)(_sr * (bell ? 0.34f : 0.22f));
 		double decay = dur * 0.42;
-		float a = HpCoeff( 8000f );
+		float a = HpCoeff( 7000f );
 		float inPrev = 0f, outPrev = 0f;
-		double p1 = 0, p2 = 0, p3 = 0;
-		float f1 = bell ? 540f : 720f;          // bell rings lower/fuller than the bow ping
+		// A high-passed noise wash carries the body (a cymbal is mostly filtered noise); the
+		// metallic "ping" is a *quiet* cluster of six inharmonic partials whose ratios share no
+		// common fundamental, so it reads as metal rather than a pitched triangle/bell. (The old
+		// version used three near-harmonic sines louder than the noise, which rang as a clear
+		// ~540 Hz "ding".) The bell accent leans a touch more tonal than the bow hit.
+		double p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0, p6 = 0;
+		float f1 = bell ? 320f : 440f;
+		float ping = bell ? 0.14f : 0.09f;      // partials stay well under the noise wash
+		double pingDecay = decay * 0.3;         // the metal is an attack tick; the noise sustains
 		int end = Math.Min( _bufL.Length, start + dur );
 		for ( int i = 0; start + i < end; i++ )
 		{
 			float env = (float)Math.Exp( -i / decay );
+			float penv = (float)Math.Exp( -i / pingDecay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			p1 += f1 / _sr; p2 += f1 * 1.34 / _sr; p3 += f1 * 1.79 / _sr;
-			float ping = (MathF.Sin( (float)(p1 * 2 * Math.PI) )
-				+ MathF.Sin( (float)(p2 * 2 * Math.PI) ) * 0.7f
-				+ MathF.Sin( (float)(p3 * 2 * Math.PI) ) * 0.5f) * (bell ? 0.5f : 0.3f);
-			float v = (ping + hp * 0.5f) * env * amp * _drumGain * _drumHighMul;
+			p1 += f1 / _sr; p2 += f1 * 1.41 / _sr; p3 += f1 * 1.93 / _sr;
+			p4 += f1 * 2.51 / _sr; p5 += f1 * 3.07 / _sr; p6 += f1 * 3.66 / _sr;
+			float metal = (MathF.Sin( (float)(p1 * 2 * Math.PI) )
+				+ MathF.Sin( (float)(p2 * 2 * Math.PI) )
+				+ MathF.Sin( (float)(p3 * 2 * Math.PI) )
+				+ MathF.Sin( (float)(p4 * 2 * Math.PI) )
+				+ MathF.Sin( (float)(p5 * 2 * Math.PI) )
+				+ MathF.Sin( (float)(p6 * 2 * Math.PI) )) * ping * penv;
+			float v = (hp * 0.7f * env + metal) * amp * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
