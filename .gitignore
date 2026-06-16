@@ -10,3 +10,6 @@ web/_framework/*.gz
 *.wav
 node_modules/
 .DS_Store
+
+# Release artifact (built by `make release`, uploaded to GitHub releases)
+skafinity-web.tar.gz

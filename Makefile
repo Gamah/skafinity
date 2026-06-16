@@ -22,7 +22,7 @@ PROJECT   = wasm/Skafinity.Wasm.csproj
 PUBDIR    = wasm/bin/Release/net10.0/publish/wwwroot/_framework
 PORT     ?= 8000
 
-.PHONY: all build dev deploy stage test serve dist clean
+.PHONY: all build dev deploy stage test serve dist release clean
 
 all:
 	$(DOTNET) publish $(PROJECT) -c Release
@@ -70,6 +70,21 @@ dist:
 	@echo "dist (single-file inline of the .NET runtime) is not implemented yet — serve the"
 	@echo "bundle with 'make serve'. See PLAN/README for the follow-up."
 	@exit 1
+
+# Package the runtime bundle the web layer loads — engine.js + worker.js + the staged
+# _framework (minus the brotli/gzip duplicates a plain static server doesn't use) — into a
+# release tarball for downstream vendoring. rotaliate fetches the latest release of this
+# asset at `make up` and wraps it into its music screen, so the game and the web toy run the
+# identical composition engine. Run `make deploy` first so web/_framework is a clean AOT
+# build, then `make release`, then `gh release create vX.Y.Z $(RELEASE_TARBALL)`.
+RELEASE_TARBALL ?= skafinity-web.tar.gz
+release:
+	@test -f web/_framework/dotnet.js || { echo "web/_framework missing — run 'make deploy' first" >&2; exit 1; }
+	rm -f $(RELEASE_TARBALL)
+	tar -czf $(RELEASE_TARBALL) --exclude='*.br' --exclude='*.gz' \
+		-C web engine.js worker.js _framework
+	@echo "packaged $(RELEASE_TARBALL) ($$(du -h $(RELEASE_TARBALL) | cut -f1))"
+	@echo "publish with: gh release create vX.Y.Z $(RELEASE_TARBALL) --title ... --notes ..."
 
 clean:
 	rm -rf web/_framework wasm/bin wasm/obj
