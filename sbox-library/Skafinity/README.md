@@ -81,8 +81,11 @@ PRNG with a fixed call order (all 32-bit unsigned wrapping arithmetic). The PRNG
 `"{tag}:{n}"` (empty tag ⇒ `"skafinity"`). Composition is the must-match part; the `Vibe` string
 overrides the subset of knobs `VibeCodec` covers, the rest come from `MusicGen.Config` defaults.
 
-`VibeCodec.Fields` is **append-only** — its order is the wire format. Never reorder or remove
-fields, only append, or existing shared seeds change meaning.
+`VibeCodec` is **genre-aware and append-only**. The vibe string is `[genre char][globals]
+[instrument grid]`, the grid reserving up to 8 instruments × 4 columns at fixed positions
+(`1 + globals + i*4 + c`). Each genre (Ska, Rock) has its own instrument grid; `Fields(genre)`
+is the per-genre list the UI iterates. Never reorder or remove — only append globals,
+instrument slots, or columns — or existing shared seeds change meaning.
 
 ## License
 

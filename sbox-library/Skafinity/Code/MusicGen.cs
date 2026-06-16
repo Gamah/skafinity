@@ -25,9 +25,13 @@ public sealed class MusicGen
 {
 	public sealed class Config
 	{
+		// Genre — selects the instrument set + arrangement. 0 = Ska (bass/skank/organ/lead/
+		// horns/drums), 1 = Rock (drums/bass/rhythm-gtr/lead-gtr). New genres append here.
+		public int Genre = 0;
+
 		// Output
 		public int SampleRate = 32000;
-		public float TargetSeconds = 80f; // bar count adapts to tempo to hit this
+		public float TargetSeconds = 80f; // (legacy) song length now follows the structure
 		public int Bars = 64;             // fallback if TargetSeconds <= 0
 
 		// Tempo — main is laid-back reggae-rock; Fast is an uptempo ska feel.
@@ -49,6 +53,22 @@ public sealed class MusicGen
 		public float HatVol = 0.22f;
 		public float CrashVol = 0.35f;
 		public float DrumVol = 1.00f;         // master gain over the whole kit
+		// Drum "tone" — toms↔cymbals balance. 0 = boom (kick/toms forward, hats/cymbals
+		// pulled back), 0.5 = neutral, 1 = bright (hats/cymbals forward). Applied per-voice.
+		public float DrumTone = 0.5f;
+		// Drum "drive" — pull↔push timing feel (replaces the old DrumPush magnitude roll).
+		// 0 = lay back behind the beat, 0.5 = dead-on, 1 = push ahead of the beat.
+		public float DrumDrive = 0.5f;
+
+		// Rock instruments (Genre 1). Bass + drums reuse the shared knobs above.
+		public float RhythmGtrVol = 1.00f;
+		public float RhythmGtrCutoff = 2200f; // Hz low-pass on the rhythm guitar
+		public float RhythmGtrDrive = 2.2f;   // distortion amount (tanh drive)
+		public float RhythmGtrChug = 0.5f;    // 0 = ringing chords, 1 = tight palm-mute chug
+		public float LeadGtrVol = 1.00f;
+		public float LeadGtrCutoff = 3000f;   // Hz low-pass on the lead guitar
+		public float LeadGtrDrive = 2.6f;     // distortion amount (tanh drive)
+		public float LeadGtrTriplets = 0.06f; // lead-guitar run/triplet ornament rate
 
 		// Tone — low drives + filtering for warmth; detune for width.
 		public float Detune = 14f;        // cents, unison spread
@@ -75,7 +95,6 @@ public sealed class MusicGen
 		public float GhostSnareChance = 0.35f;
 		public float FillChance = 0.6f;       // drum fill at phrase ends
 		public float DrumBusy = 0.6f;         // 0..1 overall kit activity: 16th hats, ghosts, kick syncopation
-		public float DrumPush = 0.13f;        // push/pull timing variance magnitude (per-song bias)
 		public float TripletChance = 0.06f;   // 0..0.2 chance of triplet/16th ornament in fills / lead runs (potent)
 		public float BassTriplets = 0.06f;    // 0..0.1 bass-only 16th/triplet ornament rate (own knob)
 		public float MelodyRestChance = 0.30f;
@@ -228,7 +247,44 @@ public sealed class MusicGen
 	int _drumStyle;          // 0 one-drop, 1 steppers, 2 straight backbeat
 	bool _organBubble;
 	bool _fast;
+	int _genre;              // 0 ska, 1 rock
+	string _tag;             // the per-song seed string, reused to seed per-section streams
 	int _drumPush;           // per-song-constant kit timing bias in samples (− ahead / + back)
+	float _drumLowMul = 1f;  // DrumTone → kick/tom gain multiplier
+	float _drumHighMul = 1f; // DrumTone → hat/cymbal gain multiplier
+
+	// ── Song structure ──
+	// A song is an ordered list of sections. Hardcoded for now (will be RNG-generated once
+	// there are more part types); the fixed run is intro → chorus → verse(0) → chorus →
+	// verse(1) → chorus → ending. Non-lead voices are seeded by section TYPE so every chorus
+	// (and both verses) play identical backing; the lead is seeded by type + verse index so
+	// it evolves across the Nth verse; the section-end fill is seeded by absolute index so
+	// every section closes with a different fill.
+	enum Section { Intro, Chorus, Verse, Ending }
+	readonly struct Part
+	{
+		public readonly Section Type; public readonly int Bars; public readonly int VerseIndex;
+		public Part( Section t, int bars, int verse ) { Type = t; Bars = bars; VerseIndex = verse; }
+	}
+
+	static List<Part> BuildStructure() => new()
+	{
+		new Part( Section.Intro,  4, 0 ),
+		new Part( Section.Chorus, 8, 0 ),
+		new Part( Section.Verse,  8, 0 ),
+		new Part( Section.Chorus, 8, 0 ),
+		new Part( Section.Verse,  8, 1 ),
+		new Part( Section.Chorus, 8, 0 ),
+		new Part( Section.Ending, 4, 0 ),
+	};
+
+	static string SectionKey( Section s ) => s switch
+	{
+		Section.Intro => "intro",
+		Section.Chorus => "chorus",
+		Section.Verse => "verse",
+		_ => "ending",
+	};
 
 	// Single-threaded generation (used by Generate / GenerateSamples). The controller
 	// uses the chunked path instead (BeginPlan → parallel RenderPitchedRange → FinishMono).
@@ -246,27 +302,22 @@ public sealed class MusicGen
 	void ComposePlan( string tag )
 	{
 		_events.Clear();
-		var rng = new Rng( Xmur3( string.IsNullOrEmpty( tag ) ? "rotaliate" : tag.ToLowerInvariant() ) );
+		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
+		_genre = Math.Clamp( _c.Genre, 0, 1 );
+		var rng = new Rng( Xmur3( _tag.ToLowerInvariant() ) );
 
-		_fast = rng.Chance( _c.FastChance );
+		_fast = rng.Chance( _c.FastChance );              // TEMPO BIAS
 		int bpm = _fast
 			? _c.FastBpmMin + rng.Int( Math.Max( 1, _c.FastBpmMax - _c.FastBpmMin + 1 ) )
 			: _c.BpmMin + rng.Int( Math.Max( 1, _c.BpmMax - _c.BpmMin + 1 ) );
 		_scale = rng.Pick( Scales );
 		_prog = rng.Pick( Progressions );
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
-		_lead = PickInstrument( rng );
+		_lead = Instrument.Trumpet;                       // ska lead is fixed; rock uses guitar
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
 		_bassPat = rng.Pick( BassPatterns );
-		_drumStyle = _fast ? 2 : rng.Int( 2 );            // laid-back → one-drop/steppers
-		// Every song carries all melodic voices — organ bubble, skank, and horns are
-		// no longer rolled on/off (a song with no organ/horns read as "missing
-		// instruments"). The RNG draws are kept so songs that already had them stay
-		// bit-identical downstream; only previously-bare songs gain the voice.
-		rng.Chance( _c.OrganBubbleChance );               // draw kept for stream stability
+		_drumStyle = _genre == 1 ? 2 : (_fast ? 2 : rng.Int( 2 )); // rock = straight backbeat
 		_organBubble = true;
-
-		rng.Chance( _c.HornSectionChance );               // draw kept for stream stability
 		_hasHorns = true;
 		_hornMask = new bool[EighthsPerBar];
 		_hornMask[0] = true;
@@ -277,45 +328,69 @@ public sealed class MusicGen
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 
-		// Drum push/pull: a per-song-constant timing bias on the whole kit (negative =
-		// push ahead of the beat, positive = lay back). Constant for the song, but its
-		// value varies song-to-song (own RNG stream → main composition order untouched).
-		// Biased slightly toward pushing so the backbeat never feels "super late".
-		var pushRng = new Rng( Xmur3( "push:" + tag ) );
-		_drumPush = (int)Math.Round( (pushRng.Next() - 0.62f) * _c.DrumPush * spe );
+		// Drum tone (toms↔cymbals) → per-voice gain split, and drive (pull↔push) → a constant
+		// kit timing bias (− = ahead/push, + = behind/lay back; 0.5 = dead on).
+		float dt = Math.Clamp( _c.DrumTone, 0f, 1f );
+		_drumLowMul = 1.4f - 0.8f * dt;
+		_drumHighMul = 0.4f + 1.2f * dt;
+		_drumPush = (int)Math.Round( (0.5f - Math.Clamp( _c.DrumDrive, 0f, 1f )) * 2f * 0.13f * spe );
 
-		// Adapt bar count to the tempo so length stays ~TargetSeconds (in spec, and
-		// bounds file size). Round to a multiple of 8 so it lands on a progression
-		// boundary and loops cleanly.
-		int barCount = Math.Max( 1, _c.Bars );
-		if ( _c.TargetSeconds > 1f )
-		{
-			double barSec = EighthsPerBar * secPerEighth;
-			barCount = Math.Clamp( (int)Math.Round( _c.TargetSeconds / barSec / 8.0 ) * 8, 16, 128 );
-		}
-
-		int total = spe * EighthsPerBar * barCount;
+		// Lay out the structure and size the buffers to its total length.
+		var structure = BuildStructure();
+		int totalBars = 0;
+		foreach ( var p in structure ) totalBars += p.Bars;
+		int total = spe * EighthsPerBar * totalBars;
 		_bufL = new float[total];
 		_bufR = new float[total];
-		var noise = new Rng( Xmur3( "drums:" + tag ) );
-		var bassOrn = new Rng( Xmur3( "bass:" + tag ) );
-		var hornOrn = new Rng( Xmur3( "horn:" + tag ) );
 
-		for ( int bar = 0; bar < barCount; bar++ )
+		int barCursor = 0;
+		for ( int si = 0; si < structure.Count; si++ )
+		{
+			var part = structure[si];
+			RenderSection( part, si, barCursor * EighthsPerBar * spe, spe, secPerEighth, swing );
+			barCursor += part.Bars;
+		}
+	}
+
+	// Render one section. Each voice gets its own per-section RNG stream keyed so that repeats
+	// of a section type reproduce identical backing, while the lead key folds in the verse
+	// index (so the Nth verse's lead differs) and the fill key folds in the absolute section
+	// index (so every section closes with a unique fill).
+	void RenderSection( Part part, int absIndex, int sectionStart, int spe, double secPerEighth, float swing )
+	{
+		string bk = SectionKey( part.Type );
+		string lk = part.Type == Section.Verse ? $"verse:{part.VerseIndex}" : bk;
+		var bassRng = new Rng( Xmur3( $"{_tag}:bass:{bk}" ) );
+		var bassOrn = new Rng( Xmur3( $"{_tag}:bassorn:{bk}" ) );
+		var rhythmRng = new Rng( Xmur3( $"{_tag}:rhythm:{bk}" ) );
+		var hornRng = new Rng( Xmur3( $"{_tag}:horn:{bk}" ) );
+		var leadRng = new Rng( Xmur3( $"{_tag}:lead:{lk}" ) );
+		var noise = new Rng( Xmur3( $"{_tag}:drums:{bk}" ) );
+		var fillRng = new Rng( Xmur3( $"{_tag}:fill:{absIndex}" ) );
+		var fillNoise = new Rng( Xmur3( $"{_tag}:fillnoise:{absIndex}" ) );
+
+		for ( int bar = 0; bar < part.Bars; bar++ )
 		{
 			int chord = (bar / 2) % _prog.Length;
 			int nextChord = ((bar / 2) + 1) % _prog.Length;
-			int barStart = bar * EighthsPerBar * spe;
-			bool phraseEnd = (bar % 4) == 3;              // fill the 4th bar
+			int barStart = sectionStart + bar * EighthsPerBar * spe;
+			bool lastBar = bar == part.Bars - 1;          // every section ends with a fill
 
-			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, rng, bassOrn );
-			RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rng );
-			RenderDrumBar( barStart, spe, chord, phraseEnd, rng, noise );
+			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn );
+			if ( _genre == 1 )
+			{
+				RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng );
+			}
+			else
+			{
+				RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng );
+				if ( _hasHorns )
+					RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng );
+			}
+			RenderDrumBar( barStart, spe, lastBar, noise, fillRng, fillNoise );
 
 			if ( bar % 2 == 0 )
-				RenderLeadPhrase( barStart, spe, secPerEighth, chord, rng );
-			if ( _hasHorns )
-				RenderHornStabs( barStart, spe, secPerEighth, chord, hornOrn );
+				RenderLeadPhrase( barStart, spe, secPerEighth, chord, leadRng );
 		}
 	}
 
@@ -471,8 +546,9 @@ public sealed class MusicGen
 		int melBase = _rootMidi + 24;
 		int[] tones = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 6 }; // chord tones
 		int degree = tones[rng.Int( 3 )];
-		float amp = _c.MelodyVol;
-		float drive = _c.MelodyDrive;
+		float amp = _genre == 1 ? _c.LeadGtrVol : _c.MelodyVol;
+		float drive = _genre == 1 ? _c.LeadGtrDrive : _c.MelodyDrive;
+		float tripChance = _genre == 1 ? _c.LeadGtrTriplets : _c.TripletChance;
 
 		int e = 0;
 		while ( e < slots )
@@ -483,7 +559,7 @@ public sealed class MusicGen
 			// 16th-triplet (3 in an eighth), an eighth-note triplet (3 in a beat), or a
 			// wide quarter-note triplet (3 over two beats). Wider spans give the lazy,
 			// over-the-barline triplet feel, not just the fast run.
-			if ( rng.Chance( _c.TripletChance ) )
+			if ( rng.Chance( tripChance ) )
 			{
 				float r = rng.Next();
 				int n, spanE; // n notes evenly across spanE eighths
@@ -498,7 +574,7 @@ public sealed class MusicGen
 				for ( int k = 0; k < n; k++ )
 				{
 					int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
-					RenderLead( barStart + e * spe + k * step, (int)(step * 0.9f),
+					RenderLeadNote( barStart + e * spe + k * step, (int)(step * 0.9f),
 						ScaleMidi( melBase, d2 ), amp, secPerEighth * spanE / (double)n * 0.85, drive );
 				}
 				e += spanE;
@@ -530,9 +606,52 @@ public sealed class MusicGen
 				degree = Math.Clamp( degree + step, _prog[chord] - 3, _prog[chord] + 10 );
 			}
 
-			RenderLead( barStart + e * spe, (int)(spe * len * 0.9f), ScaleMidi( melBase, degree ),
+			RenderLeadNote( barStart + e * spe, (int)(spe * len * 0.9f), ScaleMidi( melBase, degree ),
 				amp, secPerEighth * len * 0.7f, drive );
 			e += len;
+		}
+	}
+
+	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,
+	// otherwise the ska horn (RenderLead → trumpet).
+	void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive )
+	{
+		if ( _genre == 1 )
+		{
+			RenderPatch( at, dur, Midi( midi ), new Patch
+			{
+				Osc = 1, Voices = 2, Detune = _c.Detune * 0.4f, Amp = amp,
+				Attack = 0.005f, Decay = decaySec, Sustain = 0.6f, Sustained = true,
+				Cutoff = _c.LeadGtrCutoff, CutEnv = 1500f, Reso = 1.0f,
+				Drive = MathF.Max( 1f, _c.LeadGtrDrive ), Pan = _leadPan, Vibrato = _c.MelodyVibrato * 0.6f,
+			} );
+			return;
+		}
+		RenderLead( at, dur, midi, amp, decaySec, drive );
+	}
+
+	// ── Rock rhythm guitar — driven power chords (root + fifth + octave) on every eighth.
+	// Downbeats ring; offbeats are tightened toward a palm-muted chug as RhythmGtrChug rises.
+	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
+	{
+		int root = ChordRoot( chord ) + 24;               // guitar register
+		int[] chordOffs = { 0, 7, 12 };                   // power chord
+		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
+		for ( int e = 0; e < EighthsPerBar; e++ )
+		{
+			bool accent = (e % 2) == 0;                    // downbeats ring, offbeats chug
+			float lenFrac = accent ? (1f - 0.5f * chug) : (0.35f - 0.2f * chug);
+			int dur = (int)(spe * Math.Max( 0.12f, lenFrac ));
+			double dec = secPerEighth * (accent ? 0.8 : 0.3);
+			foreach ( var o in chordOffs )
+				RenderPatch( barStart + e * spe, dur, Midi( root + o ), new Patch
+				{
+					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
+					Amp = _c.RhythmGtrVol / chordOffs.Length * (accent ? 1f : 0.7f),
+					Attack = 0.003f, Decay = dec, Sustain = accent ? 0.5f : 0f, Sustained = accent,
+					Cutoff = _c.RhythmGtrCutoff, CutEnv = 800f, Reso = 1.0f,
+					Drive = MathF.Max( 1f, _c.RhythmGtrDrive ), Pan = 0f,
+				} );
 		}
 	}
 
@@ -821,15 +940,19 @@ public sealed class MusicGen
 	}
 
 	// ── Drums ──
-	void RenderDrumBar( int barStart, int spe, int chord, bool phraseEnd, Rng rng, Rng noise )
+	// Render a bar of kit. On a section's last bar (fillEnd) the closing beat is replaced by a
+	// fill — driven by its own RNG streams so every section's fill is different even when the
+	// groove before it is identical.
+	void RenderDrumBar( int barStart, int spe, bool fillEnd, Rng noise, Rng fillRng, Rng fillNoise )
 	{
 		// Knob ceiling was too frantic: scale so DRUM BUSY 100% reads as the old 75%.
 		float busy = Math.Clamp( _c.DrumBusy, 0f, 1f ) * 0.75f;
 		int six = spe / 2;
+		int hatEnd = fillEnd ? 6 : EighthsPerBar;         // hats stop where the fill begins
 
 		// closed hats on eighths (open on the "and of 4"); busy fills the gaps with
 		// quieter sixteenth-note hats (constant 16th chatter at the top of the range).
-		for ( int e = 0; e < EighthsPerBar; e++ )
+		for ( int e = 0; e < hatEnd; e++ )
 		{
 			int at = barStart + e * spe;
 			bool open = e == 7;
@@ -838,11 +961,10 @@ public sealed class MusicGen
 				RenderHat( at + six, false, _c.HatVol * 0.4f, noise );
 		}
 
-		// fill the last beat of a phrase-ending bar instead of the usual hits
-		if ( phraseEnd && rng.Chance( _c.FillChance ) )
+		if ( fillEnd )
 		{
 			RenderKickSnareGroove( barStart, spe, 0, 6, busy, noise );   // first 3 beats normal
-			RenderFill( barStart + 6 * spe, spe, noise, rng );
+			RenderFill( barStart + 6 * spe, spe, fillNoise, fillRng );
 			return;
 		}
 		RenderKickSnareGroove( barStart, spe, 0, EighthsPerBar, busy, noise );
@@ -915,7 +1037,7 @@ public sealed class MusicGen
 			float body = (float)Math.Tanh( MathF.Sin( (float)(phase * 2 * Math.PI) ) * 1.6f ) * env;
 			float sub = MathF.Sin( (float)(subPhase * 2 * Math.PI) ) * 0.3f * subEnv;
 			float click = i < clickLen ? (noise.Next() * 2f - 1f) * 0.55f * (1f - i / (float)clickLen) : 0f;
-			float v = (body + sub + click) * _c.KickVol * _drumGain;
+			float v = (body + sub + click) * _c.KickVol * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -963,7 +1085,7 @@ public sealed class MusicGen
 			float t = (float)i / dur;
 			phase += (baseFreq * (1f - 0.35f * t)) / _sr;
 			float env = (float)Math.Exp( -i / decay );
-			float v = MathF.Sin( (float)(phase * 2 * Math.PI) ) * env * _c.TomVol * _drumGain;
+			float v = MathF.Sin( (float)(phase * 2 * Math.PI) ) * env * _c.TomVol * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -981,7 +1103,7 @@ public sealed class MusicGen
 			float env = (float)Math.Exp( -i / decay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * env * amp * _drumGain;
+			float v = hp * env * amp * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -999,7 +1121,7 @@ public sealed class MusicGen
 			float env = (float)Math.Exp( -i / decay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * env * _c.CrashVol * _drumGain;
+			float v = hp * env * _c.CrashVol * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}

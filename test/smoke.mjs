@@ -25,22 +25,43 @@ function floatChannel(channel) {
 const cfg = E.DefaultConfig();
 check('ConfigSize matches DefaultConfig length', cfg.length === E.ConfigSize(), `${cfg.length}`);
 
-const fieldCount = E.VibeFieldCount();
-check('VibeFieldCount is 30', fieldCount === 30, `${fieldCount}`);
+// ── genre ──
+check('GenreCount is 2', E.GenreCount() === 2, `${E.GenreCount()}`);
+check('genre 0 is Ska', E.GenreName(0) === 'Ska', E.GenreName(0));
+check('genre 1 is Rock', E.GenreName(1) === 'Rock', E.GenreName(1));
+check('DefaultConfig genre is 0', E.GetGenre(cfg) === 0, `${E.GetGenre(cfg)}`);
+
+// ska (genre 0): 6 globals + 6 instruments × 4 columns
+const skaCount = E.VibeFieldCount(0);
+check('ska VibeFieldCount is 30', skaCount === 30, `${skaCount}`);
+const rockCount = E.VibeFieldCount(1);
+check('rock VibeFieldCount is 22', rockCount === 22, `${rockCount}`);
 
 const vibe = E.EncodeVibe(cfg);
-check('encode length == field count', vibe.length === fieldCount, vibe);
+check('ska vibe length == fields + genre char', vibe.length === skaCount + 1, `${vibe.length}`);
 check('Encode(Decode(vibe)) is stable', E.EncodeVibe(E.DecodeVibe(vibe, cfg)) === vibe);
 check('LooksLikeVibe accepts the encoding', E.LooksLikeVibe(vibe) === true);
 check('LooksLikeVibe rejects a short tag', E.LooksLikeVibe('gamah') === false);
+check('vibe starts with genre 0 char', vibe[0] === '0', vibe);
+
+// rock vibe is genre-tagged + shorter, and round-trips its own genre
+const rockCfg = E.SetGenre(cfg, 1);
+const rockVibe = E.EncodeVibe(rockCfg);
+check('rock vibe length == fields + genre char', rockVibe.length === rockCount + 1, `${rockVibe.length}`);
+check('rock vibe is shorter than ska', rockVibe.length < vibe.length);
+check('rock vibe starts with genre 1 char', rockVibe[0] === '1', rockVibe);
+check('decoding a rock vibe restores genre 1', E.GetGenre(E.DecodeVibe(rockVibe, cfg)) === 1);
+check('rock Encode(Decode) is stable', E.EncodeVibe(E.DecodeVibe(rockVibe, cfg)) === rockVibe);
+
+// fields carry voice/column metadata for the UI matrix
+check('a field reports a voice', (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldVoice(0, i) === 'DRUMS') return true; })() === true);
 
 // move a knob, confirm it round-trips through the vibe string
-const tempoMin = (() => { for (let i = 0; i < fieldCount; i++) if (E.VibeFieldName(i) === 'TEMPO MIN') return i; })();
+const tempoMin = (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldName(0, i) === 'TEMPO MIN') return i; })();
 const cfg2 = E.SetVibeField(cfg, tempoMin, 0.25);
 const norm = E.GetVibeNorm(cfg2, tempoMin);
 check('SetVibeField/GetVibeNorm round-trip', Math.abs(norm - 0.25) < 0.04, `${norm}`);
 check('VibeDisplay renders the value', /^\d+$/.test(E.VibeDisplay(cfg2, tempoMin)), E.VibeDisplay(cfg2, tempoMin));
-check('LEAD INSTR exposes choices', E.VibeFieldChoices((() => { for (let i = 0; i < fieldCount; i++) if (E.VibeFieldName(i) === 'LEAD INSTR') return i; })()).length === 5);
 
 // ── generation ──
 const frames = E.GenerateSong('gamah:0', cfg);
@@ -67,6 +88,15 @@ const L3 = floatChannel(0);
 let diff = false;
 for (let i = 0; i < 200000; i++) if (Math.abs(L3[i] - L[i]) > 1e-6) { diff = true; break; }
 check('different seed differs', diff);
+
+// rock genre renders non-silent audio that differs from ska (same seed, different genre)
+E.GenerateSong('gamah:0', rockCfg);
+const Rk = floatChannel(0);
+let rockNonzero = 0, rockDiff = false;
+for (let i = 0; i < Rk.length; i++) { if (Math.abs(Rk[i]) > 1e-4) rockNonzero++; }
+for (let i = 0; i < 200000; i++) if (Math.abs(Rk[i] - L[i]) > 1e-6) { rockDiff = true; break; }
+check('rock audio is non-silent', rockNonzero > Rk.length / 10, `${rockNonzero} loud frames`);
+check('rock differs from ska at same seed', rockDiff);
 
 // ── WAV ──
 const wavLen = E.GenerateWav('gamah:0', cfg, true);

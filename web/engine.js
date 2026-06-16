@@ -39,17 +39,26 @@ function makeMod(E) {
     encodeVibe: (cfg) => E.EncodeVibe(asArray(cfg)),
     decodeVibe: (vibe, cfg) => E.DecodeVibe(vibe || '', asArray(cfg)),
     looksLikeVibe: (s) => E.LooksLikeVibe(s || ''),
-    vibeFieldCount: () => E.VibeFieldCount(),
+
+    // Genre lives inside the vibe (first char); the field list depends on it.
+    genreCount: () => E.GenreCount(),
+    genreName: (i) => E.GenreName(i),
+    getGenre: (cfg) => E.GetGenre(asArray(cfg)),
+    setGenre: (cfg, i) => E.SetGenre(asArray(cfg), i),
+
+    vibeFieldCount: (genre) => E.VibeFieldCount(genre),
     setVibeField: (cfg, i, norm) => E.SetVibeField(asArray(cfg), i, norm),
     getVibeNorm: (cfg, i) => E.GetVibeNorm(asArray(cfg), i),
     vibeDisplay: (cfg, i) => E.VibeDisplay(asArray(cfg), i),
 
-    vibeFieldInfo: (i) => ({
-      name: E.VibeFieldName(i),
-      min: E.VibeFieldMin(i),
-      max: E.VibeFieldMax(i),
-      isInt: E.VibeFieldIsInt(i),
-      choices: E.VibeFieldChoices(i),
+    vibeFieldInfo: (genre, i) => ({
+      name: E.VibeFieldName(genre, i),
+      min: E.VibeFieldMin(genre, i),
+      max: E.VibeFieldMax(genre, i),
+      isInt: E.VibeFieldIsInt(genre, i),
+      voice: E.VibeFieldVoice(genre, i),
+      column: E.VibeFieldColumn(genre, i),
+      choices: E.VibeFieldChoices(genre, i),
     }),
 
     // Mirrors MusicController.PlaySeed parsing: vibe:tag:n | tag:n | tag.

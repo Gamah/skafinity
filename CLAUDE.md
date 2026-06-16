@@ -110,20 +110,28 @@ determinism, and WAV output — run it after engine or boundary changes.
 - `tag` — any string (a name, a word). It seeds the PRNG together with `n`: the per-song PRNG
   seed string is **`"{tag}:{n}"`** (empty tag ⇒ `"rotaliate"`).
 - `n` — song index in the infinite sequence (0, 1, 2 …). Prev/Next step `n`.
-- `vibe` — a base-36 string, **one char per `VibeCodec.Field`**, encoding the knob overrides.
-  Empty/absent ⇒ default knobs.
+- `vibe` — a base-36 string at **12 levels/knob**, encoding the genre + knob overrides. The
+  **first char is the genre** (0 = Ska, 1 = Rock); the rest follow the fixed wire grid below.
+  Empty/absent ⇒ default knobs (genre 0).
 
 Parsing (in `web/engine.js`, `parseSeed`) mirrors the controller: accept `vibe:tag:n`,
 `tag:n`, or `tag`. The page keeps the current seed in `location.hash` so it's shareable and
 reload-stable.
 
-### VibeCodec is append-only
+### VibeCodec wire format (genre-aware, append-only)
 
-The field list order **is the wire format**. Only ever append new fields; never reorder or
-remove. `Apply` ignores trailing chars a shorter string lacks (older seeds degrade
-gracefully). The list currently has **30 fields**. The JS UI reads the field list straight
-from the wasm exports (`VibeFieldName/Min/Max/IsInt/Choices`), so there's no second field
-table to keep in lockstep — just edit `VibeCodec.cs`.
+The wire layout is **genre-independent**: `[genre char][global block][instrument grid]`,
+where the grid reserves up to `MaxInstruments` (8) blocks of 4 columns
+(volume / tone / character / extra). Column `c` of instrument `i` always lives at
+`1 + globals + i*4 + c`, so adding a genre, an instrument, or a 5th column never shifts an
+existing position. **Append-only means**: append global knobs, append instrument slots
+(≤ 8), and only ever append columns past the 4th — never reorder/remove. `Apply` ignores
+trailing positions a shorter string lacks (older/other-genre seeds degrade gracefully). Each
+genre defines its own instrument grid (Ska 6 instruments, Rock 4). The JS UI reads the field
+list — including each field's `voice`/`column` — straight from the wasm exports
+(`VibeFieldName/Min/Max/IsInt/Voice/Column/Choices`, all genre-parameterized) and lays out
+the matrix generically, so there's no second field table to keep in lockstep — just edit
+`VibeCodec.cs`.
 
 ---
 
@@ -131,11 +139,13 @@ table to keep in lockstep — just edit `VibeCodec.cs`.
 
 `web/app.js` keeps the controller's model over Web Audio:
 
-- `engine.js`'s `generateSong(seed, cfg)` renders **one full loop** (stereo). PCM stays in
-  wasm memory and comes back as a MemoryView the worker copies into two `Float32Array`s
-  (valid only synchronously — copy immediately).
-- JS wraps each loop in an `AudioBuffer`. A song plays `LoopsPerSong` (default 2) passes,
-  then **equal-power crossfades** into the pre-rendered next song (seed `tag:(n+1)`).
+- `engine.js`'s `generateSong(seed, cfg)` renders **one full structured song** (stereo) —
+  intro → chorus → verse(0) → chorus → verse(1) → chorus → ending (see `BuildStructure` in
+  `MusicGen.cs`). PCM stays in wasm memory and comes back as a MemoryView the worker copies
+  into two `Float32Array`s (valid only synchronously — copy immediately).
+- JS wraps each song in an `AudioBuffer`. Because the song has an intro/ending it **plays
+  once** (`LoopsPerSong` = 1, `src.loop = false`), then **equal-power crossfades** into the
+  pre-rendered next song (seed `tag:(n+1)`).
 - **Look-ahead:** keep `AheadCount` songs pre-rendered in a **Web Worker** (its own runtime
   instance) so a render never janks the UI.
 - Persist `n` in `localStorage` so playback resumes.

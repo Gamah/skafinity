@@ -4,7 +4,9 @@
 import Skafinity from './engine.js';
 
 // ── Tunables (mirror MusicController defaults) ──
-const LOOPS_PER_SONG = 2;
+// Songs now have an intro→…→ending structure, so each plays once start-to-end (no internal
+// loop) and crossfades into the next.
+const LOOPS_PER_SONG = 1;
 const CROSSFADE = 3.75;       // seconds; also the first song's fade-in
 const AHEAD_COUNT = 4;        // songs kept pre-rendered
 const SCHEDULE_HORIZON = 12;  // seconds: schedule the next song once it's within this
@@ -14,6 +16,7 @@ let worker = null;
 
 // ── State ──
 let cfg = null;               // Float32Array — the live Config (vibe applied)
+let genre = 0;                // current genre index (mirrors cfg's genre)
 let tag = 'rotaliate';
 let n = 0;                    // next song index to schedule
 let displayN = 0;            // song currently audible (for UI)
@@ -88,7 +91,7 @@ const CURVE_OUT = powerCurve('out');
 function scheduleOneSong(buffer, songN, startTime) {
   const src = ctx.createBufferSource();
   src.buffer = buffer;
-  src.loop = true;
+  src.loop = false;            // structured song: play through once, then crossfade to next
   const g = ctx.createGain();
   src.connect(g).connect(masterGain);
 
@@ -210,6 +213,8 @@ function applySeedString(s) {
   if (p.tag) tag = p.tag;
   if (p.vibe) {
     cfg = mod.decodeVibe(p.vibe, cfg);
+    genre = mod.getGenre(cfg);
+    if ($('genre')) $('genre').value = String(genre);
     vibe = mod.encodeVibe(cfg);
     buildVibeEditor();
   }
@@ -263,44 +268,30 @@ function renderPlaylist() {
 }
 
 // ── Vibe editor — per-instrument mixer matrix + GLOBAL strip ──
-// Display order is decoupled from the codec's append-only wire order; cells look fields up
-// by NAME (mirrors MusicScreen.razor's FieldIndex), so VibeCodec can keep appending without
-// reshuffling the grid.
-const MATRIX = [
-  // Voice    Volume   Tone          Character       Extra
-  ['BASS',  'BASS',  'BASS TONE',  'OCTAVE POP',   'BASS TRIPLETS'],
-  ['SKANK', 'SKANK', 'SKANK TONE', 'SKANK BITE',   'SKANK CHOP'],
-  ['ORGAN', 'ORGAN', 'ORGAN TONE', 'ORGAN BUBBLE', 'ORGAN VIBRATO'],
-  ['LEAD',  'LEAD',  'LEAD TONE',  'LEAD INSTR',   'TRIPLETS'],
-  ['HORNS', 'HORNS', 'HORN TONE',  'HORN SECTION', 'HORN DENSITY'],
-  ['DRUMS', 'DRUMS', 'DRUM PUSH',  'DRUM BUSY',    'DRUM FILLS'],
-];
-const GLOBAL_KNOBS = ['TEMPO MIN', 'TEMPO MAX', 'FAST CHANCE', 'SWING', 'RESONANCE', 'STEREO WIDTH'];
-const VOLUME_FIELDS = new Set(['BASS', 'SKANK', 'ORGAN', 'LEAD', 'HORNS', 'DRUMS']);
-const VOICE_STEMS = new Set(['BASS', 'SKANK', 'ORGAN', 'LEAD', 'HORN', 'HORNS', 'DRUM', 'DRUMS']);
+// Layout is driven entirely from the wasm field metadata for the current genre: each field
+// reports its voice (matrix row, or null for a GLOBAL knob) and column (0 volume / 1 tone /
+// 2 character / 3 extra). So a new genre — or a new knob — is a pure-C# change; there is no
+// JS-side field table to keep in sync.
+const COL_HEADERS = ['VOLUME', 'TONE', 'CHARACTER', 'EXTRA'];
 
-let fieldIndexByName = null;     // name -> wire index, built once from the WASM field list
-function buildFieldIndex() {
-  fieldIndexByName = new Map();
-  const count = mod.vibeFieldCount();
-  for (let i = 0; i < count; i++) fieldIndexByName.set(mod.vibeFieldInfo(i).name, i);
-}
-function fieldIndex(name) { return fieldIndexByName.has(name) ? fieldIndexByName.get(name) : -1; }
-
-// In the matrix the row label + column header already name the voice, so strip a leading
-// voice word from the cell label ("BASS TONE" -> "TONE", "BASS" volume -> "").
-function matrixLabel(name) {
-  const sp = name.indexOf(' ');
-  if (sp < 0) return VOICE_STEMS.has(name) ? '' : name;
-  const first = name.slice(0, sp);
-  return VOICE_STEMS.has(first) ? name.slice(sp + 1) : name;
+// One field's index + cached info for the current genre.
+function genreFields() {
+  const out = [];
+  const count = mod.vibeFieldCount(genre);
+  for (let i = 0; i < count; i++) out.push({ i, ...mod.vibeFieldInfo(genre, i) });
+  return out;
 }
 
-// Build one editable cell (slider, or a <select> for enum/choice knobs) for field `i`.
-function buildKnob(i, labelText) {
+function findFieldIndex(name) {
+  const count = mod.vibeFieldCount(genre);
+  for (let i = 0; i < count; i++) if (mod.vibeFieldInfo(genre, i).name === name) return i;
+  return -1;
+}
+
+// Build one editable cell (slider, or a <select> for enum/choice knobs) for field `f`.
+function buildKnob(f, labelText) {
   const cell = document.createElement('div');
   cell.className = 'knob';
-  const f = mod.vibeFieldInfo(i);
   const choices = f.choices;
 
   const head = document.createElement('div');
@@ -310,7 +301,7 @@ function buildKnob(i, labelText) {
   name.textContent = labelText;
   const val = document.createElement('span');
   val.className = 'knob-val';
-  val.textContent = mod.vibeDisplay(cfg, i);
+  val.textContent = mod.vibeDisplay(cfg, f.i);
   head.append(name, val);
 
   let input;
@@ -321,13 +312,13 @@ function buildKnob(i, labelText) {
       o.value = String(c); o.textContent = choices[c];
       input.append(o);
     }
-    input.selectedIndex = Math.round(mod.getVibeNorm(cfg, i) * (choices.length - 1));
-    input.onchange = () => onVibeChange(i, input.selectedIndex / (choices.length - 1), val);
+    input.selectedIndex = Math.round(mod.getVibeNorm(cfg, f.i) * (choices.length - 1));
+    input.onchange = () => onVibeChange(f.i, input.selectedIndex / (choices.length - 1), val);
   } else {
     input = document.createElement('input');
     input.type = 'range'; input.min = '0'; input.max = '1000'; input.step = '1';
-    input.value = String(Math.round(mod.getVibeNorm(cfg, i) * 1000));
-    input.oninput = () => onVibeChange(i, parseInt(input.value, 10) / 1000, val);
+    input.value = String(Math.round(mod.getVibeNorm(cfg, f.i) * 1000));
+    input.oninput = () => onVibeChange(f.i, parseInt(input.value, 10) / 1000, val);
   }
   input.className = 'knob-input';
   cell.append(head, input);
@@ -338,13 +329,23 @@ function buildVibeEditor() {
   const host = $('vibe');
   host.innerHTML = '';
 
+  const fields = genreFields();
+  const globals = fields.filter((f) => !f.voice);
+  // group instrument fields by voice, preserving first-seen order
+  const voices = [];
+  const byVoice = new Map();
+  for (const f of fields) {
+    if (!f.voice) continue;
+    if (!byVoice.has(f.voice)) { byVoice.set(f.voice, [null, null, null, null]); voices.push(f.voice); }
+    byVoice.get(f.voice)[f.column] = f;
+  }
+
   // ── mixer matrix ──
   const matrix = document.createElement('div');
   matrix.className = 'matrix';
-  const cols = ['', 'VOLUME', 'TONE', 'CHARACTER', 'EXTRA'];
   const head = document.createElement('div');
   head.className = 'mrow mhead';
-  for (const c of cols) {
+  for (const c of ['', ...COL_HEADERS]) {
     const h = document.createElement('div');
     h.className = c ? 'mcell mhlabel' : 'mvoice';
     h.textContent = c;
@@ -352,18 +353,20 @@ function buildVibeEditor() {
   }
   matrix.append(head);
 
-  for (const [voice, ...names] of MATRIX) {
+  for (const voice of voices) {
     const row = document.createElement('div');
     row.className = 'mrow';
     const v = document.createElement('div');
     v.className = 'mvoice';
     v.textContent = voice;
     row.append(v);
-    for (const nm of names) {
+    const cells = byVoice.get(voice);
+    for (let col = 0; col < COL_HEADERS.length; col++) {
       const cell = document.createElement('div');
       cell.className = 'mcell';
-      const idx = fieldIndex(nm);
-      if (idx >= 0) cell.append(buildKnob(idx, matrixLabel(nm)));
+      const f = cells[col];
+      // the column header already names volume/tone; only label the descriptive knobs
+      if (f) cell.append(buildKnob(f, f.name === COL_HEADERS[col] ? '' : f.name));
       row.append(cell);
     }
     matrix.append(row);
@@ -378,10 +381,7 @@ function buildVibeEditor() {
 
   const grid = document.createElement('div');
   grid.className = 'global-grid';
-  for (const nm of GLOBAL_KNOBS) {
-    const idx = fieldIndex(nm);
-    if (idx >= 0) grid.append(buildKnob(idx, nm));
-  }
+  for (const f of globals) grid.append(buildKnob(f, f.name));
   host.append(grid);
 }
 
@@ -396,22 +396,43 @@ function onVibeChange(i, norm, valEl) {
   restartTimer = setTimeout(() => { if (playing) startSequence(); }, 350);
 }
 
-// Randomize cfg's knobs in place — every knob except the six per-instrument volumes (mirrors
-// MusicController.RerollVibe), then keep TEMPO MIN ≤ MAX (ranges are identical so swapping the
-// normalized values swaps the tempos). Pure on cfg; callers handle UI/hash/restart.
-// Needs fieldIndexByName, so build it (buildFieldIndex) before calling.
+// Change the genre: rewrite cfg, rebuild the (genre-specific) editor, restart playback.
+function setGenre(g) {
+  genre = g;
+  cfg = mod.setGenre(cfg, g);
+  vibe = mod.encodeVibe(cfg);
+  buildVibeEditor();
+  setHash();
+  updateTransport();
+  if (playing) startSequence();
+}
+
+// Randomize cfg's knobs in place — every knob of the current genre except the per-instrument
+// volumes — then keep TEMPO MIN ≤ MAX (ranges are identical so swapping the normalized values
+// swaps the tempos). Pure on cfg; callers handle UI/hash/restart.
 function randomizeVibeCfg() {
-  const count = mod.vibeFieldCount();
-  for (let i = 0; i < count; i++) {
-    if (VOLUME_FIELDS.has(mod.vibeFieldInfo(i).name)) continue;
-    cfg = mod.setVibeField(cfg, i, Math.random());
+  for (const f of genreFields()) {
+    if (f.column === 0 && f.voice) continue; // skip per-instrument volumes
+    cfg = mod.setVibeField(cfg, f.i, Math.random());
   }
-  const lo = fieldIndex('TEMPO MIN'), hi = fieldIndex('TEMPO MAX');
+  const lo = findFieldIndex('TEMPO MIN'), hi = findFieldIndex('TEMPO MAX');
   if (lo >= 0 && hi >= 0) {
     const a = mod.getVibeNorm(cfg, lo), b = mod.getVibeNorm(cfg, hi);
     if (a > b) { cfg = mod.setVibeField(cfg, lo, b); cfg = mod.setVibeField(cfg, hi, a); }
   }
   vibe = mod.encodeVibe(cfg);
+}
+
+// Populate the genre <select> from the wasm genre list (once).
+function populateGenres() {
+  const sel = $('genre');
+  sel.innerHTML = '';
+  const count = mod.genreCount();
+  for (let i = 0; i < count; i++) {
+    const o = document.createElement('option');
+    o.value = String(i); o.textContent = mod.genreName(i);
+    sel.append(o);
+  }
 }
 
 // A short base-36 tag, e.g. "bd44ac2a" — the random song name used on a fresh visit.
@@ -433,7 +454,7 @@ async function init() {
   worker.onmessage = onWorkerMessage;
 
   cfg = mod.defaultConfig();
-  buildFieldIndex();   // needed by randomizeVibeCfg/fieldIndex below
+  populateGenres();
 
   // initial seed: a shared URL (location.hash) wins; otherwise a fresh random song —
   // random tag, random vibe, n=0 — so every plain visit lands somewhere new.
@@ -447,8 +468,13 @@ async function init() {
   } else {
     tag = randomTag();
     n = 0;
+    // start on a random genre too, then randomize that genre's knobs
+    cfg = mod.setGenre(cfg, Math.floor(Math.random() * mod.genreCount()));
+    genre = mod.getGenre(cfg);   // sync before randomize (it indexes the genre's field list)
     randomizeVibeCfg();   // sets `vibe`
   }
+  genre = mod.getGenre(cfg);
+  $('genre').value = String(genre);
   displayN = n;
 
   buildVibeEditor();
@@ -470,6 +496,7 @@ async function init() {
     try { await navigator.clipboard.writeText(location.href); $('copyBtn').textContent = 'copied!'; setTimeout(() => ($('copyBtn').textContent = 'copy link'), 1200); } catch (_) {}
   };
   $('rerollBtn').onclick = () => rerollVibe();
+  $('genre').onchange = () => setGenre(parseInt($('genre').value, 10));
   $('dlBtn').onclick = () => exportWav(displayN, $('stereo').checked);
   $('vol').oninput = () => { if (masterGain) masterGain.gain.value = parseFloat($('vol').value); };
   window.addEventListener('hashchange', () => {

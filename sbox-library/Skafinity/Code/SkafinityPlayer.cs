@@ -111,7 +111,8 @@ public sealed class SkafinityPlayer : Component
 	[Property, Group( "Feel" ), Range( 0f, 1f )] public float GhostSnareChance { get; set; } = 0.35f;
 	[Property, Group( "Feel" ), Range( 0f, 1f )] public float FillChance { get; set; } = 0.6f;
 	[Property, Group( "Feel" ), Range( 0f, 1f )] public float DrumBusy { get; set; } = 0.6f;
-	[Property, Group( "Feel" ), Range( 0f, 0.3f )] public float DrumPush { get; set; } = 0.13f;
+	[Property, Group( "Feel" ), Range( 0f, 1f )] public float DrumTone { get; set; } = 0.5f;
+	[Property, Group( "Feel" ), Range( 0f, 1f )] public float DrumDrive { get; set; } = 0.5f;
 	[Property, Group( "Feel" ), Range( 0f, 0.2f )] public float TripletChance { get; set; } = 0.06f;
 	[Property, Group( "Feel" ), Range( 0f, 0.1f )] public float BassTriplets { get; set; } = 0.06f;
 	[Property, Group( "Feel" ), Range( 0f, 1f )] public float MelodyRestChance { get; set; } = 0.30f;
@@ -132,6 +133,18 @@ public sealed class SkafinityPlayer : Component
 	// ── Backing horns ──
 	[Property, Group( "Horns" ), Range( 0f, 1f )] public float HornSectionChance { get; set; } = 0.5f;
 	[Property, Group( "Horns" ), Range( 0f, 1f )] public float HornDensity { get; set; } = 0.35f;
+
+	// ── Genre & rock instruments ──
+	// Genre selects the instrument set: 0 = Ska, 1 = Rock (drums/bass/rhythm-gtr/lead-gtr).
+	[Property, Group( "Genre" ), Range( 0, 1 )] public int Genre { get; set; } = 0;
+	[Property, Group( "Rock" ), Range( 0f, 1.5f )] public float RhythmGtrVol { get; set; } = 1.00f;
+	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float RhythmGtrCutoff { get; set; } = 2200f;
+	[Property, Group( "Rock" ), Range( 1f, 5f )] public float RhythmGtrDrive { get; set; } = 2.2f;
+	[Property, Group( "Rock" ), Range( 0f, 1f )] public float RhythmGtrChug { get; set; } = 0.5f;
+	[Property, Group( "Rock" ), Range( 0f, 1.5f )] public float LeadGtrVol { get; set; } = 1.00f;
+	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float LeadGtrCutoff { get; set; } = 3000f;
+	[Property, Group( "Rock" ), Range( 1f, 5f )] public float LeadGtrDrive { get; set; } = 2.6f;
+	[Property, Group( "Rock" ), Range( 0f, 0.1f )] public float LeadGtrTriplets { get; set; } = 0.06f;
 
 	SoundStream _stream;
 	SoundHandle _handle;
@@ -299,7 +312,6 @@ public sealed class SkafinityPlayer : Component
 		GhostSnareChance = GhostSnareChance,
 		FillChance = FillChance,
 		DrumBusy = DrumBusy,
-		DrumPush = DrumPush,
 		TripletChance = TripletChance,
 		BassTriplets = BassTriplets,
 		MelodyRestChance = MelodyRestChance,
@@ -313,6 +325,17 @@ public sealed class SkafinityPlayer : Component
 		ForceInstrument = ForceInstrument,
 		HornSectionChance = HornSectionChance,
 		HornDensity = HornDensity,
+		Genre = Genre,
+		DrumTone = DrumTone,
+		DrumDrive = DrumDrive,
+		RhythmGtrVol = RhythmGtrVol,
+		RhythmGtrCutoff = RhythmGtrCutoff,
+		RhythmGtrDrive = RhythmGtrDrive,
+		RhythmGtrChug = RhythmGtrChug,
+		LeadGtrVol = LeadGtrVol,
+		LeadGtrCutoff = LeadGtrCutoff,
+		LeadGtrDrive = LeadGtrDrive,
+		LeadGtrTriplets = LeadGtrTriplets,
 	};
 
 	int ConfigHash()
@@ -329,12 +352,15 @@ public sealed class SkafinityPlayer : Component
 		h.Add( MasterDrive ); h.Add( MasterPeak );
 		h.Add( OctavePopChance ); h.Add( OrganBubbleChance ); h.Add( KickSyncChance );
 		h.Add( GhostSnareChance ); h.Add( FillChance );
-		h.Add( DrumBusy ); h.Add( DrumPush ); h.Add( TripletChance ); h.Add( BassTriplets );
+		h.Add( DrumBusy ); h.Add( DrumTone ); h.Add( DrumDrive ); h.Add( TripletChance ); h.Add( BassTriplets );
 		h.Add( MelodyRestChance ); h.Add( MelodyLeapChance ); h.Add( MelodyVibrato );
 		h.Add( PanAmount );
 		h.Add( TrumpetWeight ); h.Add( SaxWeight ); h.Add( OrganWeight ); h.Add( TromboneWeight );
 		h.Add( ForceInstrument );
 		h.Add( HornSectionChance ); h.Add( HornDensity );
+		h.Add( Genre );
+		h.Add( RhythmGtrVol ); h.Add( RhythmGtrCutoff ); h.Add( RhythmGtrDrive ); h.Add( RhythmGtrChug );
+		h.Add( LeadGtrVol ); h.Add( LeadGtrCutoff ); h.Add( LeadGtrDrive ); h.Add( LeadGtrTriplets );
 		h.Add( Tag ); h.Add( Vibe );
 		return h.ToHashCode();
 	}
@@ -585,30 +611,27 @@ public sealed class SkafinityPlayer : Component
 	/// <summary>Step back to the previous song in the sequence.</summary>
 	public void PrevSong() => StepN( -1 );
 
-	/// <summary>Set vibe field <paramref name="index"/> (see <see cref="VibeCodec.Fields"/>) from
+	/// <summary>Set vibe field <paramref name="index"/> (see <see cref="VibeCodec.Fields(int)"/>) from
 	/// a 0..1 fraction, store the re-encoded <see cref="Vibe"/>, and restart on a short debounce.</summary>
 	public void SetVibe( int index, float norm )
 	{
-		if ( index < 0 || index >= VibeCodec.Fields.Count ) return;
 		var cfg = BuildConfig();
-		VibeCodec.Fields[index].SetNorm( cfg, norm );
+		var fields = VibeCodec.Fields( cfg.Genre );
+		if ( index < 0 || index >= fields.Count ) return;
+		fields[index].SetNorm( cfg, norm );
 		Vibe = VibeCodec.Encode( cfg );
 		_restartPending = true;
 		_restartPendingSince = 0;
 	}
-
-	// Per-instrument volume fields are left alone by Reroll.
-	static readonly System.Collections.Generic.HashSet<string> VolumeFields =
-		new() { "BASS", "SKANK", "ORGAN", "LEAD", "HORNS", "DRUMS" };
 
 	/// <summary>Randomize every vibe knob except the per-instrument volumes; store + restart once.</summary>
 	public void RerollVibe()
 	{
 		var cfg = BuildConfig();
 		var rng = System.Random.Shared;
-		foreach ( var f in VibeCodec.Fields )
+		foreach ( var f in VibeCodec.Fields( cfg.Genre ) )
 		{
-			if ( VolumeFields.Contains( f.Name ) ) continue;
+			if ( f.Voice != null && f.Column == 0 ) continue; // skip per-instrument volumes
 			f.SetNorm( cfg, rng.NextSingle() );
 		}
 		if ( cfg.BpmMin > cfg.BpmMax ) (cfg.BpmMin, cfg.BpmMax) = (cfg.BpmMax, cfg.BpmMin);

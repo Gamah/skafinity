@@ -102,6 +102,17 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
   margin-bottom: 14px;
 }
 .panel h2 small { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.panel h2 .genre { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 10px; }
+.panel h2 .genre select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  margin-left: 4px;
+}
+.panel h2 .genre select:focus { outline: none; border-color: var(--accent); }
 .panel h2 .reroll {
   float: right;
   background: var(--panel);
