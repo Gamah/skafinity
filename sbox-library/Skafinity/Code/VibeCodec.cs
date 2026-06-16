@@ -163,7 +163,7 @@ public static class VibeCodec
 					// Floor raised: the old top of the range (drive 5) is now the new minimum, keeping
 					// the per-step interval the old grid had (4/11 of a drive unit) across all 16 levels.
 					F( "DISTORTION", 5f, 5f + 15f * (4f / 11f), false, c => c.LeadGtrDrive, ( c, v ) => c.LeadGtrDrive = v, "LEAD GTR", 2 ),
-					F( "RUNS", 0f, 0.1f, false, c => c.LeadGtrTriplets, ( c, v ) => c.LeadGtrTriplets = v, "LEAD GTR", 3 ) ),
+					F( "BENDINESS", 0f, 1f, false, c => c.LeadGtrBend, ( c, v ) => c.LeadGtrBend = v, "LEAD GTR", 3 ) ),
 				// Appended after LEAD GTR to keep the wire instrument-slot order stable (KEYS kept
 				// slot 2's positions; this twangy rhythm guitar takes a fresh appended slot).
 				Row( "RHYTHM GTR", vol( "RHYTHM GTR", c => c.RhythmGtrVol, ( c, v ) => c.RhythmGtrVol = v ),

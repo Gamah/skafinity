@@ -47,14 +47,18 @@ public sealed class MusicGen
 		public float OrganVol = 1.00f;
 		public float MelodyVol = 1.00f;
 		public float HornVol = 1.00f;
+		// Per-part kit trims. The kit is balanced for EQUAL PERCEIVED LOUDNESS internally
+		// (see *Balance consts below), so these knobs all share a 1.0 default — every piece
+		// reads at the same volume out of the box and these are pure user trims around that.
 		public float KickVol = 1.00f;
-		public float SnareVol = 0.70f;
-		public float TomVol = 0.60f;
-		public float HatVol = 0.22f;
-		public float CrashVol = 0.35f;
+		public float SnareVol = 1.00f;
+		public float TomVol = 1.00f;
+		public float HatVol = 1.00f;
+		public float CrashVol = 1.00f;
 		public float DrumVol = 1.00f;         // master gain over the whole kit
-		// Drum "tone" — toms↔cymbals balance. 0 = boom (kick/toms forward, hats/cymbals
-		// pulled back), 0.5 = neutral, 1 = bright (hats/cymbals forward). Applied per-voice.
+		// Drum "tone" — toms↔cymbals bias for the PART. 0 = boom (fills/decoration lean to
+		// toms, cymbals pulled back), 0.5 = neutral, 1 = bright (fills/decoration lean to
+		// cymbals, toms pulled back). Drives both what's played and a gentle per-voice gain lean.
 		public float DrumTone = 0.5f;
 		// Drum "drive" — pull↔push timing feel (replaces the old DrumPush magnitude roll).
 		// 0 = lay back behind the beat, 0.5 = dead-on, 1 = push ahead of the beat.
@@ -77,7 +81,7 @@ public sealed class MusicGen
 		public float LeadGtrVol = 1.00f;
 		public float LeadGtrCutoff = 2600f;   // Hz low-pass on the lead guitar
 		public float LeadGtrDrive = 5.0f;     // distortion amount (tanh drive) — new floor of the DISTORTION knob
-		public float LeadGtrTriplets = 0.06f; // lead-guitar run/triplet ornament rate
+		public float LeadGtrBend = 0.30f;     // rock lead "bendiness" 0..1 — propensity to bend up into notes and scoop
 
 		// Tone — low drives + filtering for warmth; detune for width.
 		public float Detune = 14f;        // cents, unison spread
@@ -137,6 +141,16 @@ public sealed class MusicGen
 	// lets the kit sit in the mix at DRUMS = 1.0 (parity with the other voice sliders).
 	const float KitPresence = 2.0f;
 	readonly float _drumGain;   // master kit gain — straight 0..1.5 slider × KitPresence baseline
+	// Per-voice loudness normalization. The kit pieces synthesise at very different raw
+	// levels (a kick is huge, a hat is thin noise), so these bake in the level differences
+	// that used to live in the per-part Vol defaults. With each applied here, every piece
+	// reads at the same perceived volume when its Vol knob sits at the shared 1.0 default.
+	// Kick is the 1.0 reference; tune these to re-balance the kit, not the Vol defaults.
+	const float KickBalance = 1.00f;
+	const float SnareBalance = 0.70f;
+	const float TomBalance = 0.60f;
+	const float HatBalance = 0.22f;
+	const float CrashBalance = 0.35f;
 	float[] _bufL, _bufR;
 
 	MusicGen( Config c ) { _c = c ?? new Config(); _sr = _c.SampleRate; _drumGain = Math.Clamp( _c.DrumVol, 0f, 1.5f ) * KitPresence; }
@@ -299,8 +313,9 @@ public sealed class MusicGen
 	int _genre;              // 0 ska, 1 rock
 	string _tag;             // the per-song seed string, reused to seed per-section streams
 	int _drumPush;           // per-song-constant kit timing bias in samples (− ahead / + back)
-	float _drumLowMul = 1f;  // DrumTone → kick/tom gain multiplier
-	float _drumHighMul = 1f; // DrumTone → hat/cymbal gain multiplier
+	float _drumTone = 0.5f;  // DrumTone 0..1 → toms↔cymbals CONTENT bias in fills/groove decoration
+	float _drumLowMul = 1f;  // DrumTone → kick/tom gain lean (gentle, on top of the content bias)
+	float _drumHighMul = 1f; // DrumTone → hat/cymbal gain lean (gentle, on top of the content bias)
 
 	// ── Song structure ──
 	// A song is an ordered list of sections. Hardcoded for now (will be RNG-generated once
@@ -384,8 +399,11 @@ public sealed class MusicGen
 		// Drum tone (toms↔cymbals) → per-voice gain split, and drive (pull↔push) → a constant
 		// kit timing bias (− = ahead/push, + = behind/lay back; 0.5 = dead on).
 		float dt = Math.Clamp( _c.DrumTone, 0f, 1f );
-		_drumLowMul = 1.4f - 0.8f * dt;
-		_drumHighMul = 0.4f + 1.2f * dt;
+		_drumTone = dt;
+		// Gentle gain lean (neutral at 0.5 so the balanced kit is untouched there); the
+		// bulk of the toms↔cymbals bias now comes from what the part actually plays.
+		_drumLowMul = 1.2f - 0.4f * dt;
+		_drumHighMul = 0.7f + 0.6f * dt;
 		_drumPush = (int)Math.Round( (0.5f - Math.Clamp( _c.DrumDrive, 0f, 1f )) * 2f * 0.13f * spe );
 
 		// Lay out the structure and size the buffers to its total length.
@@ -419,6 +437,9 @@ public sealed class MusicGen
 		var keysRng = new Rng( Xmur3( $"{_tag}:keys:{bk}" ) );
 		var hornRng = new Rng( Xmur3( $"{_tag}:horn:{bk}" ) );
 		var leadRng = new Rng( Xmur3( $"{_tag}:lead:{lk}" ) );
+		// Expression (vibrato/bend/glide/scoop) rolls off their own stream so adding them
+		// leaves every voice's existing note CHOICES untouched — only pitch-shaping is layered on.
+		var exprRng = new Rng( Xmur3( $"{_tag}:expr:{lk}" ) );
 		var noise = new Rng( Xmur3( $"{_tag}:drums:{bk}" ) );
 		var fillRng = new Rng( Xmur3( $"{_tag}:fill:{absIndex}" ) );
 		var fillNoise = new Rng( Xmur3( $"{_tag}:fillnoise:{absIndex}" ) );
@@ -430,22 +451,22 @@ public sealed class MusicGen
 			int barStart = sectionStart + bar * EighthsPerBar * spe;
 			bool lastBar = bar == part.Bars - 1;          // every section ends with a fill
 
-			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn );
+			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn, exprRng );
 			if ( _genre == 1 )
 			{
-				RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng );
-				RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng );
+				RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
+				RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
 			}
 			else
 			{
-				RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng );
+				RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng, exprRng );
 				if ( _hasHorns )
-					RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng );
+					RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng, exprRng );
 			}
 			RenderDrumBar( barStart, spe, lastBar, noise, fillRng, fillNoise );
 
 			if ( bar % 2 == 0 )
-				RenderLeadPhrase( barStart, spe, secPerEighth, chord, leadRng );
+				RenderLeadPhrase( barStart, spe, secPerEighth, chord, leadRng, exprRng );
 		}
 	}
 
@@ -555,10 +576,84 @@ public sealed class MusicGen
 	}
 	int ChordRoot( int c ) => ScaleMidi( _rootMidi, _prog[c] );
 
+	// ── Instrument expression ──
+	// Four expressive PROPERTIES every pitched voice can lean on (drums are excluded). Each
+	// instrument gets a genre-specific PROPENSITY for each, "based on what it is" — a brass
+	// lead sings and scoops, a bass slides, a power-chord guitar stays dead straight. The
+	// realization is the per-note pitch shaping in RenderEvent (vibrato depth + bend envelope).
+	//   Vib    — #1 vibrato depth (a constant lean, no per-note roll)
+	//   BendIn — #2 bend up INTO the note from a step below (per-note chance)
+	//   Glide  — #3 portamento from the previous note's pitch (per-note chance)
+	//   Scoop  — #4 bend up-and-back within the note (per-note chance)
+	readonly struct Expression
+	{
+		public readonly float Vib, BendIn, Glide, Scoop;
+		public Expression( float vib, float bendIn, float glide, float scoop )
+		{ Vib = vib; BendIn = bendIn; Glide = glide; Scoop = scoop; }
+	}
+
+	const int NoPrev = int.MinValue; // "no previous note" sentinel for glide
+
+	// The per-instrument propensity table — genre-aware. Leads route here by genre
+	// ("LEAD" = ska brass, "LEAD GTR" = rock guitar). Rock lead's BENDINESS knob drives its
+	// bend-in + scoop directly (that's what "bendiness" is). Tune these by ear.
+	Expression Expr( string voice )
+	{
+		bool rock = _genre == 1;
+		switch ( voice )
+		{
+			case "BASS":       return rock ? new Expression( 0f, 0f, 0.10f, 0f )
+			                               : new Expression( 0f, 0f, 0.25f, 0.05f ); // reggae bass slides
+			case "SKANK":      return default;                          // staccato chops — dead straight
+			case "ORGAN":      return new Expression( 0.15f, 0f, 0f, 0f ); // gentle bubble vibrato
+			case "LEAD":       return new Expression( 0.50f, 0.15f, 0.10f, 0.30f ); // brass sings + scoops
+			case "HORNS":      return new Expression( 0.30f, 0f, 0f, 0.20f ); // section stabs fall/scoop
+			case "KEYS":       return new Expression( 0.10f, 0f, 0f, 0f );
+			case "RHYTHM GTR": return default;                          // power chords — straight
+			case "LEAD GTR":   return new Expression( 0.30f, _c.LeadGtrBend, 0.10f, _c.LeadGtrBend ); // bendiness
+			default:           return default;
+		}
+	}
+
+	// A rolled-per-note voicing: the concrete pitch-shaping a note will get. Vibrato is a
+	// constant depth (no draw); bend-in/glide/scoop are rolled against their propensities, so
+	// only voices that lean on them ever pull from the expression stream.
+	struct Voicing { public float VibDepth, BendSemis, BendTime, ScoopSemis; }
+
+	Voicing Roll( in Expression ex, int midi, int prevMidi, Rng rng )
+	{
+		var v = new Voicing();
+		if ( ex.Vib > 0f ) v.VibDepth = 0.004f + 0.045f * ex.Vib;   // ~subtle → wide warble
+		if ( ex.Glide > 0f && prevMidi != NoPrev && rng.Chance( ex.Glide ) )
+		{
+			v.BendSemis = Math.Clamp( prevMidi - midi, -12, 12 );    // start at the previous pitch
+			v.BendTime = 0.5f;                                       // slide over the first half
+		}
+		else if ( ex.BendIn > 0f && rng.Chance( ex.BendIn ) )
+		{
+			v.BendSemis = rng.Chance( 0.5f ) ? -1f : -2f;            // a semitone or whole step below
+			v.BendTime = 0.35f;
+		}
+		if ( ex.Scoop > 0f && rng.Chance( ex.Scoop ) )
+			v.ScoopSemis = rng.Chance( 0.5f ) ? 0.5f : 1f;           // quarter / half-step hump
+		return v;
+	}
+
+	// Bake a rolled voicing onto a patch. VibDepth is harmless unless the patch carries a
+	// vibrato RATE (p.Vibrato) — so a voice the user muted to 0 Hz stays dry — which means a
+	// voice that wants expression-vibrato must set its own rate in its patch literal.
+	static void ApplyVoicing( ref Patch p, in Voicing v )
+	{
+		if ( v.VibDepth > 0f ) p.VibDepth = v.VibDepth;
+		p.BendSemis = v.BendSemis; p.BendTime = v.BendTime; p.ScoopSemis = v.ScoopSemis;
+	}
+
 	// ── Bass ──
-	void RenderBassBar( int barStart, int spe, double secPerEighth, int chord, int nextChord, Rng rng, Rng bassOrn )
+	void RenderBassBar( int barStart, int spe, double secPerEighth, int chord, int nextChord, Rng rng, Rng bassOrn, Rng exprRng )
 	{
 		int root = ChordRoot( chord );
+		var ex = Expr( "BASS" );
+		int prevMidi = NoPrev;
 		// Bass has its own ornament knob (BASS TRIPLETS), nudged up a touch by overall
 		// kit busyness so a busy vibe gets a busier bass.
 		float ornChance = _c.BassTriplets * 0.5f + _c.DrumBusy * 0.05f;
@@ -587,6 +682,9 @@ public sealed class MusicGen
 			// triplet so the line reads "long long short short" / "long short long long"
 			// instead of even eighths. Driven by a dedicated stream, so the main
 			// composition RNG order — and every existing song — is left unchanged.
+			var vc = Roll( ex, midi, prevMidi, exprRng );
+			prevMidi = midi;
+
 			if ( off != Approach && len == 1 && bassOrn.Chance( ornChance ) )
 			{
 				int n = bassOrn.Chance( 0.65f ) ? 2 : 3;        // 16th pair / 16th triplet
@@ -595,47 +693,52 @@ public sealed class MusicGen
 				for ( int k = 0; k < n; k++ )
 				{
 					int bm = midi + (k == 0 ? 0 : moves[bassOrn.Int( moves.Length )]);
-					EmitBass( barStart + e * spe + k * step, (int)(step * 0.9f), bm, secPerEighth / n * 0.8 );
+					EmitBass( barStart + e * spe + k * step, (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
 				}
 				continue;
 			}
 
-			EmitBass( barStart + e * spe, (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8 );
+			EmitBass( barStart + e * spe, (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
 		}
 	}
 
-	void EmitBass( int at, int dur, int midi, double decaySec )
+	void EmitBass( int at, int dur, int midi, double decaySec, in Voicing vc )
 	{
 		// Triangle body for a round, deep reggae/dub bass (saw alone read as too
 		// buzzy) — but triangle alone was too subtle, so layer a quieter square
 		// underneath for presence/definition. The square's odd harmonics give the
 		// bass its bite; both share the bass low-pass so the tone stays warm.
-		RenderPatch( at, dur, Midi( midi ), new Patch
+		var body = new Patch
 		{
 			Osc = 3, Voices = 2, Detune = _c.Detune * 0.4f,
 			Amp = _c.BassVol, Attack = 0.004f, Decay = decaySec,
 			Sustain = 0.55f, Sustained = true,
 			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive, Pan = 0f,
-		} );
-		RenderPatch( at, dur, Midi( midi ), new Patch
+		};
+		var sub = new Patch
 		{
 			Osc = 2, Voices = 1, Detune = 0f,
 			Amp = _c.BassVol * 0.4f, Attack = 0.004f, Decay = decaySec,
 			Sustain = 0.55f, Sustained = true,
 			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive, Pan = 0f,
-		} );
+		};
+		ApplyVoicing( ref body, vc ); ApplyVoicing( ref sub, vc );
+		RenderPatch( at, dur, Midi( midi ), body );
+		RenderPatch( at, dur, Midi( midi ), sub );
 	}
 
 	// ── Skank guitar (the signature) + reggae organ bubble — offbeats, centered ──
-	void RenderRhythmBar( int barStart, int spe, double secPerEighth, int chord, float swing, Rng rng )
+	void RenderRhythmBar( int barStart, int spe, double secPerEighth, int chord, float swing, Rng rng, Rng exprRng )
 	{
 		// +24: skank/organ sit an octave above the old register — at +12 (E2..B2) the
 		// chop was too low/muddy to cut through and read as missing. Organ stays a
 		// further octave down via the -12 below.
 		int gBase = _rootMidi + 24;
 		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 7 };
+		// Skank is dead straight (default); the organ bubble gets a gentle vibrato depth.
+		var organVc = Roll( Expr( "ORGAN" ), 0, NoPrev, exprRng );
 
 		for ( int e = 1; e < EighthsPerBar; e += 2 ) // offbeats
 		{
@@ -655,19 +758,23 @@ public sealed class MusicGen
 			// reggae organ "bubble": a softer, rounder offbeat under the guitar
 			if ( _organBubble )
 				foreach ( var d in degs )
-					RenderPatch( at, (int)(spe * 0.55f), Midi( ScaleMidi( gBase, d ) - 12 ), new Patch
+				{
+					var organ = new Patch
 					{
 						Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
 						Amp = _c.OrganVol / degs.Length, Attack = 0.004f, Decay = 0.16,
 						Sustain = 0.3f, Sustained = false,
 						Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,
 						Vibrato = _c.OrganVibrato,
-					} );
+					};
+					ApplyVoicing( ref organ, organVc );
+					RenderPatch( at, (int)(spe * 0.55f), Midi( ScaleMidi( gBase, d ) - 12 ), organ );
+				}
 		}
 	}
 
 	// ── Lead melody (chord-tone locked → consonant) ──
-	void RenderLeadPhrase( int barStart, int spe, double secPerEighth, int chord, Rng rng )
+	void RenderLeadPhrase( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
 	{
 		int slots = EighthsPerBar * 2;
 		int melBase = _rootMidi + 24;
@@ -675,7 +782,11 @@ public sealed class MusicGen
 		int degree = tones[rng.Int( 3 )];
 		float amp = _genre == 1 ? _c.LeadGtrVol : _c.MelodyVol;
 		float drive = _genre == 1 ? _c.LeadGtrDrive : _c.MelodyDrive;
-		float tripChance = _genre == 1 ? _c.LeadGtrTriplets : _c.TripletChance;
+		// Rock lead trades fast RUNS for BENDINESS (handled via expression below), so its run
+		// rate is forced to 0; ska keeps its triplet runs on the TRIPLETS knob.
+		float tripChance = _genre == 1 ? 0f : _c.TripletChance;
+		var ex = _genre == 1 ? Expr( "LEAD GTR" ) : Expr( "LEAD" );
+		int prevMidi = NoPrev;
 
 		int e = 0;
 		while ( e < slots )
@@ -698,11 +809,15 @@ public sealed class MusicGen
 
 				int span = spanE * spe;
 				int step = span / n;
+				int firstMidi = ScaleMidi( melBase, Math.Clamp( degree - n / 2, _prog[chord] - 3, _prog[chord] + 10 ) );
+				var runVc = Roll( ex, firstMidi, prevMidi, exprRng );
 				for ( int k = 0; k < n; k++ )
 				{
 					int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
+					int m2 = ScaleMidi( melBase, d2 );
 					RenderLeadNote( barStart + e * spe + k * step, (int)(step * 0.9f),
-						ScaleMidi( melBase, d2 ), amp, secPerEighth * spanE / (double)n * 0.85, drive );
+						m2, amp, secPerEighth * spanE / (double)n * 0.85, drive, runVc );
+					prevMidi = m2;
 				}
 				e += spanE;
 				continue;
@@ -733,31 +848,37 @@ public sealed class MusicGen
 				degree = Math.Clamp( degree + step, _prog[chord] - 3, _prog[chord] + 10 );
 			}
 
-			RenderLeadNote( barStart + e * spe, (int)(spe * len * 0.9f), ScaleMidi( melBase, degree ),
-				amp, secPerEighth * len * 0.7f, drive );
+			int midi = ScaleMidi( melBase, degree );
+			var vc = Roll( ex, midi, prevMidi, exprRng );
+			RenderLeadNote( barStart + e * spe, (int)(spe * len * 0.9f), midi,
+				amp, secPerEighth * len * 0.7f, drive, vc );
+			prevMidi = midi;
 			e += len;
 		}
 	}
 
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,
 	// otherwise the ska horn (RenderLead → trumpet).
-	void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive )
+	void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
 	{
 		if ( _genre == 1 )
 		{
 			// Twang = a bright cutoff-envelope snap on each pick (high CutEnv, decays fast) through
 			// a resonant SVF, then a high BASE distortion (3 + the slider) so it reads as an
-			// overdriven electric guitar — twangy and dirty even at the slider minimum.
-			RenderPatch( at, dur, Midi( midi ), new Patch
+			// overdriven electric guitar — twangy and dirty even at the slider minimum. The bends
+			// (BENDINESS knob → bend-in + scoop) come in via the applied voicing.
+			var gtr = new Patch
 			{
 				Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
 				Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
 				Cutoff = _c.LeadGtrCutoff, CutEnv = 2200f, Reso = 0.65f,
 				Drive = 3f + MathF.Max( 1f, _c.LeadGtrDrive ), Pan = _leadPan, Vibrato = _c.MelodyVibrato,
-			} );
+			};
+			ApplyVoicing( ref gtr, vc );
+			RenderPatch( at, dur, Midi( midi ), gtr );
 			return;
 		}
-		RenderLead( at, dur, midi, amp, decaySec, drive );
+		RenderLead( at, dur, midi, amp, decaySec, drive, vc );
 	}
 
 	// ── Rock KEYS — their OWN part, not a double of the guitar. A syncopated organ comp (the
@@ -767,11 +888,12 @@ public sealed class MusicGen
 	// interlock instead of playing in lockstep. KeysChug rings the chords (0) or tightens them
 	// toward short stabs (1).
 	static readonly int[] KeysOnsets = { 0, 3, 4, 7 };    // eighth positions of the comp's hits
-	void RenderKeysBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
+	void RenderKeysBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
 	{
 		int kBase = _rootMidi + 24;                        // keyboard register, an octave over the rhythm guitar
 		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };  // diatonic triad
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
+		var keysVc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng ); // gentle vibrato only
 		for ( int oi = 0; oi < KeysOnsets.Length; oi++ )
 		{
 			int e = KeysOnsets[oi];
@@ -781,14 +903,18 @@ public sealed class MusicGen
 			int dur = (int)(gap * spe * Math.Max( 0.25f, 1f - 0.7f * chug ));
 			double dec = secPerEighth * gap * (ring ? 0.9 : 0.4);
 			foreach ( var d in degs )
-				RenderPatch( barStart + e * spe, dur, Midi( ScaleMidi( kBase, d ) ), new Patch
+			{
+				var keys = new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 					Amp = _c.KeysVol / degs.Length,
 					Attack = 0.004f, Decay = dec, Sustain = ring ? 0.6f : 0.2f, Sustained = ring,
 					Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
-					Drive = MathF.Max( 1f, _c.KeysDrive ), Pan = 0f,
-				} );
+					Drive = MathF.Max( 1f, _c.KeysDrive ), Pan = 0f, Vibrato = 5.0f,
+				};
+				ApplyVoicing( ref keys, keysVc );
+				RenderPatch( barStart + e * spe, dur, Midi( ScaleMidi( kBase, d ) ), keys );
+			}
 		}
 	}
 
@@ -796,7 +922,9 @@ public sealed class MusicGen
 	// bright cutoff-envelope "twang" through a resonant SVF) but strums root+fifth+octave and
 	// runs a LOWER base distortion than the lead so the two layer instead of mush. Downbeats
 	// ring; offbeats tighten toward a palm-muted chug as RhythmGtrChug rises.
-	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
+	// exprRng is unused: power chords stay dead straight (Expr("RHYTHM GTR") is default), but the
+	// param keeps every instrument's call site uniform.
+	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
 	{
 		int root = ChordRoot( chord ) + 12;               // chunky power-chord register
 		int[] chordOffs = { 0, 7, 12 };                   // power chord
@@ -824,7 +952,7 @@ public sealed class MusicGen
 	// stream (horn:tag, so the main composition order is unchanged) breaks them up
 	// with rolling arpeggios, 16th pairs, grace pickups and varied length. Kept
 	// modest — the bass got over-busy when its ornament rate ran high.
-	void RenderHornStabs( int barStart, int spe, double secPerEighth, int chord, Rng orn )
+	void RenderHornStabs( int barStart, int spe, double secPerEighth, int chord, Rng orn, Rng exprRng )
 	{
 		int baseMidi = _rootMidi + 19;
 		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };
@@ -832,16 +960,26 @@ public sealed class MusicGen
 		int six = spe / 2;
 		float ornChance = 0.18f + _c.TripletChance; // ~0.24 default; rides the same knob
 
+		// Section expression — vibrato + a chance of a scoop/fall, rolled once per onset (below)
+		// and applied to every tone of that stab so the whole section bends together.
+		var ex = Expr( "HORNS" );
+		Voicing hornVc = default;
+
 		// one chord-tone voice
 		void Note( int at, int dur, int k, double dec, float gain )
-			=> RenderPatch( at, dur, Midi( ScaleMidi( baseMidi, degs[k] ) ), new Patch
+		{
+			var horn = new Patch
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
 				Amp = _c.HornVol / degs.Length * gain, Attack = 0.008f, Decay = dec,
 				Sustain = 0.2f, Sustained = false,
 				Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
 				Drive = _c.HornDrive, Pan = spread * (k / (float)(degs.Length - 1) * 2f - 1f),
-			} );
+				Vibrato = _c.MelodyVibrato,
+			};
+			ApplyVoicing( ref horn, hornVc );
+			RenderPatch( at, dur, Midi( ScaleMidi( baseMidi, degs[k] ) ), horn );
+		}
 
 		// full block chord stab
 		void Stab( int at, int dur, double dec, float gain )
@@ -853,6 +991,7 @@ public sealed class MusicGen
 		{
 			if ( !_hornMask[e] ) continue;
 			int at = barStart + e * spe;
+			hornVc = Roll( ex, baseMidi, NoPrev, exprRng );
 
 			if ( six > 0 && orn.Chance( ornChance ) )
 			{
@@ -901,47 +1040,51 @@ public sealed class MusicGen
 		return Instrument.Trombone;
 	}
 
-	void RenderLead( int at, int dur, int midi, float amp, double decaySec, float drive )
+	void RenderLead( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
 	{
+		Patch p; int m = midi;
 		switch ( _lead )
 		{
 			case Instrument.Trumpet:
-				RenderPatch( at, dur, Midi( midi ), new Patch
+				p = new Patch
 				{
 					Osc = 1, Voices = 3, Detune = _c.Detune * 0.7f, Amp = amp,
 					Attack = 0.01f, Decay = decaySec, Sustain = 0.7f, Sustained = true,
 					Cutoff = _c.LeadCutoff, CutEnv = 1800f, Reso = 1.0f, Drive = drive,
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato,
-				} );
+				};
 				break;
 			case Instrument.Trombone:
-				RenderPatch( at, dur, Midi( midi - 12 ), new Patch
+				m = midi - 12;
+				p = new Patch
 				{
 					Osc = 1, Voices = 3, Detune = _c.Detune * 0.7f, Amp = amp * 1.1f,
 					Attack = 0.02f, Decay = decaySec, Sustain = 0.7f, Sustained = true,
 					Cutoff = _c.LeadCutoff * 0.7f, CutEnv = 900f, Reso = 1.0f, Drive = MathF.Max( 1f, drive * 0.8f ),
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato * 0.7f,
-				} );
+				};
 				break;
 			case Instrument.Sax:
-				RenderPatch( at, dur, Midi( midi ), new Patch
+				p = new Patch
 				{
 					Osc = 3, Voices = 2, Detune = _c.Detune * 0.5f, Amp = amp * 1.15f,
 					Attack = 0.014f, Decay = decaySec, Sustain = 0.75f, Sustained = true,
 					Cutoff = _c.LeadCutoff, CutEnv = 1400f, Reso = 0.7f, Drive = MathF.Max( 1.2f, drive ),
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato, Breath = 0.03f,
-				} );
+				};
 				break;
-			case Instrument.Organ:
-				RenderPatch( at, dur, Midi( midi ), new Patch
+			default: // Organ
+				p = new Patch
 				{
 					Osc = 0, Voices = 3, Detune = _c.Detune * 0.6f, Amp = amp,
 					Attack = 0.006f, Decay = decaySec * 1.5, Sustain = 0.9f, Sustained = true,
 					Cutoff = 2600f, CutEnv = 0f, Reso = 1.0f, Drive = 1.15f,
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato * 0.9f,
-				} );
+				};
 				break;
 		}
+		ApplyVoicing( ref p, vc );
+		RenderPatch( at, dur, Midi( m ), p );
 	}
 
 	// ── Synth core: unison osc → optional high-pass → resonant low-pass (cutoff
@@ -962,8 +1105,13 @@ public sealed class MusicGen
 		public float Highpass; // Hz one-pole high-pass (0 = off)
 		public float Drive;    // tanh
 		public float Pan;      // -1..1
-		public float Vibrato;  // Hz
+		public float Vibrato;  // Hz (rate of the pitch wobble)
 		public float Breath;   // 0..1 noise mix (reeds)
+		// ── Expression (per-note pitch shaping; see Expression/Voicing) ──
+		public float VibDepth;   // vibrato depth as a pitch fraction (0 → legacy 0.005 when Vibrato>0)
+		public float BendSemis;  // pitch offset in semitones at note START, glides to 0 (bend-in / glide); −ve starts below
+		public float BendTime;   // 0..1 fraction of the note over which BendSemis glides to 0
+		public float ScoopSemis; // height (semitones) of a mid-note bend-up-and-back hump (0 = none)
 	}
 
 	// Pitched note events collected during ComposePlan, then synthesized by
@@ -1046,10 +1194,23 @@ public sealed class MusicGen
 			if ( env < 0.0006f && i > atk && !p.Sustained ) break;
 
 			float s = 0f;
-			float vib = p.Vibrato > 0f ? (float)(1.0 + 0.005 * Math.Sin( i / (double)_sr * p.Vibrato * 2 * Math.PI )) : 1f;
+			float vibDepth = p.VibDepth > 0f ? p.VibDepth : 0.005f;
+			float vib = p.Vibrato > 0f ? (float)(1.0 + vibDepth * Math.Sin( i / (double)_sr * p.Vibrato * 2 * Math.PI )) : 1f;
+			// Pitch-bend envelope (semitones), realized as a frequency multiplier on top of vibrato.
+			// BendSemis glides to 0 over the first BendTime of the note (bend-in / glide); ScoopSemis
+			// adds a 0→peak→0 hump across the whole note (bend-and-release).
+			float bendSemis = 0f;
+			if ( p.BendSemis != 0f && p.BendTime > 0f )
+			{
+				int bt = Math.Max( 1, (int)(p.BendTime * dur) );
+				if ( i < bt ) { float u = i / (float)bt; bendSemis += p.BendSemis * (1f - u * u * (3f - 2f * u)); }
+			}
+			if ( p.ScoopSemis != 0f )
+				bendSemis += p.ScoopSemis * MathF.Sin( (float)(i / (float)Math.Max( 1, dur ) * Math.PI) );
+			float bendMul = bendSemis != 0f ? (float)Math.Pow( 2.0, bendSemis / 12.0 ) : 1f;
 			for ( int v = 0; v < voices; v++ )
 			{
-					double dt = inc[v] * vib;
+					double dt = inc[v] * vib * bendMul;
 					s += BlepOsc( p.Osc, ph[v] - Math.Floor( ph[v] ), dt );
 					ph[v] += dt;
 			}
@@ -1193,9 +1354,15 @@ public sealed class MusicGen
 					else if ( noise.Chance( _c.GhostSnareChance * busy ) ) RenderSnare( at, noise, true );
 					break;
 			}
-			// busy syncopated ghost on the "e/a" sixteenth between hits
-			if ( six > 0 && e != 4 && noise.Chance( _c.GhostSnareChance * busy * 0.5f ) )
-				RenderSnare( at + six, noise, true );
+			// Busy fills the "e/a" sixteenths between hits: more snare as busy rises, and —
+			// when the tone leans low — toms too. (Busy → snare + toms; tone → tom vs cymbal.)
+			if ( six > 0 && e != 4 && noise.Chance( _c.GhostSnareChance * busy ) )
+			{
+				if ( noise.Chance( (1f - _drumTone) * 0.5f ) )
+					RenderTom( at + six, 110f + 30f * (e & 1), noise );
+				else
+					RenderSnare( at + six, noise, true );
+			}
 		}
 	}
 
@@ -1208,10 +1375,13 @@ public sealed class MusicGen
 		int n = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6) : 4;
 		int step = (spe * 2) / n;
 		float[] toms = { 200f, 165f, 135f, 110f, 90f, 72f };
+		// Half the hits stay snare so it still reads as a drum fill; the rest are biased by
+		// DrumTone — toms when the tone leans low, cymbals (ride hits) when it leans high.
 		for ( int i = 0; i < n; i++ )
 		{
 			int t = at + i * step;
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
+			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
 			else RenderTom( t, toms[i], noise );
 		}
 		// crash into the downbeat (may land at bar end) — a bright crash or a darker, washier
@@ -1240,7 +1410,7 @@ public sealed class MusicGen
 			float body = (float)Math.Tanh( MathF.Sin( (float)(phase * 2 * Math.PI) ) * 1.6f ) * env;
 			float sub = MathF.Sin( (float)(subPhase * 2 * Math.PI) ) * 0.3f * subEnv;
 			float click = i < clickLen ? (noise.Next() * 2f - 1f) * 0.55f * (1f - i / (float)clickLen) : 0f;
-			float v = (body + sub + click) * _c.KickVol * _drumGain * _drumLowMul;
+			float v = (body + sub + click) * _c.KickVol * KickBalance * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -1256,7 +1426,7 @@ public sealed class MusicGen
 		int dur = (int)(_sr * (ghost ? 0.06f : 0.15f));
 		double decay = dur * (ghost ? 0.3 : 0.32);
 		double phase = 0, phase2 = 0;
-		float amp = _c.SnareVol * (ghost ? 0.3f : 1f) * _drumGain;
+		float amp = _c.SnareVol * SnareBalance * (ghost ? 0.3f : 1f) * _drumGain;
 		float a = HpCoeff( 1350f );           // slightly crisper wire crack (was 1200)
 		float inPrev = 0f, outPrev = 0f;
 		int end = Math.Min( _bufL.Length, start + dur );
@@ -1288,7 +1458,7 @@ public sealed class MusicGen
 			float t = (float)i / dur;
 			phase += (baseFreq * (1f - 0.35f * t)) / _sr;
 			float env = (float)Math.Exp( -i / decay );
-			float v = MathF.Sin( (float)(phase * 2 * Math.PI) ) * env * _c.TomVol * _drumGain * _drumLowMul;
+			float v = MathF.Sin( (float)(phase * 2 * Math.PI) ) * env * _c.TomVol * TomBalance * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -1306,7 +1476,7 @@ public sealed class MusicGen
 			float env = (float)Math.Exp( -i / decay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * env * amp * _drumGain * _drumHighMul;
+			float v = hp * env * amp * HatBalance * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -1319,7 +1489,7 @@ public sealed class MusicGen
 		int dur = (int)(_sr * (dark ? 0.9f : 0.6f));
 		double decay = dur * (dark ? 0.5 : 0.45);
 		float a = HpCoeff( dark ? 2600f : 4000f );
-		float amp = _c.CrashVol * (dark ? 0.85f : 1f);
+		float amp = _c.CrashVol * CrashBalance * (dark ? 0.85f : 1f);
 		float inPrev = 0f, outPrev = 0f;
 		int end = Math.Min( _bufL.Length, start + dur );
 		for ( int i = 0; start + i < end; i++ )
@@ -1351,7 +1521,7 @@ public sealed class MusicGen
 			float env = (float)Math.Exp( -i / decay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * 0.7f * env * amp * _drumGain * _drumHighMul;
+			float v = hp * 0.7f * env * amp * HatBalance * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}

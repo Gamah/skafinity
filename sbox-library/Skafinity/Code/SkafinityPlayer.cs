@@ -150,7 +150,7 @@ public sealed class SkafinityPlayer : Component
 	[Property, Group( "Rock" ), Range( 0f, 1.5f )] public float LeadGtrVol { get; set; } = 1.00f;
 	[Property, Group( "Rock" ), Range( 500f, 8000f )] public float LeadGtrCutoff { get; set; } = 2600f;
 	[Property, Group( "Rock" ), Range( 1f, 5f )] public float LeadGtrDrive { get; set; } = 3.6f;
-	[Property, Group( "Rock" ), Range( 0f, 0.1f )] public float LeadGtrTriplets { get; set; } = 0.06f;
+	[Property, Group( "Rock" ), Range( 0f, 1f )] public float LeadGtrBend { get; set; } = 0.30f;
 
 	SoundStream _stream;
 	SoundHandle _handle;
@@ -345,7 +345,7 @@ public sealed class SkafinityPlayer : Component
 		LeadGtrVol = LeadGtrVol,
 		LeadGtrCutoff = LeadGtrCutoff,
 		LeadGtrDrive = LeadGtrDrive,
-		LeadGtrTriplets = LeadGtrTriplets,
+		LeadGtrBend = LeadGtrBend,
 	};
 
 	int ConfigHash()
@@ -371,7 +371,7 @@ public sealed class SkafinityPlayer : Component
 		h.Add( Genre );
 		h.Add( KeysVol ); h.Add( KeysCutoff ); h.Add( KeysDrive ); h.Add( KeysChug );
 		h.Add( RhythmGtrVol ); h.Add( RhythmGtrCutoff ); h.Add( RhythmGtrDrive ); h.Add( RhythmGtrChug );
-		h.Add( LeadGtrVol ); h.Add( LeadGtrCutoff ); h.Add( LeadGtrDrive ); h.Add( LeadGtrTriplets );
+		h.Add( LeadGtrVol ); h.Add( LeadGtrCutoff ); h.Add( LeadGtrDrive ); h.Add( LeadGtrBend );
 		h.Add( Tag ); h.Add( Vibe );
 		return h.ToHashCode();
 	}

@@ -207,7 +207,7 @@ static class Cfg
 		// genre + drum tone/drive + rock instruments (appended)
 		c.Genre, c.DrumTone, c.DrumDrive,
 		c.KeysVol, c.KeysCutoff, c.KeysDrive, c.KeysChug,
-		c.LeadGtrVol, c.LeadGtrCutoff, c.LeadGtrDrive, c.LeadGtrTriplets,
+		c.LeadGtrVol, c.LeadGtrCutoff, c.LeadGtrDrive, c.LeadGtrBend,
 		c.RhythmGtrVol, c.RhythmGtrCutoff, c.RhythmGtrDrive, c.RhythmGtrChug,
 	};
 
@@ -231,7 +231,7 @@ static class Cfg
 		c.HornSectionChance = (float)a[i++]; c.HornDensity = (float)a[i++];
 		c.Genre = (int)a[i++]; c.DrumTone = (float)a[i++]; c.DrumDrive = (float)a[i++];
 		c.KeysVol = (float)a[i++]; c.KeysCutoff = (float)a[i++]; c.KeysDrive = (float)a[i++]; c.KeysChug = (float)a[i++];
-		c.LeadGtrVol = (float)a[i++]; c.LeadGtrCutoff = (float)a[i++]; c.LeadGtrDrive = (float)a[i++]; c.LeadGtrTriplets = (float)a[i++];
+		c.LeadGtrVol = (float)a[i++]; c.LeadGtrCutoff = (float)a[i++]; c.LeadGtrDrive = (float)a[i++]; c.LeadGtrBend = (float)a[i++];
 		c.RhythmGtrVol = (float)a[i++]; c.RhythmGtrCutoff = (float)a[i++]; c.RhythmGtrDrive = (float)a[i++]; c.RhythmGtrChug = (float)a[i++];
 		return c;
 	}

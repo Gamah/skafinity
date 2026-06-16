@@ -2,7 +2,9 @@
 # workload (the same MusicGen.cs / VibeCodec.cs the s&box library ships, no port).
 #
 #   make            → publish the engine, stage web/_framework for the web layer
-#   make dev        → same, but skip AOT (much faster to build; identical composition)
+#   make build      → compile-only typecheck of the shared C# (no publish/stage) — the fast
+#                     synth-check after editing MusicGen.cs / VibeCodec.cs / Exports.cs
+#   make dev        → same as all, but skip AOT (much faster to build; identical composition)
 #   make deploy     → clean, verified release build: wipes stale artifacts, full AOT
 #                     publish, then runs the smoke test (the cruft-free bundle to ship)
 #   make test       → node smoke test of the JS↔wasm boundary (needs web/_framework/)
@@ -20,11 +22,17 @@ PROJECT   = wasm/Skafinity.Wasm.csproj
 PUBDIR    = wasm/bin/Release/net10.0/publish/wwwroot/_framework
 PORT     ?= 8000
 
-.PHONY: all dev deploy stage test serve dist clean
+.PHONY: all build dev deploy stage test serve dist clean
 
 all:
 	$(DOTNET) publish $(PROJECT) -c Release
 	@$(MAKE) --no-print-directory stage
+
+# Synth check: compile-only (no AOT, no publish, no web/_framework staging). The fast path
+# after editing MusicGen.cs / VibeCodec.cs (or the Cfg boundary in Exports.cs) — it
+# typechecks the shared C# and catches every compile error without rebuilding the bundle.
+build:
+	$(DOTNET) build $(PROJECT) -c Release
 
 # Faster iteration: interpreted runtime (no AOT). Composition/output are identical; only
 # the per-sample synthesis loop runs slower.
