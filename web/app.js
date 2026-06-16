@@ -10,9 +10,15 @@ const LOOPS_PER_SONG = 1;
 const CROSSFADE = 3.75;       // seconds; also the first song's fade-in
 const AHEAD_COUNT = 4;        // songs kept pre-rendered
 const SCHEDULE_HORIZON = 12;  // seconds: schedule the next song once it's within this
+// Pool of generation workers. Each boots its own .NET runtime (memory cost — hence the cap),
+// and the pool lets look-ahead songs render in parallel instead of serializing through one
+// worker. A seed change terminates whichever workers are mid-render (true abort) and lets an
+// already-booted idle worker pick up the new seed with no reboot.
+const POOL_SIZE = 3;
 
 let mod = null;               // main-thread WASM (vibe/codec/export — light calls)
-let worker = null;
+let pool = [];                // [{ worker, busy, n }]
+const pending = [];           // queue of song indices waiting for a free worker
 
 // ── State ──
 let cfg = null;               // Float32Array — the live Config (vibe applied)
@@ -46,21 +52,56 @@ function setHash() {
   if (location.hash.slice(1) !== s) history.replaceState(null, '', '#' + s);
 }
 
-// ── Worker plumbing ──
+// ── Worker pool plumbing ──
+// Construct + wire one pool slot (also used to replace a terminated worker).
+function makeWorker(idx) {
+  const w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+  w.onmessage = (e) => onPoolMessage(idx, e);
+  pool[idx] = { worker: w, busy: false, n: -1 };
+}
+
+// Queue a song for generation, then hand queued work to any free worker.
 function requestSong(nn) {
   if (rendered.has(nn) || requested.has(nn)) return;
   requested.add(nn);
-  const id = ++reqId;
-  reqMap.set(id, nn);
-  worker.postMessage({ type: 'gen', id, n: nn, mySeq: seq, seed: seedFor(nn), cfg: cfg.slice() });
+  pending.push(nn);
+  dispatch();
 }
 
-function onWorkerMessage(e) {
+// Assign pending songs to idle workers (fans look-ahead renders across the pool).
+function dispatch() {
+  for (const slot of pool) {
+    if (slot.busy || pending.length === 0) continue;
+    const nn = pending.shift();
+    const id = ++reqId;
+    reqMap.set(id, nn);
+    slot.busy = true;
+    slot.n = nn;
+    slot.worker.postMessage({ type: 'gen', id, n: nn, mySeq: seq, seed: seedFor(nn), cfg: cfg.slice() });
+  }
+}
+
+// Abort everything in flight: terminate workers mid-render (true cancellation) and replace them
+// so they're ready for the new seed; idle/booted workers stay and pick up the new seed at once.
+function abortAll() {
+  pending.length = 0;
+  rendered.clear();
+  requested.clear();
+  reqMap.clear();
+  for (let i = 0; i < pool.length; i++) {
+    if (pool[i].busy) { try { pool[i].worker.terminate(); } catch (_) {} makeWorker(i); }
+  }
+}
+
+function onPoolMessage(idx, e) {
   const m = e.data;
-  if (m.type === 'error') { console.error('gen error', m.n, m.error); requested.delete(m.n); return; }
-  if (m.type !== 'song') return;
+  // free the slot regardless of outcome, then pull the next queued job
+  if (pool[idx]) { pool[idx].busy = false; pool[idx].n = -1; }
+  if (m.type === 'error') { console.error('gen error', m.n, m.error); requested.delete(m.n); reqMap.delete(m.id); dispatch(); return; }
+  if (m.type !== 'song') { dispatch(); return; }
   requested.delete(m.n);
   reqMap.delete(m.id);
+  dispatch();
   if (m.mySeq !== undefined && m.mySeq !== seq) return;
   // Build a 2-channel AudioBuffer from the worker's float channels.
   const frames = m.left.length;
@@ -158,9 +199,8 @@ function startSequence() {
   // tear down current audio
   for (const node of activeNodes) { try { node.stop && node.stop(); } catch (_) {} try { node.disconnect(); } catch (_) {} }
   activeNodes = [];
-  rendered.clear();
-  requested.clear();
-  reqMap.clear();
+  // abort in-flight renders (terminate busy workers) and clear the generation state
+  abortAll();
   nextN = n;
   firstScheduled = false;
   if (!ctx) return;
@@ -450,8 +490,7 @@ function rerollVibe() {
 // ── Wire up ──
 async function init() {
   mod = await Skafinity();
-  worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
-  worker.onmessage = onWorkerMessage;
+  for (let i = 0; i < POOL_SIZE; i++) makeWorker(i);
 
   cfg = mod.defaultConfig();
   populateGenres();
