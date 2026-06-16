@@ -629,16 +629,16 @@ public sealed class MusicGen
 		if ( ex.Vib > 0f ) v.VibDepth = 0.003f + 0.006f * ex.Vib;
 		if ( ex.Glide > 0f && prevMidi != NoPrev && rng.Chance( ex.Glide ) )
 		{
-			v.BendSemis = Math.Clamp( prevMidi - midi, -7, 7 );      // start at the previous pitch
+			v.BendSemis = Math.Clamp( (prevMidi - midi) * 0.3f, -2f, 2f ); // lean toward the prev pitch, not all the way
 			v.BendTime = 0.13f;                                      // ~130 ms portamento
 		}
 		else if ( ex.BendIn > 0f && rng.Chance( ex.BendIn ) )
 		{
-			v.BendSemis = rng.Chance( 0.5f ) ? -1f : -2f;            // a semitone or whole step below
+			v.BendSemis = rng.Chance( 0.5f ) ? -0.3f : -0.55f;       // a subtle lean up into pitch
 			v.BendTime = 0.09f;                                      // ~90 ms bend up into pitch
 		}
 		if ( ex.Scoop > 0f && rng.Chance( ex.Scoop ) )
-			v.ScoopSemis = rng.Chance( 0.5f ) ? 0.5f : 1f;           // quarter / half-step attack hump
+			v.ScoopSemis = rng.Chance( 0.5f ) ? 0.15f : 0.3f;        // a slight attack hump
 		return v;
 	}
 
