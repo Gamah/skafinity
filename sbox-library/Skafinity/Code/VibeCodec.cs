@@ -7,7 +7,7 @@ namespace Skafinity;
 /// <summary>
 /// Compact, shareable encoding of the "important" <see cref="MusicGen.Config"/> knobs — the
 /// ones that define a song's vibe (genre, tempo, per-instrument mix/tone/character). Each
-/// knob is quantised to one base-36 character (12 discrete levels) and the genre rides in
+/// knob is quantised to one base-36 character (16 discrete levels, i.e. a hex digit) and the genre rides in
 /// the first character, so the whole vibe is a short string that travels in the seed as
 /// <c>vibe:tag:n</c>.
 ///
@@ -22,12 +22,12 @@ namespace Skafinity;
 /// <see cref="Apply"/> ignores trailing chars a shorter string lacks, so a vibe from a
 /// client with fewer slots still parses (the missing knobs keep their config defaults).
 ///
-/// Lossy by design (12 levels/knob) but stable: Encode(Decode(s)) == s.
+/// Lossy by design (16 levels/knob) but stable: Encode(Decode(s)) == s.
 /// </summary>
 public static class VibeCodec
 {
 	const string Alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
-	const int Levels = 12;
+	public const int Levels = 16;   // one hex digit per knob
 	public const int Columns = 4;       // volume, tone, character, extra
 	public const int MaxInstruments = 8; // reserved instrument slots in the wire grid
 
@@ -160,7 +160,9 @@ public static class VibeCodec
 					F( "CHUG", 0f, 1f, false, c => c.KeysChug, ( c, v ) => c.KeysChug = v, "KEYS", 3 ) ),
 				Row( "LEAD GTR", vol( "LEAD GTR", c => c.LeadGtrVol, ( c, v ) => c.LeadGtrVol = v ),
 					tone( "LEAD GTR", 500f, 8000f, c => c.LeadGtrCutoff, ( c, v ) => c.LeadGtrCutoff = v ),
-					F( "DISTORTION", 1f, 5f, false, c => c.LeadGtrDrive, ( c, v ) => c.LeadGtrDrive = v, "LEAD GTR", 2 ),
+					// Floor raised: the old top of the range (drive 5) is now the new minimum, keeping
+					// the per-step interval the old grid had (4/11 of a drive unit) across all 16 levels.
+					F( "DISTORTION", 5f, 5f + 15f * (4f / 11f), false, c => c.LeadGtrDrive, ( c, v ) => c.LeadGtrDrive = v, "LEAD GTR", 2 ),
 					F( "RUNS", 0f, 0.1f, false, c => c.LeadGtrTriplets, ( c, v ) => c.LeadGtrTriplets = v, "LEAD GTR", 3 ) ),
 				// Appended after LEAD GTR to keep the wire instrument-slot order stable (KEYS kept
 				// slot 2's positions; this twangy rhythm guitar takes a fresh appended slot).

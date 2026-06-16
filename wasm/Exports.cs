@@ -132,6 +132,11 @@ public partial class Engine
 	[JSExport]
 	internal static int VibeFieldCount( int genre ) => Fields( genre ).Count;
 
+	/// <summary>Discrete levels each knob quantises to (one base-36 char per knob). The UI
+	/// uses this to snap range sliders to the same grid the seed encodes.</summary>
+	[JSExport]
+	internal static int VibeLevels() => VibeCodec.Levels;
+
 	[JSExport]
 	internal static string VibeFieldName( int genre, int i ) => Fields( genre )[i].Name;
 

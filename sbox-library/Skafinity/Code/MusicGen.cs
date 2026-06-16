@@ -76,7 +76,7 @@ public sealed class MusicGen
 		// LEAD GTR — twangy, heavily distorted single-note lead.
 		public float LeadGtrVol = 1.00f;
 		public float LeadGtrCutoff = 2600f;   // Hz low-pass on the lead guitar
-		public float LeadGtrDrive = 3.6f;     // distortion amount (tanh drive)
+		public float LeadGtrDrive = 5.0f;     // distortion amount (tanh drive) — new floor of the DISTORTION knob
 		public float LeadGtrTriplets = 0.06f; // lead-guitar run/triplet ornament rate
 
 		// Tone — low drives + filtering for warmth; detune for width.
@@ -416,6 +416,7 @@ public sealed class MusicGen
 		var bassRng = new Rng( Xmur3( $"{_tag}:bass:{bk}" ) );
 		var bassOrn = new Rng( Xmur3( $"{_tag}:bassorn:{bk}" ) );
 		var rhythmRng = new Rng( Xmur3( $"{_tag}:rhythm:{bk}" ) );
+		var keysRng = new Rng( Xmur3( $"{_tag}:keys:{bk}" ) );
 		var hornRng = new Rng( Xmur3( $"{_tag}:horn:{bk}" ) );
 		var leadRng = new Rng( Xmur3( $"{_tag}:lead:{lk}" ) );
 		var noise = new Rng( Xmur3( $"{_tag}:drums:{bk}" ) );
@@ -432,7 +433,7 @@ public sealed class MusicGen
 			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn );
 			if ( _genre == 1 )
 			{
-				RenderKeysBar( barStart, spe, secPerEighth, chord, rhythmRng );
+				RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng );
 				RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng );
 			}
 			else
@@ -759,26 +760,32 @@ public sealed class MusicGen
 		RenderLead( at, dur, midi, amp, decaySec, drive );
 	}
 
-	// ── Rock KEYS — driven power chords (root + fifth + octave) on every eighth (was labelled
-	// "rhythm guitar"; it reads as a keyboard comp). Downbeats ring; offbeats are tightened
-	// toward a palm-muted chug as KeysChug rises.
+	// ── Rock KEYS — their OWN part, not a double of the guitar. A syncopated organ comp (the
+	// "1, &-of-2, 3, &-of-4" Charleston push) playing diatonic TRIADS (root/3rd/5th) in a high
+	// keyboard register. Different notes (a real triad vs the guitar's bare power chord) AND a
+	// different rhythm (a 4-hit syncopation vs the guitar's every-eighth chug), so the two
+	// interlock instead of playing in lockstep. KeysChug rings the chords (0) or tightens them
+	// toward short stabs (1).
+	static readonly int[] KeysOnsets = { 0, 3, 4, 7 };    // eighth positions of the comp's hits
 	void RenderKeysBar( int barStart, int spe, double secPerEighth, int chord, Rng rng )
 	{
-		int root = ChordRoot( chord ) + 12;               // chunky power-chord register (an octave below the ska skank)
-		int[] chordOffs = { 0, 7, 12 };                   // power chord
+		int kBase = _rootMidi + 24;                        // keyboard register, an octave over the rhythm guitar
+		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };  // diatonic triad
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
-		for ( int e = 0; e < EighthsPerBar; e++ )
+		for ( int oi = 0; oi < KeysOnsets.Length; oi++ )
 		{
-			bool accent = (e % 2) == 0;                    // downbeats ring, offbeats chug
-			float lenFrac = accent ? (1f - 0.5f * chug) : (0.35f - 0.2f * chug);
-			int dur = (int)(spe * Math.Max( 0.12f, lenFrac ));
-			double dec = secPerEighth * (accent ? 0.8 : 0.3);
-			foreach ( var o in chordOffs )
-				RenderPatch( barStart + e * spe, dur, Midi( root + o ), new Patch
+			int e = KeysOnsets[oi];
+			int nextE = oi + 1 < KeysOnsets.Length ? KeysOnsets[oi + 1] : EighthsPerBar; // ring up to the next hit
+			int gap = nextE - e;
+			bool ring = chug < 0.5f;
+			int dur = (int)(gap * spe * Math.Max( 0.25f, 1f - 0.7f * chug ));
+			double dec = secPerEighth * gap * (ring ? 0.9 : 0.4);
+			foreach ( var d in degs )
+				RenderPatch( barStart + e * spe, dur, Midi( ScaleMidi( kBase, d ) ), new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.KeysVol / chordOffs.Length * (accent ? 1f : 0.7f),
-					Attack = 0.003f, Decay = dec, Sustain = accent ? 0.5f : 0f, Sustained = accent,
+					Amp = _c.KeysVol / degs.Length,
+					Attack = 0.004f, Decay = dec, Sustain = ring ? 0.6f : 0.2f, Sustained = ring,
 					Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
 					Drive = MathF.Max( 1f, _c.KeysDrive ), Pan = 0f,
 				} );
@@ -1325,10 +1332,12 @@ public sealed class MusicGen
 		}
 	}
 
-	// Ride cymbal — a sustained, articulate "ping": metallic inharmonic partials for the stick
-	// strike over a high-passed shimmer. The bell hit (on the beat) is brighter and rings a
-	// touch longer than the bow hit (on the "and"). Tracks CrashVol-free off HatVol via the
-	// caller's amp so the existing DRUMS knobs still balance it.
+	// Ride cymbal — a sustained, high-passed noise wash, nothing more. A cymbal is mostly
+	// filtered noise; we deliberately render *only* that body and no pitched component. Earlier
+	// versions layered inharmonic sine partials for a metallic "ping"/bell, but any tonal layer
+	// (however quiet or detuned) read as a pitched ring/ding, so it's gone entirely. The bell
+	// hit (on the beat) just rings a touch longer than the bow hit (on the "and"). Tracks off
+	// HatVol via the caller's amp so the existing DRUMS knobs still balance it.
 	void RenderRide( int start, bool bell, float amp, Rng noise )
 	{
 		start = Math.Max( 0, start + _drumPush );
@@ -1336,31 +1345,13 @@ public sealed class MusicGen
 		double decay = dur * 0.42;
 		float a = HpCoeff( 7000f );
 		float inPrev = 0f, outPrev = 0f;
-		// A high-passed noise wash carries the body (a cymbal is mostly filtered noise); the
-		// metallic "ping" is a *quiet* cluster of six inharmonic partials whose ratios share no
-		// common fundamental, so it reads as metal rather than a pitched triangle/bell. (The old
-		// version used three near-harmonic sines louder than the noise, which rang as a clear
-		// ~540 Hz "ding".) The bell accent leans a touch more tonal than the bow hit.
-		double p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0, p6 = 0;
-		float f1 = bell ? 320f : 440f;
-		float ping = bell ? 0.14f : 0.09f;      // partials stay well under the noise wash
-		double pingDecay = decay * 0.3;         // the metal is an attack tick; the noise sustains
 		int end = Math.Min( _bufL.Length, start + dur );
 		for ( int i = 0; start + i < end; i++ )
 		{
 			float env = (float)Math.Exp( -i / decay );
-			float penv = (float)Math.Exp( -i / pingDecay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			p1 += f1 / _sr; p2 += f1 * 1.41 / _sr; p3 += f1 * 1.93 / _sr;
-			p4 += f1 * 2.51 / _sr; p5 += f1 * 3.07 / _sr; p6 += f1 * 3.66 / _sr;
-			float metal = (MathF.Sin( (float)(p1 * 2 * Math.PI) )
-				+ MathF.Sin( (float)(p2 * 2 * Math.PI) )
-				+ MathF.Sin( (float)(p3 * 2 * Math.PI) )
-				+ MathF.Sin( (float)(p4 * 2 * Math.PI) )
-				+ MathF.Sin( (float)(p5 * 2 * Math.PI) )
-				+ MathF.Sin( (float)(p6 * 2 * Math.PI) )) * ping * penv;
-			float v = (hp * 0.7f * env + metal) * amp * _drumGain * _drumHighMul;
+			float v = hp * 0.7f * env * amp * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}

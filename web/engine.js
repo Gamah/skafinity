@@ -47,6 +47,7 @@ function makeMod(E) {
     setGenre: (cfg, i) => E.SetGenre(asArray(cfg), i),
 
     vibeFieldCount: (genre) => E.VibeFieldCount(genre),
+    vibeLevels: () => E.VibeLevels(),
     setVibeField: (cfg, i, norm) => E.SetVibeField(asArray(cfg), i, norm),
     getVibeNorm: (cfg, i) => E.GetVibeNorm(asArray(cfg), i),
     vibeDisplay: (cfg, i) => E.VibeDisplay(asArray(cfg), i),

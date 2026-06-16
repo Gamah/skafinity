@@ -355,10 +355,13 @@ function buildKnob(f, labelText) {
     input.selectedIndex = Math.round(mod.getVibeNorm(cfg, f.i) * (choices.length - 1));
     input.onchange = () => onVibeChange(f.i, input.selectedIndex / (choices.length - 1), val);
   } else {
+    // Snap to the same discrete grid the seed encodes (one level per base-36 char), so the
+    // slider can only land on values the vibe can actually represent.
+    const steps = mod.vibeLevels() - 1;
     input = document.createElement('input');
-    input.type = 'range'; input.min = '0'; input.max = '1000'; input.step = '1';
-    input.value = String(Math.round(mod.getVibeNorm(cfg, f.i) * 1000));
-    input.oninput = () => onVibeChange(f.i, parseInt(input.value, 10) / 1000, val);
+    input.type = 'range'; input.min = '0'; input.max = String(steps); input.step = '1';
+    input.value = String(Math.round(mod.getVibeNorm(cfg, f.i) * steps));
+    input.oninput = () => onVibeChange(f.i, parseInt(input.value, 10) / steps, val);
   }
   input.className = 'knob-input';
   cell.append(head, input);
