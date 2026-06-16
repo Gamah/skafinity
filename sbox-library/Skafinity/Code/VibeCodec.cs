@@ -174,6 +174,72 @@ public static class VibeCodec
 		};
 	}
 
+	static GenreDef Country()
+	{
+		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> F( "VOLUME", 0f, 1.5f, false, g, s, v, 0 );
+		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> F( "TONE", lo, hi, false, g, s, v, 1 );
+		return new GenreDef
+		{
+			Name = "Country",
+			Grid = new[]
+			{
+				DrumsRow(),
+				Row( "BASS", vol( "BASS", c => c.BassVol, ( c, v ) => c.BassVol = v ),
+					tone( "BASS", 80f, 1200f, c => c.BassCutoff, ( c, v ) => c.BassCutoff = v ),
+					F( "DRIVE", 1f, 4f, false, c => c.BassDrive, ( c, v ) => c.BassDrive = v, "BASS", 2 ),
+					F( "OCTAVE POP", 0f, 1f, false, c => c.OctavePopChance, ( c, v ) => c.OctavePopChance = v, "BASS", 3 ) ),
+				// RHYTHM GTR — clean strummed open chords (the country base distortion is low, so the
+				// DISTORTION knob rides over a much cleaner floor than rock's).
+				Row( "RHYTHM GTR", vol( "RHYTHM GTR", c => c.RhythmGtrVol, ( c, v ) => c.RhythmGtrVol = v ),
+					tone( "RHYTHM GTR", 500f, 8000f, c => c.RhythmGtrCutoff, ( c, v ) => c.RhythmGtrCutoff = v ),
+					F( "DISTORTION", 1f, 5f, false, c => c.RhythmGtrDrive, ( c, v ) => c.RhythmGtrDrive = v, "RHYTHM GTR", 2 ),
+					F( "CHUG", 0f, 1f, false, c => c.RhythmGtrChug, ( c, v ) => c.RhythmGtrChug = v, "RHYTHM GTR", 3 ) ),
+				// KEYS — honky-tonk piano comp (cleaned up from rock's distorted organ).
+				Row( "KEYS", vol( "KEYS", c => c.KeysVol, ( c, v ) => c.KeysVol = v ),
+					tone( "KEYS", 500f, 8000f, c => c.KeysCutoff, ( c, v ) => c.KeysCutoff = v ),
+					F( "DISTORTION", 1f, 5f, false, c => c.KeysDrive, ( c, v ) => c.KeysDrive = v, "KEYS", 2 ),
+					F( "CHUG", 0f, 1f, false, c => c.KeysChug, ( c, v ) => c.KeysChug = v, "KEYS", 3 ) ),
+				// LEAD GTR — twangy telecaster: clean base + heavy BENDINESS.
+				Row( "LEAD GTR", vol( "LEAD GTR", c => c.LeadGtrVol, ( c, v ) => c.LeadGtrVol = v ),
+					tone( "LEAD GTR", 500f, 8000f, c => c.LeadGtrCutoff, ( c, v ) => c.LeadGtrCutoff = v ),
+					F( "DISTORTION", 1f, 6f, false, c => c.LeadGtrDrive, ( c, v ) => c.LeadGtrDrive = v, "LEAD GTR", 2 ),
+					F( "BENDINESS", 0f, 1f, false, c => c.LeadGtrBend, ( c, v ) => c.LeadGtrBend = v, "LEAD GTR", 3 ) ),
+			},
+		};
+	}
+
+	static GenreDef Metal()
+	{
+		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> F( "VOLUME", 0f, 1.5f, false, g, s, v, 0 );
+		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> F( "TONE", lo, hi, false, g, s, v, 1 );
+		return new GenreDef
+		{
+			Name = "Metal",
+			Grid = new[]
+			{
+				DrumsRow(),
+				Row( "BASS", vol( "BASS", c => c.BassVol, ( c, v ) => c.BassVol = v ),
+					tone( "BASS", 80f, 1200f, c => c.BassCutoff, ( c, v ) => c.BassCutoff = v ),
+					F( "DRIVE", 1f, 4f, false, c => c.BassDrive, ( c, v ) => c.BassDrive = v, "BASS", 2 ),
+					F( "OCTAVE POP", 0f, 1f, false, c => c.OctavePopChance, ( c, v ) => c.OctavePopChance = v, "BASS", 3 ) ),
+				// RHYTHM GTR — palm-muted gallop riff. Heavy base distortion; DISTORTION knob piles on.
+				Row( "RHYTHM GTR", vol( "RHYTHM GTR", c => c.RhythmGtrVol, ( c, v ) => c.RhythmGtrVol = v ),
+					tone( "RHYTHM GTR", 500f, 8000f, c => c.RhythmGtrCutoff, ( c, v ) => c.RhythmGtrCutoff = v ),
+					F( "DISTORTION", 1f, 6f, false, c => c.RhythmGtrDrive, ( c, v ) => c.RhythmGtrDrive = v, "RHYTHM GTR", 2 ),
+					F( "CHUG", 0f, 1f, false, c => c.RhythmGtrChug, ( c, v ) => c.RhythmGtrChug = v, "RHYTHM GTR", 3 ) ),
+				// LEAD GTR — fast shredding lead, heavily distorted.
+				Row( "LEAD GTR", vol( "LEAD GTR", c => c.LeadGtrVol, ( c, v ) => c.LeadGtrVol = v ),
+					tone( "LEAD GTR", 500f, 8000f, c => c.LeadGtrCutoff, ( c, v ) => c.LeadGtrCutoff = v ),
+					F( "DISTORTION", 5f, 5f + 15f * (4f / 11f), false, c => c.LeadGtrDrive, ( c, v ) => c.LeadGtrDrive = v, "LEAD GTR", 2 ),
+					F( "BENDINESS", 0f, 1f, false, c => c.LeadGtrBend, ( c, v ) => c.LeadGtrBend = v, "LEAD GTR", 3 ) ),
+			},
+		};
+	}
+
 	// DRUMS is the same four knobs in every genre: volume / tone (toms↔cymbals) / busy /
 	// drive (pull↔push).
 	static Field[] DrumsRow() => Row( "DRUMS",
@@ -182,7 +248,7 @@ public static class VibeCodec
 		F( "BUSY", 0f, 1f, false, c => c.DrumBusy, ( c, v ) => c.DrumBusy = v, "DRUMS", 2 ),
 		F( "DRIVE", 0f, 1f, false, c => c.DrumDrive, ( c, v ) => c.DrumDrive = v, "DRUMS", 3 ) );
 
-	static readonly GenreDef[] GenreDefs = { Ska(), Rock() };
+	static readonly GenreDef[] GenreDefs = { Ska(), Rock(), Country(), Metal() };
 
 	public static int GenreCount => GenreDefs.Length;
 	public static IReadOnlyList<string> Genres

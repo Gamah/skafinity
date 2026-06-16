@@ -299,6 +299,74 @@ public sealed class MusicGen
 		new[] { 0, Rest, 0, 0, Rest, 0, 12, Approach },  // syncopated driver
 	};
 
+	// ── Country harmony (Genre 2) ──
+	// Bright and major — country lives in major / mixolydian. Same RNG draws as the other
+	// tables, so songs in other genres are untouched.
+	static readonly int[][] CountryScales =
+	{
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major
+		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
+	};
+
+	static readonly int[][] CountryProgressions =
+	{
+		new[] { 0, 3, 4, 0 }, // I–IV–V–I (the country backbone)
+		new[] { 0, 0, 4, 4 }, // I–V vamp
+		new[] { 0, 3, 0, 4 }, // I–IV–I–V
+		new[] { 0, 4, 5, 3 }, // I–V–vi–IV
+		new[] { 0, 4, 0, 4 }, // I–V two-chord
+	};
+
+	// "Boom-chick" alternating root/fifth on the beats (the guitar/snare take the off "chick"),
+	// walking up to the next chord on the approach.
+	static readonly int[][] CountryBassPatterns =
+	{
+		new[] { 0, Rest, 7, Rest, 0, Rest, 7, Approach },  // alternating root–fifth
+		new[] { 0, Rest, 7, Rest, 12, Rest, 7, Approach }, // root–fifth with the octave
+		new[] { 0, Rest, 7, Rest, 0, Rest, 5, Approach },  // root–fifth, lean on the 4th
+		new[] { 0, Rest, 4, Rest, 7, Rest, 5, Approach },  // walking-ish
+	};
+
+	// ── Metal harmony (Genre 3) ──
+	// Dark and tight — natural minor / phrygian / harmonic minor for the menacing power-chord
+	// riffs. Same RNG draws as the other tables.
+	static readonly int[][] MetalScales =
+	{
+		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (aeolian)
+		new[] { 0, 1, 3, 5, 7, 8, 10 }, // phrygian (the metal mode)
+		new[] { 0, 2, 3, 5, 7, 8, 11 }, // harmonic minor
+		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (weighted)
+	};
+
+	// Degrees read against the (minor) scale: 5 = ♭VI, 6 = ♭VII, 1 = ♭II, 3 = iv.
+	static readonly int[][] MetalProgressions =
+	{
+		new[] { 0, 5, 6, 0 }, // i–♭VI–♭VII–i
+		new[] { 0, 6, 5, 6 }, // i–♭VII–♭VI–♭VII (driving)
+		new[] { 0, 1, 0, 6 }, // i–♭II–i–♭VII (phrygian menace)
+		new[] { 0, 0, 5, 6 }, // i pedal → ♭VI–♭VII
+		new[] { 0, 6, 3, 0 }, // i–♭VII–iv–i
+	};
+
+	// Driving roots locked to the double-kick; octave pushes for the gallop.
+	static readonly int[][] MetalBassPatterns =
+	{
+		new[] { 0, 0, 0, 0, 0, 0, 0, Approach },         // straight chug
+		new[] { 0, 0, 12, 0, 0, 0, 12, Approach },       // root with octave pushes
+		new[] { 0, 0, 0, 12, 0, 0, 0, Approach },        // syncopated octave
+		new[] { 0, Rest, 0, 0, Rest, 0, 0, Approach },   // syncopated driver
+	};
+
+	// The genre's harmony tables (one RNG Pick each, so other genres stay byte-identical).
+	static int[][] ScalesFor( int g ) => g switch
+	{ 1 => RockScales, 2 => CountryScales, 3 => MetalScales, _ => Scales };
+	static int[][] ProgressionsFor( int g ) => g switch
+	{ 1 => RockProgressions, 2 => CountryProgressions, 3 => MetalProgressions, _ => Progressions };
+	static int[][] BassPatternsFor( int g ) => g switch
+	{ 1 => RockBassPatterns, 2 => CountryBassPatterns, 3 => MetalBassPatterns, _ => BassPatterns };
+
 	int[] _scale, _prog;
 	int _rootMidi;
 	Instrument _lead;
@@ -367,21 +435,26 @@ public sealed class MusicGen
 	{
 		_events.Clear();
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
-		_genre = Math.Clamp( _c.Genre, 0, 1 );
+		_genre = Math.Clamp( _c.Genre, 0, 3 );
 		var rng = new Rng( Xmur3( _tag.ToLowerInvariant() ) );
 
 		_fast = rng.Chance( _c.FastChance );              // TEMPO BIAS
 		int bpm = _fast
 			? _c.FastBpmMin + rng.Int( Math.Max( 1, _c.FastBpmMax - _c.FastBpmMin + 1 ) )
 			: _c.BpmMin + rng.Int( Math.Max( 1, _c.BpmMax - _c.BpmMin + 1 ) );
-		bool rock = _genre == 1;
-		_scale = rng.Pick( rock ? RockScales : Scales );
-		_prog = rng.Pick( rock ? RockProgressions : Progressions );
+		_scale = rng.Pick( ScalesFor( _genre ) );
+		_prog = rng.Pick( ProgressionsFor( _genre ) );
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
-		_lead = Instrument.Trumpet;                       // ska lead is fixed; rock uses guitar
+		_lead = Instrument.Trumpet;                       // ska lead is fixed; other genres use guitar
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
-		_bassPat = rng.Pick( rock ? RockBassPatterns : BassPatterns );
-		_drumStyle = _genre == 1 ? 2 : (_fast ? 2 : rng.Int( 2 )); // rock = straight backbeat
+		_bassPat = rng.Pick( BassPatternsFor( _genre ) );
+		_drumStyle = _genre switch                        // 0 ska rolls a style; the rest are fixed
+		{
+			1 => 2,                                       // rock: straight backbeat
+			2 => 2,                                       // country: train-beat backbeat
+			3 => 3,                                       // metal: double-kick
+			_ => _fast ? 2 : rng.Int( 2 ),
+		};
 		_organBubble = true;
 		_hasHorns = true;
 		_hornMask = new bool[EighthsPerBar];
@@ -390,7 +463,7 @@ public sealed class MusicGen
 			_hornMask[e] = rng.Chance( _c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f) );
 		// Some songs ride a ride cymbal instead of closed hats for the main pulse (more common
 		// in rock). Drawn last so it can't shift any earlier musical choice.
-		_ride = rng.Chance( rock ? 0.5f : 0.3f );
+		_ride = rng.Chance( _genre switch { 1 => 0.5f, 3 => 0.6f, 2 => 0.2f, _ => 0.3f } );
 
 		float swing = _fast ? _c.FastSwing : _c.Swing;
 		double secPerEighth = 60.0 / bpm / 2.0;
@@ -452,16 +525,21 @@ public sealed class MusicGen
 			bool lastBar = bar == part.Bars - 1;          // every section ends with a fill
 
 			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn, exprRng );
-			if ( _genre == 1 )
+			switch ( _genre )
 			{
-				RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
-				RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
-			}
-			else
-			{
-				RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng, exprRng );
-				if ( _hasHorns )
-					RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng, exprRng );
+				case 1: // rock: keys comp + power-chord guitar
+				case 2: // country: honky-tonk piano comp + strummed twang guitar
+					RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
+					RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+					break;
+				case 3: // metal: palm-muted gallop riff carries the bar
+					RenderMetalRiffBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+					break;
+				default: // ska: skank chop + horn stabs
+					RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng, exprRng );
+					if ( _hasHorns )
+						RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng, exprRng );
+					break;
 			}
 			RenderDrumBar( barStart, spe, lastBar, noise, fillRng, fillNoise );
 
@@ -599,18 +677,27 @@ public sealed class MusicGen
 	// bend-in + scoop directly (that's what "bendiness" is). Tune these by ear.
 	Expression Expr( string voice )
 	{
-		bool rock = _genre == 1;
 		switch ( voice )
 		{
-			case "BASS":       return rock ? new Expression( 0f, 0f, 0.10f, 0f )
-			                               : new Expression( 0f, 0f, 0.25f, 0.05f ); // reggae bass slides
+			case "BASS":       return _genre switch
+			{
+				1 => new Expression( 0f, 0f, 0.10f, 0f ),     // rock: locked
+				2 => new Expression( 0f, 0f, 0.12f, 0.03f ),  // country: a subtle slide
+				3 => default,                                 // metal: dead straight, fast
+				_ => new Expression( 0f, 0f, 0.25f, 0.05f ),  // reggae bass slides
+			};
 			case "SKANK":      return default;                          // staccato chops — dead straight
 			case "ORGAN":      return new Expression( 0.15f, 0f, 0f, 0f ); // gentle bubble vibrato (only blooms on held notes)
 			case "LEAD":       return new Expression( 0.35f, 0.15f, 0.10f, 0.25f ); // brass sings + scoops
 			case "HORNS":      return new Expression( 0.20f, 0f, 0f, 0.20f ); // section stabs fall/scoop
 			case "KEYS":       return default;                          // organ comp — locked, no wobble
 			case "RHYTHM GTR": return default;                          // power chords — straight
-			case "LEAD GTR":   return new Expression( 0.30f, _c.LeadGtrBend, 0.10f, _c.LeadGtrBend ); // bendiness
+			case "LEAD GTR":
+			{
+				// Country leans hard into bends (the telecaster twang); rock/metal ride the knob.
+				float bend = _genre == 2 ? MathF.Max( _c.LeadGtrBend, 0.5f ) : _c.LeadGtrBend;
+				return new Expression( 0.30f, bend, 0.10f, bend );
+			}
 			default:           return default;
 		}
 	}
@@ -783,12 +870,18 @@ public sealed class MusicGen
 		int melBase = _rootMidi + 24;
 		int[] tones = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 6 }; // chord tones
 		int degree = tones[rng.Int( 3 )];
-		float amp = _genre == 1 ? _c.LeadGtrVol : _c.MelodyVol;
-		float drive = _genre == 1 ? _c.LeadGtrDrive : _c.MelodyDrive;
-		// Rock lead trades fast RUNS for BENDINESS (handled via expression below), so its run
-		// rate is forced to 0; ska keeps its triplet runs on the TRIPLETS knob.
-		float tripChance = _genre == 1 ? 0f : _c.TripletChance;
-		var ex = _genre == 1 ? Expr( "LEAD GTR" ) : Expr( "LEAD" );
+		bool guitarLead = _genre != 0;                    // ska is the only horn lead
+		float amp = guitarLead ? _c.LeadGtrVol : _c.MelodyVol;
+		float drive = guitarLead ? _c.LeadGtrDrive : _c.MelodyDrive;
+		// Rock lead trades fast RUNS for BENDINESS (handled via expression), so its run rate is
+		// forced to 0; metal shreds (a high floor of runs); ska/country keep the TRIPLETS knob.
+		float tripChance = _genre switch
+		{
+			1 => 0f,
+			3 => MathF.Max( _c.TripletChance, 0.4f ),
+			_ => _c.TripletChance,
+		};
+		var ex = guitarLead ? Expr( "LEAD GTR" ) : Expr( "LEAD" );
 		int prevMidi = NoPrev;
 
 		int e = 0;
@@ -864,18 +957,26 @@ public sealed class MusicGen
 	// otherwise the ska horn (RenderLead → trumpet).
 	void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
 	{
-		if ( _genre == 1 )
+		if ( _genre != 0 )
 		{
 			// Twang = a bright cutoff-envelope snap on each pick (high CutEnv, decays fast) through
-			// a resonant SVF, then a high BASE distortion (3 + the slider) so it reads as an
-			// overdriven electric guitar — twangy and dirty even at the slider minimum. The bends
-			// (BENDINESS knob → bend-in + scoop) come in via the applied voicing.
+			// a resonant SVF, plus a BASE distortion under the slider so it reads as an electric
+			// guitar even at the slider minimum. The base is genre-set: rock = 3 (overdriven),
+			// metal = 4 hot (heavy), country = clean (the bite comes from the twang snap + bends,
+			// not gain). The bends (BENDINESS knob → bend-in + scoop) come in via the voicing.
+			float driveAmt = _genre switch
+			{
+				3 => 4f + MathF.Max( 1f, _c.LeadGtrDrive ),         // metal: heavy
+				2 => 0.8f + 0.3f * MathF.Max( 1f, _c.LeadGtrDrive ),// country: clean twang
+				_ => 3f + MathF.Max( 1f, _c.LeadGtrDrive ),         // rock
+			};
+			float cutEnv = _genre == 2 ? 3000f : 2200f;             // country: extra twang snap
 			var gtr = new Patch
 			{
 				Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
 				Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
-				Cutoff = _c.LeadGtrCutoff, CutEnv = 2200f, Reso = 0.65f,
-				Drive = 3f + MathF.Max( 1f, _c.LeadGtrDrive ), Pan = _leadPan, Vibrato = _c.MelodyVibrato,
+				Cutoff = _c.LeadGtrCutoff, CutEnv = cutEnv, Reso = 0.65f,
+				Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
 			};
 			ApplyVoicing( ref gtr, vc );
 			RenderPatch( at, dur, Midi( midi ), gtr );
@@ -896,6 +997,9 @@ public sealed class MusicGen
 		int kBase = _rootMidi + 24;                        // keyboard register, an octave over the rhythm guitar
 		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };  // diatonic triad
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
+		// Country reads this comp as a honky-tonk piano: keep it clean (rock drives it dirty).
+		float keysDrive = _genre == 2 ? 1f + 0.2f * MathF.Max( 1f, _c.KeysDrive )
+		                              : MathF.Max( 1f, _c.KeysDrive );
 		var keysVc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng ); // gentle vibrato only
 		for ( int oi = 0; oi < KeysOnsets.Length; oi++ )
 		{
@@ -913,7 +1017,7 @@ public sealed class MusicGen
 					Amp = _c.KeysVol / degs.Length,
 					Attack = 0.004f, Decay = dec, Sustain = ring ? 0.6f : 0.2f, Sustained = ring,
 					Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
-					Drive = MathF.Max( 1f, _c.KeysDrive ), Pan = 0f,
+					Drive = keysDrive, Pan = 0f,
 				};
 				ApplyVoicing( ref keys, keysVc );
 				RenderPatch( barStart + e * spe, dur, Midi( ScaleMidi( kBase, d ) ), keys );
@@ -929,9 +1033,15 @@ public sealed class MusicGen
 	// param keeps every instrument's call site uniform.
 	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
 	{
+		bool country = _genre == 2;
 		int root = ChordRoot( chord ) + 12;               // chunky power-chord register
-		int[] chordOffs = { 0, 7, 12 };                   // power chord
+		// Country strums a full open triad (root/3rd/5th/octave) clean and bright; rock chunks a
+		// bare power chord (root/5th/octave) with more base distortion.
+		int[] chordOffs = country ? new[] { 0, 4, 7, 12 } : new[] { 0, 7, 12 };
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
+		float cutEnv = country ? 2600f : 1400f;            // brighter twang for the clean strum
+		float driveAmt = country ? 0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive )
+		                         : 1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ); // less base than lead
 		for ( int e = 0; e < EighthsPerBar; e++ )
 		{
 			bool accent = (e % 2) == 0;                    // downbeats ring, offbeats chug
@@ -944,8 +1054,42 @@ public sealed class MusicGen
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 					Amp = _c.RhythmGtrVol / chordOffs.Length * (accent ? 1f : 0.7f),
 					Attack = 0.002f, Decay = dec, Sustain = accent ? 0.45f : 0f, Sustained = accent,
-					Cutoff = _c.RhythmGtrCutoff, CutEnv = 1400f, Reso = 0.8f,   // twang
-					Drive = 1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), Pan = 0f, // less base than lead
+					Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = 0.8f,   // twang
+					Drive = driveAmt, Pan = 0f,
+				} );
+		}
+	}
+
+	// ── Metal rhythm guitar — palm-muted 16th-note gallop on the low root with power-chord
+	// accents. The relentless 16th chug (under the double-kick) is the "fast riff" engine; the
+	// downbeats and a few syncopated stabs ring a full power chord. Heavy base distortion, dark
+	// and tight. rng (the rhythm stream) breaks up the accent placement so riffs vary by section.
+	void RenderMetalRiffBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
+	{
+		int root = ChordRoot( chord );                    // low, chunky — no octave bump
+		int[] power = { 0, 7, 12 };
+		int six = spe / 2;
+		if ( six <= 0 ) return;
+		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
+		float driveAmt = 4f + MathF.Max( 1f, _c.RhythmGtrDrive ); // heavy
+		for ( int s = 0; s < EighthsPerBar * 2; s++ )     // 16 sixteenths
+		{
+			int at = barStart + s * six;
+			bool beat = s % 4 == 0;                        // quarter-note downbeats → ring a chord
+			bool ring = beat || (s % 2 == 0 && rng.Chance( 0.3f )); // some offbeat eighths ring too
+			int[] offs = ring ? power : new[] { 0 };       // accents = power chord, chugs = root only
+			float gain = ring ? 1f : 0.6f;
+			// Palm mute = short, tight; accents ring longer. Chug tightens the muted notes further.
+			int dur = (int)(six * (ring ? 0.9f : Math.Max( 0.25f, 0.55f - 0.3f * chug )));
+			double dec = secPerEighth * (ring ? 0.4 : 0.12);
+			foreach ( var o in offs )
+				RenderPatch( at, dur, Midi( root + o ), new Patch
+				{
+					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
+					Amp = _c.RhythmGtrVol / offs.Length * gain,
+					Attack = 0.002f, Decay = dec, Sustain = ring ? 0.35f : 0f, Sustained = ring,
+					Cutoff = _c.RhythmGtrCutoff, CutEnv = 1100f, Reso = 0.7f,
+					Drive = driveAmt, Pan = 0f,
 				} );
 		}
 	}
@@ -1365,6 +1509,12 @@ public sealed class MusicGen
 					if ( e % 2 == 0 ) RenderKick( at, noise );
 					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
 					break;
+				case 3: // metal double-kick: 16th-note kick gallop + crashing, snare backbeat
+					if ( e == 0 && noise.Chance( 0.55f ) ) RenderCrash( at, noise, noise.Chance( 0.35f ) );
+					RenderKick( at, noise );
+					if ( six > 0 ) RenderKick( at + six, noise ); // the second pedal → the 16th gallop
+					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
+					break;
 				default: // straight backbeat
 					if ( e == 0 || e == 4 || (e == 3 && noise.Chance( _c.KickSyncChance * (0.4f + busy) )) ) RenderKick( at, noise );
 					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
@@ -1373,7 +1523,8 @@ public sealed class MusicGen
 			}
 			// Busy fills the "e/a" sixteenths between hits: more snare as busy rises, and —
 			// when the tone leans low — toms too. (Busy → snare + toms; tone → tom vs cymbal.)
-			if ( six > 0 && e != 4 && noise.Chance( _c.GhostSnareChance * busy ) )
+			// Metal already fills every 16th with the double-kick, so it skips the ghost layer.
+			if ( _drumStyle != 3 && six > 0 && e != 4 && noise.Chance( _c.GhostSnareChance * busy ) )
 			{
 				if ( noise.Chance( (1f - _drumTone) * 0.5f ) )
 					RenderTom( at + six, 110f + 30f * (e & 1), noise );

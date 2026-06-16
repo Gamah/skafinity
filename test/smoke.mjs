@@ -26,9 +26,11 @@ const cfg = E.DefaultConfig();
 check('ConfigSize matches DefaultConfig length', cfg.length === E.ConfigSize(), `${cfg.length}`);
 
 // ── genre ──
-check('GenreCount is 2', E.GenreCount() === 2, `${E.GenreCount()}`);
+check('GenreCount is 4', E.GenreCount() === 4, `${E.GenreCount()}`);
 check('genre 0 is Ska', E.GenreName(0) === 'Ska', E.GenreName(0));
 check('genre 1 is Rock', E.GenreName(1) === 'Rock', E.GenreName(1));
+check('genre 2 is Country', E.GenreName(2) === 'Country', E.GenreName(2));
+check('genre 3 is Metal', E.GenreName(3) === 'Metal', E.GenreName(3));
 check('DefaultConfig genre is 0', E.GetGenre(cfg) === 0, `${E.GetGenre(cfg)}`);
 
 // ska (genre 0): 6 globals + 6 instruments × 4 columns
@@ -37,6 +39,10 @@ check('ska VibeFieldCount is 30', skaCount === 30, `${skaCount}`);
 // rock (genre 1): 6 globals + 5 instruments × 4 columns (drums/bass/keys/lead gtr/rhythm gtr)
 const rockCount = E.VibeFieldCount(1);
 check('rock VibeFieldCount is 26', rockCount === 26, `${rockCount}`);
+// country (genre 2): 6 globals + 5 instruments × 4 columns (drums/bass/rhythm gtr/keys/lead gtr)
+check('country VibeFieldCount is 26', E.VibeFieldCount(2) === 26, `${E.VibeFieldCount(2)}`);
+// metal (genre 3): 6 globals + 4 instruments × 4 columns (drums/bass/rhythm gtr/lead gtr)
+check('metal VibeFieldCount is 22', E.VibeFieldCount(3) === 22, `${E.VibeFieldCount(3)}`);
 
 const vibe = E.EncodeVibe(cfg);
 check('ska vibe length == fields + genre char', vibe.length === skaCount + 1, `${vibe.length}`);
@@ -98,6 +104,17 @@ for (let i = 0; i < Rk.length; i++) { if (Math.abs(Rk[i]) > 1e-4) rockNonzero++;
 for (let i = 0; i < 200000; i++) if (Math.abs(Rk[i] - L[i]) > 1e-6) { rockDiff = true; break; }
 check('rock audio is non-silent', rockNonzero > Rk.length / 10, `${rockNonzero} loud frames`);
 check('rock differs from ska at same seed', rockDiff);
+
+// country + metal genres render non-silent audio that differs from ska (same seed)
+for (const [g, name] of [[2, 'country'], [3, 'metal']]) {
+  E.GenerateSong('gamah:0', E.SetGenre(cfg, g));
+  const ch = floatChannel(0);
+  let nonzero = 0, differs = false;
+  for (let i = 0; i < ch.length; i++) if (Math.abs(ch[i]) > 1e-4) nonzero++;
+  for (let i = 0; i < 200000; i++) if (Math.abs(ch[i] - L[i]) > 1e-6) { differs = true; break; }
+  check(`${name} audio is non-silent`, nonzero > ch.length / 10, `${nonzero} loud frames`);
+  check(`${name} differs from ska at same seed`, differs);
+}
 
 // ── WAV ──
 const wavLen = E.GenerateWav('gamah:0', cfg, true);
