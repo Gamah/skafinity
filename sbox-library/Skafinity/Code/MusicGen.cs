@@ -375,6 +375,7 @@ public sealed class MusicGen
 	bool[] _hornMask;
 	int[] _bassPat;
 	int _drumStyle;          // 0 one-drop, 1 steppers, 2 straight backbeat
+	int[] _kickAccents = Array.Empty<int>(); // per-song backbeat kick accents (see BackbeatKickAccents)
 	bool _ride;              // per-song: ride cymbal drives the eighth pulse instead of closed hats
 	bool _organBubble;
 	bool _fast;
@@ -464,6 +465,11 @@ public sealed class MusicGen
 		// Some songs ride a ride cymbal instead of closed hats for the main pulse (more common
 		// in rock). Drawn last so it can't shift any earlier musical choice.
 		_ride = rng.Chance( _genre switch { 1 => 0.5f, 3 => 0.6f, 2 => 0.2f, _ => 0.3f } );
+		// This song's backbeat kick personality — which off-beat eighths the kick leans into
+		// beyond the fixed beat-1 & 3 anchors. Only the straight backbeat (rock/country/fast
+		// ska) reads it; drawn after _ride so it shifts no earlier choice and leaves the other
+		// styles' songs byte-identical.
+		_kickAccents = rng.Pick( BackbeatKickAccents );
 
 		float swing = _fast ? _c.FastSwing : _c.Swing;
 		double secPerEighth = 60.0 / bpm / 2.0;
@@ -1493,6 +1499,22 @@ public sealed class MusicGen
 		RenderKickSnareGroove( barStart, spe, 0, EighthsPerBar, busy, noise );
 	}
 
+	// Per-song kick accents for the straight backbeat: eighths (beyond the beat-1 & 3 anchors)
+	// the kick leans into. e1 = "and of 1", e3 = "and of 2", e5 = "and of 3", e6 = beat 4,
+	// e7 = "and of 4". One set is picked per song, then each accent is rolled per bar so the
+	// groove breathes instead of stamping the same kick pattern every bar — the main nuance
+	// lever that keeps rock/country from all sharing one mechanical backbeat.
+	static readonly int[][] BackbeatKickAccents =
+	{
+		new int[0],          // bone-dry: just 1 & 3
+		new[] { 3 },         // push into the snare ("and of 2")
+		new[] { 7 },         // pickup into the next bar ("and of 4")
+		new[] { 3, 7 },      // push + pickup
+		new[] { 6 },         // driving beat-4 kick
+		new[] { 5, 7 },      // syncopated "and of 3" + pickup
+		new[] { 3, 6 },      // push into 3 + beat-4 drive
+	};
+
 	void RenderKickSnareGroove( int barStart, int spe, int from, int to, float busy, Rng noise )
 	{
 		int six = spe / 2;
@@ -1515,8 +1537,14 @@ public sealed class MusicGen
 					if ( six > 0 ) RenderKick( at + six, noise ); // the second pedal → the 16th gallop
 					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
 					break;
-				default: // straight backbeat
-					if ( e == 0 || e == 4 || (e == 3 && noise.Chance( _c.KickSyncChance * (0.4f + busy) )) ) RenderKick( at, noise );
+				default: // straight backbeat — anchors on beats 1 & 3, plus this song's kick
+					     // accents, each humanised per bar so the groove breathes
+					bool kick = e == 0 || e == 4;
+					if ( !kick && Array.IndexOf( _kickAccents, e ) >= 0 )
+						kick = noise.Chance( 0.82f );                 // mostly play the accent, occasionally lay out
+					else if ( !kick && e == 3 )
+						kick = noise.Chance( _c.KickSyncChance * (0.4f + busy) ); // stray push into beat 3
+					if ( kick ) RenderKick( at, noise );
 					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
 					else if ( noise.Chance( _c.GhostSnareChance * busy ) ) RenderSnare( at, noise, true );
 					break;
