@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!--
+    The web toy's engine. This compiles the SAME MusicGen.cs + VibeCodec.cs that the s&box
+    library (../sbox-library) ships — shared source, not copies — to WebAssembly, so the web
+    and the game run identical composition code. Only Exports.cs (the [JSExport] boundary,
+    the analog of the old emcc bindings.cpp) is web-specific.
+
+    Build: `make` (→ dotnet publish into build/). Needs the wasm-tools workload:
+      dotnet workload install wasm-tools
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>SkafinityWasm</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- AOT-compile to native wasm: synthesis is a heavy per-sample loop, far faster AOT
+         than interpreted. Comment out for quicker dev builds (composition is identical). -->
+    <RunAOTCompilation>true</RunAOTCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The algorithmic source of truth, shared verbatim with the s&box library. -->
+    <Compile Include="../sbox-library/Skafinity/Code/MusicGen.cs" />
+    <Compile Include="../sbox-library/Skafinity/Code/VibeCodec.cs" />
+  </ItemGroup>
+
+</Project>

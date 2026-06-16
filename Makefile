@@ -1,49 +1,55 @@
-# skafinity — C++/WASM ska engine.
-#   make        → build the WASM module into build/ (needs emscripten / emcc)
-#   make test   → native g++ build of the parity/smoke test (no emcc needed)
-#   make serve  → static server rooted at repo so web/ can fetch build/
-#   make dist   → single self-contained skafinity.html (WASM inlined)
+# skafinity — C#-as-source ska engine compiled to WebAssembly with the .NET wasm-tools
+# workload (the same MusicGen.cs / VibeCodec.cs the s&box library ships, no port).
+#
+#   make            → publish the engine, stage web/_framework for the web layer
+#   make dev        → same, but skip AOT (much faster to build; identical composition)
+#   make test       → node smoke test of the JS↔wasm boundary (needs web/_framework/)
+#   make serve      → static server rooted at web/ (same docroot you'd give nginx)
+#   make dist       → (follow-up) single-file bundle; see note below
 #   make clean
+#
+# One-time setup: dotnet-sdk-10.0 + `dotnet workload install wasm-tools`.
 
-EMCC      ?= emcc
-CXX       ?= g++
-NODE      ?= node
-SRC        = src/bindings.cpp src/music_gen.cpp src/vibe_codec.cpp
-CORE       = src/music_gen.cpp src/vibe_codec.cpp
-EMFLAGS    = -O3 -std=c++17 --bind \
-             -s MODULARIZE=1 -s EXPORT_ES6=1 \
-             -s ENVIRONMENT=web,worker \
-             -s ALLOW_MEMORY_GROWTH=1 \
-             -s EXPORT_NAME=Skafinity
-PORT      ?= 8000
+DOTNET   ?= dotnet
+# Resolve the binary (command -v skips a stale `node` *directory* an emsdk PATH may shadow it
+# with). Override with `make test NODE=/path/to/node` if needed.
+NODE     ?= $(shell command -v node)
+PROJECT   = wasm/Skafinity.Wasm.csproj
+PUBDIR    = wasm/bin/Release/net10.0/publish/wwwroot/_framework
+PORT     ?= 8000
 
-.PHONY: all test serve dist clean
+.PHONY: all dev stage test serve dist clean
 
-all: build/skafinity.js
+all:
+	$(DOTNET) publish $(PROJECT) -c Release
+	@$(MAKE) --no-print-directory stage
 
-build/skafinity.js: $(SRC) src/music_gen.h src/vibe_codec.h src/prng.h | build
-	$(EMCC) $(EMFLAGS) $(SRC) -o $@
+# Faster iteration: interpreted runtime (no AOT). Composition/output are identical; only
+# the per-sample synthesis loop runs slower.
+dev:
+	$(DOTNET) publish $(PROJECT) -c Release -p:RunAOTCompilation=false
+	@$(MAKE) --no-print-directory stage
 
-# Native parity + smoke test. -ffp-contract=off keeps float math close to the C#.
-test: | build
-	$(CXX) -O2 -std=c++17 -Wall -ffp-contract=off test/main.cpp $(CORE) -o build/skafinity_test
-	./build/skafinity_test
+# Copy just the runtime bundle the page loads (web/engine.js imports ./_framework). Staging
+# it under web/ keeps the page self-contained: point any static server's docroot at web/.
+stage:
+	rm -rf web/_framework
+	cp -r $(PUBDIR) web/_framework
+	@echo "staged web/_framework ($$(ls web/_framework | wc -l) files)"
 
-# One genuinely self-contained file: SINGLE_FILE inlines the .wasm as base64 into the
-# emscripten .js; web/inline.mjs then embeds that + app.js + a Blob worker + the CSS into
-# a single skafinity.html (root of the repo, the shareable artifact).
-dist: skafinity.html
+test:
+	$(NODE) test/smoke.mjs
 
-skafinity.html: $(SRC) src/*.h web/app.js web/worker.js web/style.css web/index.html web/inline.mjs | build
-	$(EMCC) $(EMFLAGS) -s SINGLE_FILE=1 $(SRC) -o build/skafinity.single.js
-	$(NODE) web/inline.mjs build/skafinity.single.js skafinity.html
+serve:
+	@echo "serving on http://localhost:$(PORT)/  (docroot web/; Ctrl-C to stop)"
+	python3 -m http.server $(PORT) -d web
 
-serve: all
-	@echo "serving on http://localhost:$(PORT)/web/  (Ctrl-C to stop)"
-	python3 -m http.server $(PORT)
-
-build:
-	mkdir -p build
+# A true single self-contained .html needs the whole .NET runtime + assemblies base64-inlined
+# (multi-MB) — deferred. For now the toy is the served bundle (web/, incl. web/_framework).
+dist:
+	@echo "dist (single-file inline of the .NET runtime) is not implemented yet — serve the"
+	@echo "bundle with 'make serve'. See PLAN/README for the follow-up."
+	@exit 1
 
 clean:
-	rm -rf build dist skafinity.html
+	rm -rf web/_framework wasm/bin wasm/obj

@@ -1,7 +1,7 @@
 // skafinity — Web Audio sequencer + vibe editor + rolling playlist + WAV export.
 // Port of MusicController's scheduling (not its s&box plumbing). The heavy synthesis runs
 // in worker.js; this file owns the AudioContext, crossfade scheduling, and the UI.
-import Skafinity from '../build/skafinity.js';
+import Skafinity from './engine.js';
 
 // ── Tunables (mirror MusicController defaults) ──
 const LOOPS_PER_SONG = 2;
@@ -396,10 +396,11 @@ function onVibeChange(i, norm, valEl) {
   restartTimer = setTimeout(() => { if (playing) startSequence(); }, 350);
 }
 
-// 🎲 Reroll: randomize every knob except the six per-instrument volumes (mirrors
-// MusicController.RerollVibe), then keep TEMPO MIN ≤ MAX (ranges are identical so swapping
-// the normalized values swaps the tempos).
-function rerollVibe() {
+// Randomize cfg's knobs in place — every knob except the six per-instrument volumes (mirrors
+// MusicController.RerollVibe), then keep TEMPO MIN ≤ MAX (ranges are identical so swapping the
+// normalized values swaps the tempos). Pure on cfg; callers handle UI/hash/restart.
+// Needs fieldIndexByName, so build it (buildFieldIndex) before calling.
+function randomizeVibeCfg() {
   const count = mod.vibeFieldCount();
   for (let i = 0; i < count; i++) {
     if (VOLUME_FIELDS.has(mod.vibeFieldInfo(i).name)) continue;
@@ -411,6 +412,14 @@ function rerollVibe() {
     if (a > b) { cfg = mod.setVibeField(cfg, lo, b); cfg = mod.setVibeField(cfg, hi, a); }
   }
   vibe = mod.encodeVibe(cfg);
+}
+
+// A short base-36 tag, e.g. "bd44ac2a" — the random song name used on a fresh visit.
+function randomTag() { return Math.random().toString(36).slice(2, 10); }
+
+// 🎲 Reroll: randomize the vibe knobs and restart playback (the seed's tag/n are unchanged).
+function rerollVibe() {
+  randomizeVibeCfg();
   buildVibeEditor();
   setHash();
   updateTransport();
@@ -424,22 +433,24 @@ async function init() {
   worker.onmessage = onWorkerMessage;
 
   cfg = mod.defaultConfig();
+  buildFieldIndex();   // needed by randomizeVibeCfg/fieldIndex below
 
-  // initial seed: location.hash, else resume from localStorage, else defaults
+  // initial seed: a shared URL (location.hash) wins; otherwise a fresh random song —
+  // random tag, random vibe, n=0 — so every plain visit lands somewhere new.
   const hash = location.hash.slice(1);
   if (hash) {
     const p = mod.parseSeed(hash);
     if (p.tag) tag = p.tag;
     if (p.vibe) cfg = mod.decodeVibe(p.vibe, cfg);
     if (p.hasN) n = Math.max(0, p.n);
+    vibe = mod.encodeVibe(cfg);
   } else {
-    const savedN = parseInt(localStorage.getItem('skafinity.n') || '0', 10);
-    if (!Number.isNaN(savedN)) n = Math.max(0, savedN);
+    tag = randomTag();
+    n = 0;
+    randomizeVibeCfg();   // sets `vibe`
   }
-  vibe = mod.encodeVibe(cfg);
   displayN = n;
 
-  buildFieldIndex();
   buildVibeEditor();
   renderPlaylist();
   updateTransport();
@@ -469,5 +480,5 @@ async function init() {
 
 init().catch((e) => {
   document.getElementById('status').textContent =
-    'Failed to load the WASM engine — run `make` (needs emscripten) so build/skafinity.js exists. ' + e;
+    'Failed to load the WASM engine — run `make` (needs the .NET wasm-tools workload) so web/_framework exists, and serve over http (make serve). ' + e;
 });

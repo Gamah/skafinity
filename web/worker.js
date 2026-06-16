@@ -1,7 +1,7 @@
 // Generation worker — owns its own WASM instance so rendering never blocks the UI or
 // audio thread (mirrors MusicController.FillAhead running on a worker). It only renders;
 // scheduling/crossfade live on the main thread.
-import Skafinity from '../build/skafinity.js';
+import Skafinity from './engine.js';
 
 let mod = null;
 const ready = Skafinity().then((m) => { mod = m; });
