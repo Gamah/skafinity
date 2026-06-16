@@ -66,7 +66,7 @@ check('VibeDisplay renders the value', /^\d+$/.test(E.VibeDisplay(cfg2, tempoMin
 // ── generation ──
 const frames = E.GenerateSong('gamah:0', cfg);
 check('GenerateSong returns a sane frame count', frames > 1_000_000 && frames < 5_000_000, `${frames}`);
-check('SampleRate is 32000', E.SampleRate() === 32000, `${E.SampleRate()}`);
+check('SampleRate is 44100', E.SampleRate() === 44100, `${E.SampleRate()}`);
 
 const L = floatChannel(0), R = floatChannel(1);
 check('channel lengths match frame count', L.length === frames && R.length === frames);

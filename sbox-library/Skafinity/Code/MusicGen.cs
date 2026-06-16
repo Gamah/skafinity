@@ -30,7 +30,7 @@ public sealed class MusicGen
 		public int Genre = 0;
 
 		// Output
-		public int SampleRate = 32000;
+		public int SampleRate = 44100;
 		public float TargetSeconds = 80f; // (legacy) song length now follows the structure
 		public int Bars = 64;             // fallback if TargetSeconds <= 0
 
@@ -87,6 +87,11 @@ public sealed class MusicGen
 		public float HornDrive = 1.4f;
 		public float MasterDrive = 1.1f;
 		public float MasterPeak = 0.95f;
+
+		// Master room reverb — a touch of stereo space so the mix reads with depth
+		// instead of dry/"16-bit". Wet = blend, Decay = tail length (0..1).
+		public float MasterReverb = 0.16f;
+		public float ReverbDecay = 0.5f;
 
 		// Feel
 		public float OctavePopChance = 0.30f;
@@ -408,16 +413,88 @@ public sealed class MusicGen
 			rawPeak = Math.Max( rawPeak, Math.Max( MathF.Abs( _bufL[i] ), MathF.Abs( _bufR[i] ) ) );
 		float pre = rawPeak > 0.0001f ? _c.MasterDrive / rawPeak : _c.MasterDrive;
 
+		for ( int i = 0; i < total; i++ )
+		{
+			_bufL[i] = (float)Math.Tanh( _bufL[i] * pre );
+			_bufR[i] = (float)Math.Tanh( _bufR[i] * pre );
+		}
+
+		// A touch of stereo room reverb — the dry mix alone read flat/"16-bit".
+		ApplyReverb();
+
 		float peak = 0f;
 		for ( int i = 0; i < total; i++ )
 		{
-			float l = (float)Math.Tanh( _bufL[i] * pre );
-			float r = (float)Math.Tanh( _bufR[i] * pre );
-			_bufL[i] = l; _bufR[i] = r;
-			float a = Math.Max( MathF.Abs( l ), MathF.Abs( r ) );
+			float a = Math.Max( MathF.Abs( _bufL[i] ), MathF.Abs( _bufR[i] ) );
 			if ( a > peak ) peak = a;
 		}
 		return peak > 0.0001f ? _c.MasterPeak / peak : 1f;
+	}
+
+	// ── Master reverb ──
+	// A Schroeder/Freeverb-style bank: several parallel damped comb filters (the dense
+	// tail) feeding a chain of allpasses (diffusion). The two channels use slightly
+	// different delay lengths so the room is decorrelated → real stereo width and depth.
+	static readonly int[] CombBase = { 1116, 1188, 1277, 1356, 1422, 1491 }; // samples @ 44.1k
+	static readonly int[] ApBase = { 556, 441, 341 };
+	const int ReverbStereoSpread = 23; // R-channel delay offset for decorrelation
+
+	void ApplyReverb()
+	{
+		float wet = Math.Clamp( _c.MasterReverb, 0f, 1f );
+		if ( wet <= 0.0001f ) return;
+		float feedback = 0.70f + 0.28f * Math.Clamp( _c.ReverbDecay, 0f, 1f ); // tail length
+		const float damp = 0.25f, damp1 = 1f - damp;                            // HF damping in the tail
+		const float apg = 0.5f;                                                 // allpass coefficient
+		const float inGain = 0.25f;                                             // drive into the reverb
+		double srk = _sr / 44100.0;                                             // scale delays to the rate
+
+		for ( int ch = 0; ch < 2; ch++ )
+		{
+			var buf = ch == 0 ? _bufL : _bufR;
+			int off = ch == 0 ? 0 : ReverbStereoSpread;
+			int nc = CombBase.Length, na = ApBase.Length;
+			var combBuf = new float[nc][];
+			var combIdx = new int[nc];
+			var combStore = new float[nc];
+			for ( int j = 0; j < nc; j++ )
+				combBuf[j] = new float[Math.Max( 1, (int)Math.Round( (CombBase[j] + off) * srk ) )];
+			var apBuf = new float[na][];
+			var apIdx = new int[na];
+			for ( int j = 0; j < na; j++ )
+				apBuf[j] = new float[Math.Max( 1, (int)Math.Round( (ApBase[j] + off) * srk ) )];
+
+			int n = buf.Length;
+			for ( int i = 0; i < n; i++ )
+			{
+				float input = buf[i] * inGain;
+				float acc = 0f;
+				for ( int j = 0; j < nc; j++ )
+				{
+					var cb = combBuf[j];
+					int idx = combIdx[j];
+					float r = cb[idx];
+					combStore[j] = r * damp1 + combStore[j] * damp;
+					cb[idx] = input + combStore[j] * feedback;
+					if ( ++idx >= cb.Length ) idx = 0;
+					combIdx[j] = idx;
+					acc += r;
+				}
+				acc /= nc;
+				for ( int j = 0; j < na; j++ )
+				{
+					var ab = apBuf[j];
+					int idx = apIdx[j];
+					float r = ab[idx];
+					float o = r - acc;
+					ab[idx] = acc + r * apg;
+					if ( ++idx >= ab.Length ) idx = 0;
+					apIdx[j] = idx;
+					acc = o;
+				}
+				buf[i] += wet * acc;
+			}
+		}
 	}
 
 	int ScaleMidi( int baseMidi, int degree )
@@ -885,8 +962,9 @@ public sealed class MusicGen
 			float vib = p.Vibrato > 0f ? (float)(1.0 + 0.005 * Math.Sin( i / (double)_sr * p.Vibrato * 2 * Math.PI )) : 1f;
 			for ( int v = 0; v < voices; v++ )
 			{
-				s += Osc( p.Osc, ph[v] - Math.Floor( ph[v] ) );
-				ph[v] += inc[v] * vib;
+					double dt = inc[v] * vib;
+					s += BlepOsc( p.Osc, ph[v] - Math.Floor( ph[v] ), dt );
+					ph[v] += dt;
 			}
 			s /= voices;
 			if ( p.Breath > 0f )
@@ -920,13 +998,40 @@ public sealed class MusicGen
 		}
 	}
 
-	static float Osc( int t, double p ) => t switch
+	// Band-limited oscillator. Naive saw/square step instantaneously at the phase wrap,
+	// and those discontinuities alias into harsh inharmonic tones — the core of the
+	// "8-/16-bit" buzz. PolyBLEP rounds each discontinuity over one sample so the harmonics
+	// fold back cleanly, for a warm analog edge instead. Sine is already band-limited;
+	// triangle's corners roll off as 1/n² so its aliasing is inaudible.
+	// p = phase in [0,1), dt = phase increment per sample (cycles/sample).
+	static float BlepOsc( int t, double p, double dt )
 	{
-		0 => MathF.Sin( (float)(p * 2 * Math.PI) ),
-		1 => (float)(2 * p - 1),
-		2 => p < 0.5 ? 1f : -1f,
-		_ => 4f * MathF.Abs( (float)p - 0.5f ) - 1f,
-	};
+		switch ( t )
+		{
+			case 0:
+				return MathF.Sin( (float)(p * 2 * Math.PI) );
+			case 1: // saw
+				return (float)(2 * p - 1) - PolyBlep( p, dt );
+			case 2: // square (50% duty = two opposed discontinuities)
+			{
+				float v = p < 0.5 ? 1f : -1f;
+				v += PolyBlep( p, dt );
+				double p2 = p + 0.5; if ( p2 >= 1.0 ) p2 -= 1.0;
+				return v - PolyBlep( p2, dt );
+			}
+			default: // triangle
+				return 4f * MathF.Abs( (float)p - 0.5f ) - 1f;
+		}
+	}
+
+	// PolyBLEP residual: the correction applied around a step discontinuity.
+	static float PolyBlep( double t, double dt )
+	{
+		if ( dt <= 0 ) return 0f;
+		if ( t < dt ) { t /= dt; return (float)(t + t - t * t - 1.0); }
+		if ( t > 1.0 - dt ) { t = (t - 1.0) / dt; return (float)(t * t + t + t + 1.0); }
+		return 0f;
+	}
 
 	static float Midi( int m ) => 440f * MathF.Pow( 2f, (m - 69) / 12f );
 
