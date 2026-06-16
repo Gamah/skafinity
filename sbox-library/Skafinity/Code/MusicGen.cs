@@ -605,10 +605,10 @@ public sealed class MusicGen
 			case "BASS":       return rock ? new Expression( 0f, 0f, 0.10f, 0f )
 			                               : new Expression( 0f, 0f, 0.25f, 0.05f ); // reggae bass slides
 			case "SKANK":      return default;                          // staccato chops — dead straight
-			case "ORGAN":      return new Expression( 0.15f, 0f, 0f, 0f ); // gentle bubble vibrato
-			case "LEAD":       return new Expression( 0.50f, 0.15f, 0.10f, 0.30f ); // brass sings + scoops
-			case "HORNS":      return new Expression( 0.30f, 0f, 0f, 0.20f ); // section stabs fall/scoop
-			case "KEYS":       return new Expression( 0.10f, 0f, 0f, 0f );
+			case "ORGAN":      return new Expression( 0.15f, 0f, 0f, 0f ); // gentle bubble vibrato (only blooms on held notes)
+			case "LEAD":       return new Expression( 0.35f, 0.15f, 0.10f, 0.25f ); // brass sings + scoops
+			case "HORNS":      return new Expression( 0.20f, 0f, 0f, 0.20f ); // section stabs fall/scoop
+			case "KEYS":       return default;                          // organ comp — locked, no wobble
 			case "RHYTHM GTR": return default;                          // power chords — straight
 			case "LEAD GTR":   return new Expression( 0.30f, _c.LeadGtrBend, 0.10f, _c.LeadGtrBend ); // bendiness
 			default:           return default;
@@ -623,19 +623,22 @@ public sealed class MusicGen
 	Voicing Roll( in Expression ex, int midi, int prevMidi, Rng rng )
 	{
 		var v = new Voicing();
-		if ( ex.Vib > 0f ) v.VibDepth = 0.004f + 0.045f * ex.Vib;   // ~subtle → wide warble
+		// Vibrato depth is a SMALL pitch fraction (lean 0.5 ≈ ±10 cents) and it's delayed in
+		// the synth, so notes read locked-on, not seasick. BendTime is in SECONDS — a quick
+		// slide that resolves and locks, never a fraction of a long held note.
+		if ( ex.Vib > 0f ) v.VibDepth = 0.003f + 0.006f * ex.Vib;
 		if ( ex.Glide > 0f && prevMidi != NoPrev && rng.Chance( ex.Glide ) )
 		{
-			v.BendSemis = Math.Clamp( prevMidi - midi, -12, 12 );    // start at the previous pitch
-			v.BendTime = 0.5f;                                       // slide over the first half
+			v.BendSemis = Math.Clamp( prevMidi - midi, -7, 7 );      // start at the previous pitch
+			v.BendTime = 0.13f;                                      // ~130 ms portamento
 		}
 		else if ( ex.BendIn > 0f && rng.Chance( ex.BendIn ) )
 		{
 			v.BendSemis = rng.Chance( 0.5f ) ? -1f : -2f;            // a semitone or whole step below
-			v.BendTime = 0.35f;
+			v.BendTime = 0.09f;                                      // ~90 ms bend up into pitch
 		}
 		if ( ex.Scoop > 0f && rng.Chance( ex.Scoop ) )
-			v.ScoopSemis = rng.Chance( 0.5f ) ? 0.5f : 1f;           // quarter / half-step hump
+			v.ScoopSemis = rng.Chance( 0.5f ) ? 0.5f : 1f;           // quarter / half-step attack hump
 		return v;
 	}
 
@@ -910,7 +913,7 @@ public sealed class MusicGen
 					Amp = _c.KeysVol / degs.Length,
 					Attack = 0.004f, Decay = dec, Sustain = ring ? 0.6f : 0.2f, Sustained = ring,
 					Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
-					Drive = MathF.Max( 1f, _c.KeysDrive ), Pan = 0f, Vibrato = 5.0f,
+					Drive = MathF.Max( 1f, _c.KeysDrive ), Pan = 0f,
 				};
 				ApplyVoicing( ref keys, keysVc );
 				RenderPatch( barStart + e * spe, dur, Midi( ScaleMidi( kBase, d ) ), keys );
@@ -1180,6 +1183,11 @@ public sealed class MusicGen
 
 		int end = Math.Min( Math.Min( _bufL.Length, start + dur ), clipTo );
 		int relStart = dur - rel;
+		// Expression windows (samples): vibrato holds off then ramps in; the scoop is a quick
+		// attack gesture. Kept fixed/absolute so a long held note locks on pitch after them.
+		int vibDelay = (int)(0.18f * _sr);
+		int vibRamp = Math.Max( 1, (int)(0.16f * _sr) );
+		int scoopWin = Math.Max( 1, (int)(0.16f * _sr) );
 		for ( int i = 0; start + i < end; i++ )
 		{
 			float env;
@@ -1194,19 +1202,28 @@ public sealed class MusicGen
 			if ( env < 0.0006f && i > atk && !p.Sustained ) break;
 
 			float s = 0f;
-			float vibDepth = p.VibDepth > 0f ? p.VibDepth : 0.005f;
-			float vib = p.Vibrato > 0f ? (float)(1.0 + vibDepth * Math.Sin( i / (double)_sr * p.Vibrato * 2 * Math.PI )) : 1f;
-			// Pitch-bend envelope (semitones), realized as a frequency multiplier on top of vibrato.
-			// BendSemis glides to 0 over the first BendTime of the note (bend-in / glide); ScoopSemis
-			// adds a 0→peak→0 hump across the whole note (bend-and-release).
+			// Vibrato: subtle, and DELAYED so the note locks on pitch first and only blooms a
+			// wobble if it's held — short notes stay dead-on. Depth is a small pitch fraction.
+			float vib = 1f;
+			if ( p.Vibrato > 0f && p.VibDepth > 0f )
+			{
+				float ramp = MathF.Max( 0f, (i - vibDelay) / (float)vibRamp );
+				if ( ramp > 1f ) ramp = 1f;
+				if ( ramp > 0f )
+					vib = (float)(1.0 + p.VibDepth * ramp * Math.Sin( i / (double)_sr * p.Vibrato * 2 * Math.PI ));
+			}
+			// Pitch-bend envelope (semitones) on top of vibrato. Both are QUICK gestures over a
+			// short fixed window so the note then sits locked on its target pitch (bendMul == 1):
+			// BendSemis snaps to 0 over BendTime seconds (bend-in / glide); ScoopSemis is a fast
+			// up-and-back hump confined to the attack (bend-and-release).
 			float bendSemis = 0f;
 			if ( p.BendSemis != 0f && p.BendTime > 0f )
 			{
-				int bt = Math.Max( 1, (int)(p.BendTime * dur) );
+				int bt = Math.Min( dur, Math.Max( 1, (int)(p.BendTime * _sr) ) );
 				if ( i < bt ) { float u = i / (float)bt; bendSemis += p.BendSemis * (1f - u * u * (3f - 2f * u)); }
 			}
-			if ( p.ScoopSemis != 0f )
-				bendSemis += p.ScoopSemis * MathF.Sin( (float)(i / (float)Math.Max( 1, dur ) * Math.PI) );
+			if ( p.ScoopSemis != 0f && i < scoopWin )
+				bendSemis += p.ScoopSemis * MathF.Sin( (float)(i / (float)Math.Min( dur, scoopWin ) * Math.PI) );
 			float bendMul = bendSemis != 0f ? (float)Math.Pow( 2.0, bendSemis / 12.0 ) : 1f;
 			for ( int v = 0; v < voices; v++ )
 			{
