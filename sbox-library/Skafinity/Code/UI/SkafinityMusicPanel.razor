@@ -1,0 +1,324 @@
+@using System
+@using System.Collections.Generic
+@using System.Linq
+@using Sandbox
+@using Sandbox.UI
+@namespace Skafinity
+@inherits PanelComponent
+
+@*
+	The optional drop-in settings panel for the Skafinity music engine.
+
+	Add this PanelComponent to a GameObject under a ScreenPanel (or WorldPanel). It finds a
+	SkafinityPlayer in the scene (or set Player explicitly) and offers the whole knob surface
+	as UI — you don't have to wire anything. A floating ♪ button toggles the board open/closed.
+
+	The engine needs nothing from this: SkafinityPlayer plays on its own. This panel is pure
+	convenience for players who want to tweak the vibe rather than tune it in the inspector.
+
+	The vibe editor is driven entirely from the library's VibeCodec field metadata for the
+	current genre: each field reports its voice (matrix row, or null for a GLOBAL knob) and
+	column (0 volume / 1 tone / 2 character / 3 extra). A new genre — or a new knob — is a pure
+	engine change; there is no field table here. s&box has no slider widget, so each knob is a
+	strip of tick cells (one per base-36 level the seed encodes); each change re-encodes the
+	vibe and restarts the player on a short debounce.
+
+	Re-theming: the palette lives as SCSS variables at the top of SkafinityMusicPanel.razor.scss.
+	Override those (or supply your own panel against the same SkafinityPlayer API) to restyle.
+*@
+
+<root class="@( IsOpen ? "open" : "" )">
+	@if ( !IsOpen )
+	{
+		<div class="fab" onclick="@Toggle">♪</div>
+	}
+	else
+	{
+	@{ var cfg = Player?.EffectiveConfig(); int genre = cfg?.Genre ?? 0; }
+	<div class="music">
+		<div class="header">
+			<div class="title">MUSIC</div>
+			<div class="close" onclick="@Toggle">✕</div>
+		</div>
+		<div class="divider"></div>
+
+		<div class="top">
+			<div class="row">
+				<div class="label">NOW PLAYING</div>
+				<div class="play-row">
+					<div class="seed-box">@Seed()</div>
+					<div class="btn" onclick="@CopySeed">@_copyLabel</div>
+				</div>
+			</div>
+
+			<div class="row">
+				<div class="label">SONG</div>
+				<div class="play-row">
+					<div class="btn wide" onclick="@( () => Step( -1 ) )">◀ Prev</div>
+					<div class="num">@( Player?.N ?? 0 )</div>
+					<div class="btn wide" onclick="@( () => Step( 1 ) )">Next ▶</div>
+				</div>
+			</div>
+
+			<div class="row">
+				<div class="label">PLAY A SEED</div>
+				<div class="play-row">
+					<TextEntry @ref="_tagEntry" placeholder="Paste vibe:tag:n (or a tag — blank = default)" class="tag-input" />
+					<div class="btn" onclick="@Play">Play</div>
+					<div class="btn" onclick="@UseDefault">Use default</div>
+				</div>
+			</div>
+
+			<div class="row">
+				<div class="label">MUTE</div>
+				<div class="play-row">
+					<div class="btn toggle @( Player?.Enabled == false ? "on" : "" )" onclick="@ToggleMute">@( Player?.Enabled == false ? "MUTED" : "PLAYING" )</div>
+				</div>
+			</div>
+
+			<div class="row">
+				<div class="label">VOLUME</div>
+				<div class="cells">
+					@foreach ( var v in VolumeSteps )
+					{
+						var vv = v;
+						<div class="cell @( ( Player?.Volume ?? 1f ) >= vv - 0.001f ? "filled" : "" )"
+							 onclick="@( () => SetVolume( vv ) )">@VolLabel( vv )</div>
+					}
+				</div>
+			</div>
+		</div>
+
+		<div class="divider"></div>
+
+		<div class="row genre-row">
+			<div class="label">GENRE</div>
+			<div class="cells">
+				@for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+				{
+					var gg = g;
+					<div class="cell choice @( g == genre ? "selected" : "" )"
+						 onclick="@( () => SetGenre( gg ) )">@VibeCodec.Genres[g]</div>
+				}
+				<div class="btn reroll" onclick="@Reroll">🎲 Reroll</div>
+				<div class="btn reroll toggle @( Player?.RandomEverySong == true ? "on" : "" )"
+					 onclick="@ToggleRandomEverySong">🎲 Random every song: @( Player?.RandomEverySong == true ? "ON" : "OFF" )</div>
+				<div class="btn" onclick="@Save">Save .wav</div>
+			</div>
+		</div>
+
+		<div class="label">VIBE — per-instrument mixer (tweak, then share the seed)</div>
+		<div class="matrix">
+			<div class="mrow mhead">
+				<div class="mvoice"></div>
+				@foreach ( var h in ColHeaders )
+				{
+					<div class="mcell mlabel">@h</div>
+				}
+			</div>
+			@foreach ( var (voice, cells) in InstrumentRows( genre ) )
+			{
+				<div class="mrow">
+					<div class="mvoice">@voice</div>
+					@for ( int col = 0; col < ColHeaders.Length; col++ )
+					{
+						var f = cells[col];
+						<div class="mcell">
+							@if ( f != null )
+							{
+								@Knob( f, cfg, f.Name == ColHeaders[col] ? "" : f.Name )
+							}
+						</div>
+					}
+				</div>
+			}
+		</div>
+
+		<div class="divider"></div>
+		<div class="label">GLOBAL</div>
+		<div class="vibe-grid">
+			@foreach ( var f in GlobalRows( genre ) )
+			{
+				<div class="vibe">@Knob( f, cfg, f.Name )</div>
+			}
+		</div>
+
+		@if ( _msg != null )
+		{
+			<div class="hint ok">@_msg</div>
+		}
+	</div>
+	}
+</root>
+
+@code
+{
+	/// <summary>The player this panel drives. Leave unset to auto-find a <see cref="SkafinityPlayer"/>
+	/// in the scene on start.</summary>
+	[Property] public SkafinityPlayer Player { get; set; }
+
+	// One tick cell per base-36 level the seed encodes (VibeCodec.Levels).
+	static int UiTicks => VibeCodec.Levels;
+	static readonly string[] ColHeaders = { "VOLUME", "TONE", "CHARACTER", "EXTRA" };
+
+	// Volume control steps over the player's 0..2 range.
+	static readonly float[] VolumeSteps = { 0f, 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f };
+
+	/// <summary>Whether the settings board is showing (toggled by the ♪ button).</summary>
+	public bool IsOpen { get; private set; }
+
+	TextEntry _tagEntry;
+	bool _tagInit;
+	string _copyLabel = "Copy";
+	string _msg;
+
+	protected override void OnStart()
+	{
+		Player ??= Scene.GetAllComponents<SkafinityPlayer>().FirstOrDefault();
+		if ( Player == null )
+			Log.Warning( "SkafinityMusicPanel: no SkafinityPlayer found in the scene — add one (or set Player)." );
+	}
+
+	protected override void OnUpdate()
+	{
+		// One-time seed of the text entry with the current tag once the board opens.
+		if ( !IsOpen ) { _tagInit = false; return; }
+		if ( !_tagInit && _tagEntry != null ) { _tagEntry.Text = Player?.Tag ?? ""; _tagInit = true; }
+	}
+
+	string Seed() => Player?.CurrentSeed ?? "—";
+
+	/// <summary>Open/close the settings board.</summary>
+	public void Toggle()
+	{
+		IsOpen = !IsOpen;
+		if ( !IsOpen ) _tagInit = false;
+	}
+
+	static string VolLabel( float v ) => v <= 0f ? "0" : $"{(int)Math.Round( v * 100 )}%";
+
+	// Instrument rows for the genre: each voice with its [vol, tone, character, extra] cells
+	// (null where a genre leaves a column empty). Order = the library's display/wire order.
+	static IEnumerable<(string Voice, VibeCodec.Field[] Cells)> InstrumentRows( int genre )
+	{
+		var order = new List<string>();
+		var byVoice = new Dictionary<string, VibeCodec.Field[]>();
+		foreach ( var f in VibeCodec.Fields( genre ) )
+		{
+			if ( f.Voice == null ) continue;
+			if ( !byVoice.TryGetValue( f.Voice, out var cells ) )
+			{
+				cells = new VibeCodec.Field[ColHeaders.Length];
+				byVoice[f.Voice] = cells;
+				order.Add( f.Voice );
+			}
+			if ( f.Column >= 0 && f.Column < cells.Length ) cells[f.Column] = f;
+		}
+		foreach ( var v in order ) yield return (v, byVoice[v]);
+	}
+
+	static IEnumerable<VibeCodec.Field> GlobalRows( int genre ) =>
+		VibeCodec.Fields( genre ).Where( f => f.Voice == null );
+
+	// Index of a field within the current genre's field list (what Player.SetVibe expects).
+	static int FieldIndex( int genre, VibeCodec.Field field )
+	{
+		var fields = VibeCodec.Fields( genre );
+		for ( int i = 0; i < fields.Count; i++ )
+			if ( ReferenceEquals( fields[i], field ) ) return i;
+		return -1;
+	}
+
+	// One knob: a name/value header over a strip of tick cells (or labeled choice cells).
+	RenderFragment Knob( VibeCodec.Field f, MusicGen.Config cfg, string label )
+	{
+		return @<text>
+		<div class="vibe-head">
+			<div class="vibe-name">@label</div>
+			<div class="vibe-val">@( cfg != null ? f.Display( cfg ) : "" )</div>
+		</div>
+		<div class="cells">
+			@{
+				int genre = cfg?.Genre ?? 0;
+				int idx = FieldIndex( genre, f );
+			}
+			@if ( f.Choices != null )
+			{
+				int sel = cfg != null ? (int)MathF.Round( f.GetNorm( cfg ) * (f.Choices.Length - 1) ) : 0;
+				@for ( int k = 0; k < f.Choices.Length; k++ )
+				{
+					var kk = k; var n = f.Choices.Length;
+					<div class="cell choice @( k == sel ? "selected" : "" )"
+						 onclick="@( () => SetVibe( idx, kk / (float)(n - 1) ) )">@f.Choices[k]</div>
+				}
+			}
+			else
+			{
+				int sel = cfg != null ? (int)MathF.Round( f.GetNorm( cfg ) * (UiTicks - 1) ) : 0;
+				@for ( int k = 0; k < UiTicks; k++ )
+				{
+					var kk = k;
+					<div class="cell tick @( k <= sel ? "filled" : "" ) @( k == sel ? "selected" : "" )"
+						 onclick="@( () => SetVibe( idx, kk / (float)(UiTicks - 1) ) )"></div>
+				}
+			}
+		</div>
+	</text>;
+	}
+
+	void Step( int d ) { Player?.StepN( d ); _msg = null; }
+
+	void ToggleMute() { if ( Player != null ) Player.Enabled = !Player.Enabled; }
+
+	void SetVolume( float v ) { if ( Player != null ) Player.Volume = v; }
+
+	void SetVibe( int index, float norm )
+	{
+		if ( index < 0 ) return;
+		Player?.SetVibe( index, norm );
+		_msg = null;
+	}
+
+	void SetGenre( int genre ) { Player?.SetGenre( genre ); _msg = null; }
+
+	void Play()
+	{
+		Player?.PlaySeed( _tagEntry?.Text );
+		_msg = Player != null ? $"Playing {Player.CurrentSeed}" : null;
+	}
+
+	void UseDefault()
+	{
+		Player?.SetTag( "" );
+		if ( _tagEntry != null ) _tagEntry.Text = "";
+		_msg = "Back to the default tag and vibe";
+	}
+
+	void CopySeed()
+	{
+		try { Clipboard.SetText( Seed() ); _copyLabel = "Copied!"; }
+		catch { _copyLabel = "—"; }
+	}
+
+	void Save()
+	{
+		var name = Player?.SaveCurrentToFile();
+		_msg = string.IsNullOrEmpty( name ) ? "Couldn't save song" : $"Saved {name} to your s&box data folder";
+	}
+
+	void Reroll() { Player?.RerollVibe(); _msg = "Rerolled every knob but the volumes"; }
+
+	void ToggleRandomEverySong()
+	{
+		if ( Player == null ) return;
+		bool on = !Player.RandomEverySong;
+		Player.RandomEverySong = on;
+		if ( on ) Player.RerollVibe( includeVolumes: true, includeGenre: true );
+		_msg = on ? "Shuffle: every new song randomizes every knob" : "Shuffle off";
+	}
+
+	protected override int BuildHash() =>
+		HashCode.Combine(
+			IsOpen, Player?.CurrentSeed, Player?.CurrentVibe, Player?.Enabled ?? true,
+			Player?.Volume ?? 1f, Player?.RandomEverySong ?? false, _msg, _copyLabel );
+}

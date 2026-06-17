@@ -33,6 +33,9 @@ public sealed class SkafinityPlayer : Component
 	[Property, Group( "Music" )] public string MixerName { get; set; } = "";
 	/// <summary>Begin playing automatically in <see cref="OnStart"/>. Off = call <see cref="StartSequence"/> yourself.</summary>
 	[Property, Group( "Music" )] public bool AutoPlay { get; set; } = true;
+	/// <summary>Shuffle mode: re-randomise every knob (incl. genre + volumes) as each new song
+	/// begins, so the sequence keeps reinventing itself. Off = the seed's vibe stays put.</summary>
+	[Property, Group( "Music" )] public bool RandomEverySong { get; set; } = false;
 
 	// ── Seed ──
 	/// <summary>Seed tag — any string (a name, a word). Empty falls back to "skafinity".</summary>
@@ -561,6 +564,10 @@ public sealed class SkafinityPlayer : Component
 			_curReserve = nextReserve;
 			_curN++;
 			if ( PersistProgress ) SaveN( _curN );
+
+			// Shuffle mode: each new song gets a fresh set of knobs. Reroll the vibe so the
+			// look-ahead fill (OnUpdate) generates the upcoming songs with the new voicing.
+			if ( RandomEverySong ) RerollVibe( includeVolumes: true, includeGenre: true );
 		}
 		catch ( Exception e )
 		{
@@ -635,14 +642,31 @@ public sealed class SkafinityPlayer : Component
 		_restartPendingSince = 0;
 	}
 
-	/// <summary>Randomize every vibe knob except the per-instrument volumes; store + restart once.</summary>
-	public void RerollVibe()
+	/// <summary>Switch genre (rides in the vibe's first char): re-encode the effective config
+	/// with the new genre into <see cref="Vibe"/> so it sticks over the inspector knobs, then
+	/// restart. Use this rather than setting <see cref="Genre"/> directly — an existing
+	/// <see cref="Vibe"/> override otherwise wins and the change wouldn't take.</summary>
+	public void SetGenre( int genre )
+	{
+		var cfg = BuildConfig();
+		cfg.Genre = Math.Clamp( genre, 0, VibeCodec.GenreCount - 1 );
+		Vibe = VibeCodec.Encode( cfg );
+		StartSequence();
+	}
+
+	/// <summary>Randomize the vibe knobs and restart on a short debounce. By default the
+	/// per-instrument volumes (and genre) are left alone so a reroll re-voices without upending
+	/// the mix; pass <paramref name="includeVolumes"/> / <paramref name="includeGenre"/> for a
+	/// full shuffle.</summary>
+	public void RerollVibe( bool includeVolumes = false, bool includeGenre = false )
 	{
 		var cfg = BuildConfig();
 		var rng = System.Random.Shared;
+		if ( includeGenre )
+			cfg.Genre = rng.Next( VibeCodec.GenreCount );
 		foreach ( var f in VibeCodec.Fields( cfg.Genre ) )
 		{
-			if ( f.Voice != null && f.Column == 0 ) continue; // skip per-instrument volumes
+			if ( !includeVolumes && f.Voice != null && f.Column == 0 ) continue; // skip per-instrument volumes
 			f.SetNorm( cfg, rng.NextSingle() );
 		}
 		if ( cfg.BpmMin > cfg.BpmMax ) (cfg.BpmMin, cfg.BpmMax) = (cfg.BpmMax, cfg.BpmMin);

@@ -1,0 +1,142 @@
+// ── Theme ─────────────────────────────────────────────────────────────────────
+// Re-theming the panel is a one-stop edit: override these variables. The palette is
+// rotaliate's dark-purple CRT look; nothing below hardcodes a colour outside this block.
+$bg:        #07051a;                 // panel background (rotaliate dark purple)
+$btn:       #03021a;                 // buttons / cells — deeper than the panel
+$btn-hover: #0a1052;                 // button / cell hover
+$border:    rgba(120,150,255,0.6);   // hover border
+$filled:    #2a3aa8;                 // filled ticks / selected volume cells
+$accent:    #58e87a;                 // on / ok accent (green)
+$accent-bg: rgba(88,232,122,0.25);   // accent toggle background
+$text:      rgba(255,255,255,0.85);  // primary text
+$text-dim:  rgba(255,255,255,0.45);  // labels
+// ────────────────────────────────────────────────────────────────────────────────
+
+skafinitymusicpanel {
+	// Fill the ScreenPanel; flex-centre the board. pointer-events:none so a closed panel
+	// never blocks anything — only the board / button itself take pointer events.
+	position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+	justify-content: center; align-items: center;
+	pointer-events: none;
+	font-family: Poppins;
+
+	// Floating toggle button (shown when the board is closed), bottom-left.
+	.fab {
+		position: absolute; left: 24px; bottom: 24px;
+		width: 52px; height: 52px;
+		justify-content: center; align-items: center;
+		font-size: 28px; color: $text;
+		background-color: $btn;
+		border: 2px solid rgba(255,255,255,0.12); border-radius: 26px;
+		cursor: pointer; pointer-events: all;
+
+		&:hover { background-color: $btn-hover; border-color: $border; }
+	}
+
+	// The board — sized to its content (no scroll range to drag-pan). Keep it lean enough
+	// to fit a 1080-tall reference; it extends past the box rather than scrolling.
+	.music {
+		flex-shrink: 0;
+		width: 96%; max-width: 1320px;
+		flex-direction: column;
+		align-items: stretch;
+		padding: 14px 32px;
+		background-color: $bg;
+		border: 1.5px solid rgba(255,255,255,0.12);
+		border-radius: 16px;
+		gap: 6px;
+		pointer-events: all;
+	}
+
+	.music > div { flex-shrink: 0; }
+
+	.header { flex-direction: row; align-items: center; justify-content: space-between; }
+
+	.title {
+		justify-content: center; white-space: nowrap;
+		font-size: 26px; font-weight: bold; letter-spacing: 6px; color: white;
+	}
+
+	.close {
+		width: 34px; height: 34px; justify-content: center; align-items: center;
+		font-size: 20px; font-weight: bold; color: rgba(255,255,255,0.6);
+		background-color: rgba(255,255,255,0.08); border-radius: 8px;
+		cursor: pointer; pointer-events: all;
+
+		&:hover { color: #ffffff; background-color: rgba(255,255,255,0.2); }
+	}
+
+	.divider { height: 2px; background-color: rgba(255,255,255,0.1); margin: 0; }
+
+	.top { flex-direction: row; flex-wrap: wrap; gap: 6px 32px; }
+	.top > .row { width: 46%; }
+
+	.row { flex-direction: column; gap: 3px; }
+	.genre-row .cells { gap: 6px; }
+
+	.label {
+		font-size: 14px; letter-spacing: 2px;
+		color: $text-dim; white-space: nowrap;
+	}
+
+	.play-row { flex-direction: row; align-items: center; gap: 8px; }
+
+	.seed-box, .num {
+		justify-content: center; align-items: center; height: 32px; padding: 0 14px;
+		font-size: 15px; letter-spacing: 1px; color: white;
+		background-color: rgba(255,255,255,0.07); border-radius: 6px;
+	}
+	.num { min-width: 60px; font-weight: bold; }
+
+	.tag-input {
+		width: 360px; height: 32px; padding: 0 12px; font-size: 15px; color: white;
+		background-color: rgba(255,255,255,0.07);
+		border: 2px solid rgba(255,255,255,0.15); border-radius: 6px; pointer-events: all;
+	}
+
+	.cells { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px; }
+
+	.btn {
+		justify-content: center; align-items: center; height: 32px; padding: 0 16px;
+		font-size: 14px; color: $text;
+		background-color: $btn;
+		border: 2px solid transparent; border-radius: 6px; cursor: pointer; pointer-events: all;
+
+		&.wide { min-width: 96px; }
+		&.reroll { height: 28px; padding: 0 12px; font-size: 13px; margin-left: 12px; }
+		&:hover { background-color: $btn-hover; border: 2px solid $border; }
+		&.toggle.on { background-color: $accent-bg; border: 2px solid rgba(88,232,122,0.7); color: #d6ffe2; }
+	}
+
+	.cell {
+		justify-content: center; align-items: center; height: 19px;
+		font-size: 13px; color: rgba(255,255,255,0.8);
+		background-color: $btn;
+		border: 2px solid transparent; border-radius: 5px; cursor: pointer; pointer-events: all;
+
+		&:hover { background-color: $btn-hover; border: 2px solid $border; }
+		&.choice { padding: 0 10px; height: 28px; }
+		&.tick { width: 11px; }
+		&.tick.filled { background-color: $filled; }
+		&.filled { background-color: $filled; }
+		&.selected { border: 2px solid rgba(255,255,255,0.85); }
+	}
+
+	// GLOBAL knobs: four compact columns.
+	.vibe-grid { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; }
+	.vibe { width: 22%; flex-direction: column; gap: 2px; }
+	.vibe-head { flex-direction: row; justify-content: flex-start; align-items: center; gap: 6px; }
+	.vibe-name { font-size: 12px; letter-spacing: 1px; color: rgba(255,255,255,0.55); white-space: nowrap; }
+	.vibe-val { font-size: 12px; color: white; white-space: nowrap; }
+
+	// instrument mixer matrix: rows = voices, Volume leftmost
+	.matrix { flex-direction: column; gap: 3px; }
+	.mrow { flex-direction: row; align-items: flex-start; gap: 12px; }
+	.mvoice { width: 76px; flex-shrink: 0; align-items: flex-start; justify-content: flex-start;
+		font-size: 13px; font-weight: bold; letter-spacing: 1px; color: white; }
+	.mhead .mlabel { font-size: 11px; letter-spacing: 2px; color: rgba(255,255,255,0.4); }
+	.mcell { width: 0; flex-grow: 1; flex-direction: column; gap: 3px; }
+
+	.hint { font-size: 14px; letter-spacing: 1px; color: rgba(255,255,255,0.4); white-space: nowrap; }
+	.hint.ok { color: $accent; }
+}
