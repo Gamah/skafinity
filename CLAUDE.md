@@ -21,6 +21,7 @@ the single source of truth for both the game and this web toy**. The web build c
 | `sbox-library/Skafinity/Code/MusicGen.cs` | The composer + subtractive synthesiser. Portable PRNG → every musical choice → interleaved stereo PCM. **The spec.** |
 | `sbox-library/Skafinity/Code/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
+| `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. Re-themeable via the `.scss` variable block. |
 | `reference/*.cs` | The original Rotaliate-client copies, kept for context. **Read-only.** The `sbox-library` copies are what actually compile. |
 
 These two `.cs` are framework-free (only `System` / `System.Collections.Generic` /
