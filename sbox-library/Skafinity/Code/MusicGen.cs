@@ -151,7 +151,7 @@ public sealed class MusicGen
 	// re-balance, not the Vol defaults.
 	const float KickBalance = 0.800f;
 	const float SnareBalance = 0.900f;
-	const float TomBalance = 1.120f;   // toms were buried in the kit — pushed up, then backed off 20%
+	const float TomBalance = 0.780f;   // tuned by ear
 	const float HatBalance = 0.407f;   // equal-peak baseline (0.582) backed off 30% by ear —
 	                                   // the constant hats were masking the sparser kick/snare/toms
 	const float CrashBalance = 0.515f;
