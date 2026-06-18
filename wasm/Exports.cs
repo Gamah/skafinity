@@ -188,7 +188,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 71;
+	public const int Size = 72;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -209,6 +209,7 @@ static class Cfg
 		c.KeysVol, c.KeysCutoff, c.KeysDrive, c.KeysChug,
 		c.LeadGtrVol, c.LeadGtrCutoff, c.LeadGtrDrive, c.LeadGtrBend,
 		c.RhythmGtrVol, c.RhythmGtrCutoff, c.RhythmGtrDrive, c.RhythmGtrChug,
+		c.MasterReverb,
 	};
 
 	public static MusicGen.Config From( double[] a )
@@ -233,6 +234,7 @@ static class Cfg
 		c.KeysVol = (float)a[i++]; c.KeysCutoff = (float)a[i++]; c.KeysDrive = (float)a[i++]; c.KeysChug = (float)a[i++];
 		c.LeadGtrVol = (float)a[i++]; c.LeadGtrCutoff = (float)a[i++]; c.LeadGtrDrive = (float)a[i++]; c.LeadGtrBend = (float)a[i++];
 		c.RhythmGtrVol = (float)a[i++]; c.RhythmGtrCutoff = (float)a[i++]; c.RhythmGtrDrive = (float)a[i++]; c.RhythmGtrChug = (float)a[i++];
+		c.MasterReverb = (float)a[i++];
 		return c;
 	}
 }

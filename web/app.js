@@ -27,6 +27,21 @@ let tag = 'rotaliate';
 let n = 0;                    // next song index to schedule
 let displayN = 0;            // song currently audible (for UI)
 let vibe = '';
+// Per-instrument volumes, keyed by voice NAME (BASS, DRUMS, …) so a level follows the
+// instrument across genres. Pulled out of the (shareable) vibe seed; a local preference
+// persisted to localStorage and overlaid onto cfg after every seed/genre change.
+const VOLS_KEY = 'skafinity.vol';
+let vols = loadVols();
+function loadVols() { try { return JSON.parse(localStorage.getItem(VOLS_KEY)) || {}; } catch (_) { return {}; } }
+function saveVols() { try { localStorage.setItem(VOLS_KEY, JSON.stringify(vols)); } catch (_) {} }
+// Overlay the stored per-voice volumes onto cfg for the current genre (voices without a saved
+// level keep the song default). Call after building cfg from a vibe/genre.
+function applyStoredVolumes() {
+  for (const f of genreFields()) {
+    if (f.column === 0 && f.voice && vols[f.voice] !== undefined)
+      cfg = mod.setVibeField(cfg, f.i, vols[f.voice]);
+  }
+}
 let seq = 0;                  // bumped on every restart; stale renders are dropped
 let playing = false;
 
@@ -255,6 +270,7 @@ function applySeedString(s) {
     cfg = mod.decodeVibe(p.vibe, cfg);
     genre = mod.getGenre(cfg);
     if ($('genre')) $('genre').value = String(genre);
+    applyStoredVolumes();
     vibe = mod.encodeVibe(cfg);
     buildVibeEditor();
   }
@@ -353,7 +369,7 @@ function buildKnob(f, labelText) {
       input.append(o);
     }
     input.selectedIndex = Math.round(mod.getVibeNorm(cfg, f.i) * (choices.length - 1));
-    input.onchange = () => onVibeChange(f.i, input.selectedIndex / (choices.length - 1), val);
+    input.onchange = () => onVibeChange(f, input.selectedIndex / (choices.length - 1), val);
   } else {
     // Snap to the same discrete grid the seed encodes (one level per base-36 char), so the
     // slider can only land on values the vibe can actually represent.
@@ -361,7 +377,7 @@ function buildKnob(f, labelText) {
     input = document.createElement('input');
     input.type = 'range'; input.min = '0'; input.max = String(steps); input.step = '1';
     input.value = String(Math.round(mod.getVibeNorm(cfg, f.i) * steps));
-    input.oninput = () => onVibeChange(f.i, parseInt(input.value, 10) / steps, val);
+    input.oninput = () => onVibeChange(f, parseInt(input.value, 10) / steps, val);
   }
   input.className = 'knob-input';
   cell.append(head, input);
@@ -428,12 +444,18 @@ function buildVibeEditor() {
   host.append(grid);
 }
 
-function onVibeChange(i, norm, valEl) {
-  cfg = mod.setVibeField(cfg, i, norm);
-  vibe = mod.encodeVibe(cfg);
-  valEl.textContent = mod.vibeDisplay(cfg, i);
-  setHash();          // rewrite the URL hash
-  updateTransport();  // rewrite the visible seed field
+function onVibeChange(f, norm, valEl) {
+  cfg = mod.setVibeField(cfg, f.i, norm);
+  valEl.textContent = mod.vibeDisplay(cfg, f.i);
+  if (f.column === 0 && f.voice) {
+    // Per-instrument volume: a local mix preference, not part of the shareable seed/hash.
+    vols[f.voice] = norm;
+    saveVols();
+  } else {
+    vibe = mod.encodeVibe(cfg);
+    setHash();          // rewrite the URL hash
+    updateTransport();  // rewrite the visible seed field
+  }
   // debounce-restart so a slider drag isn't a generation storm (≈0.35s like the game)
   clearTimeout(restartTimer);
   restartTimer = setTimeout(() => { if (playing) startSequence(); }, 350);
@@ -443,6 +465,7 @@ function onVibeChange(i, norm, valEl) {
 function setGenre(g) {
   genre = g;
   cfg = mod.setGenre(cfg, g);
+  applyStoredVolumes();
   vibe = mod.encodeVibe(cfg);
   buildVibeEditor();
   setHash();
@@ -517,6 +540,7 @@ async function init() {
   }
   genre = mod.getGenre(cfg);
   $('genre').value = String(genre);
+  applyStoredVolumes();   // overlay the saved per-voice mix on top of the seed's voicing
   displayN = n;
 
   buildVibeEditor();

@@ -1,0 +1,13 @@
+# The build context is the repo root (compose `context: ..`). Keep it lean and make sure
+# the runtime image gets the FRESHLY-built _framework, not a stale committed/local one.
+.git
+.gitignore
+wasm/bin
+wasm/obj
+web/_framework
+node_modules
+reference
+test
+*.tar.gz
+*.wav
+.DS_Store

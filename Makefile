@@ -1,6 +1,15 @@
 # skafinity — C#-as-source ska engine compiled to WebAssembly with the .NET wasm-tools
 # workload (the same MusicGen.cs / VibeCodec.cs the s&box library ships, no port).
 #
+# ── Docker (the deploy/serve path — no local .NET needed) ──
+#   make up         → build the wasm bundle in Docker + serve it (nginx, container
+#                     skafinity-1, host 127.0.0.1:6970 — loopback so it stays behind ufw)
+#   make rebuild    → rebuild the image from scratch (no cache) and restart
+#   make down       → stop and remove the container
+#   make logs       → follow the container logs
+#   make ps         → container status
+#
+# ── Local (.NET SDK on the host) ──
 #   make            → publish the engine, stage web/_framework for the web layer
 #   make build      → compile-only typecheck of the shared C# (no publish/stage) — the fast
 #                     synth-check after editing MusicGen.cs / VibeCodec.cs / Exports.cs
@@ -8,23 +17,56 @@
 #   make deploy     → clean, verified release build: wipes stale artifacts, full AOT
 #                     publish, then runs the smoke test (the cruft-free bundle to ship)
 #   make test       → node smoke test of the JS↔wasm boundary (needs web/_framework/)
-#   make serve      → static server rooted at web/ (same docroot you'd give nginx)
+#   make serve      → static server rooted at web/ (quick no-Docker preview; `make up` is
+#                     the real, nginx-parity host)
 #   make dist       → (follow-up) single-file bundle; see note below
 #   make clean
 #
-# One-time setup: dotnet-sdk-10.0 + `dotnet workload install wasm-tools`.
+# One-time setup: Docker (for `make up`), or dotnet-sdk-10.0 + `dotnet workload install
+# wasm-tools` for the local targets.
 
 DOTNET   ?= dotnet
 # Resolve the binary (command -v skips a stale `node` *directory* an emsdk PATH may shadow it
 # with). Override with `make test NODE=/path/to/node` if needed.
 NODE     ?= $(shell command -v node)
 PROJECT   = wasm/Skafinity.Wasm.csproj
-PUBDIR    = wasm/bin/Release/net10.0/publish/wwwroot/_framework
+PUBROOT   = wasm/bin/Release/net10.0/publish
+PUBDIR    = $(PUBROOT)/wwwroot/_framework
 PORT     ?= 8000
+COMPOSE   = docker compose -f docker/docker-compose.yml
 
-.PHONY: all build dev deploy stage test serve dist release clean
+# Bare `make` stays the local publish (the docker targets below are first in the file but
+# are opt-in via `make up`).
+.DEFAULT_GOAL := all
 
+.PHONY: all build dev deploy stage test serve dist release clean up rebuild down logs ps
+
+# ── Docker: build the wasm bundle inside the image and serve it with nginx. The container
+# is skafinity-1 and the port is loopback-bound (127.0.0.1:6970) so Docker's iptables rules
+# can't punch through ufw — a host reverse proxy fronts it publicly. ──
+up:
+	$(COMPOSE) up -d --build
+	@echo "skafinity-1 up — http://127.0.0.1:6970/  (loopback; front it with your host proxy)"
+
+rebuild:
+	$(COMPOSE) build --no-cache
+	$(COMPOSE) up -d
+
+down:
+	$(COMPOSE) down
+
+logs:
+	$(COMPOSE) logs -f
+
+ps:
+	$(COMPOSE) ps
+
+# Wipe the publish OUTPUT dir first: `dotnet publish` never prunes old content-hashed
+# assemblies, so re-publishing into a dirty dir accumulates stale *.wasm that `stage` then
+# copies into web/. Clearing just $(PUBROOT) (not obj/) keeps the AOT cache, so the rebuild
+# stays incremental while the staged bundle only ever holds the canonical files.
 all:
+	rm -rf $(PUBROOT)
 	$(DOTNET) publish $(PROJECT) -c Release
 	@$(MAKE) --no-print-directory stage
 
@@ -37,13 +79,14 @@ build:
 # Faster iteration: interpreted runtime (no AOT). Composition/output are identical; only
 # the per-sample synthesis loop runs slower.
 dev:
+	rm -rf $(PUBROOT)
 	$(DOTNET) publish $(PROJECT) -c Release -p:RunAOTCompilation=false
 	@$(MAKE) --no-print-directory stage
 
-# Ship build: `dotnet publish` reuses wasm/bin and never prunes old hashed assemblies, so an
-# incremental `make` can leave stale .wasm cruft in the staged bundle. `deploy` clears
-# wasm/bin + wasm/obj first so the AOT publish regenerates only the canonical files, then
-# runs the smoke test so the staged web/ is verified before it goes out.
+# Ship build: a full from-scratch rebuild + smoke test. `all` already wipes the publish dir
+# so the staged bundle is cruft-free on every build; `deploy` goes further and clears
+# wasm/bin + wasm/obj (the AOT cache too) for a guaranteed-clean release, then runs the smoke
+# test so the staged web/ is verified before it goes out.
 deploy:
 	@$(MAKE) --no-print-directory clean
 	@$(MAKE) --no-print-directory all

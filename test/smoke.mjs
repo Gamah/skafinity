@@ -33,16 +33,16 @@ check('genre 2 is Country', E.GenreName(2) === 'Country', E.GenreName(2));
 check('genre 3 is Metal', E.GenreName(3) === 'Metal', E.GenreName(3));
 check('DefaultConfig genre is 0', E.GetGenre(cfg) === 0, `${E.GetGenre(cfg)}`);
 
-// ska (genre 0): 6 globals + 6 instruments × 4 columns
+// ska (genre 0): 7 globals + 6 instruments × 4 columns
 const skaCount = E.VibeFieldCount(0);
-check('ska VibeFieldCount is 30', skaCount === 30, `${skaCount}`);
-// rock (genre 1): 6 globals + 5 instruments × 4 columns (drums/bass/keys/lead gtr/rhythm gtr)
+check('ska VibeFieldCount is 31', skaCount === 31, `${skaCount}`);
+// rock (genre 1): 7 globals + 5 instruments × 4 columns (drums/bass/keys/lead gtr/rhythm gtr)
 const rockCount = E.VibeFieldCount(1);
-check('rock VibeFieldCount is 26', rockCount === 26, `${rockCount}`);
-// country (genre 2): 6 globals + 5 instruments × 4 columns (drums/bass/rhythm gtr/keys/lead gtr)
-check('country VibeFieldCount is 26', E.VibeFieldCount(2) === 26, `${E.VibeFieldCount(2)}`);
-// metal (genre 3): 6 globals + 4 instruments × 4 columns (drums/bass/rhythm gtr/lead gtr)
-check('metal VibeFieldCount is 22', E.VibeFieldCount(3) === 22, `${E.VibeFieldCount(3)}`);
+check('rock VibeFieldCount is 27', rockCount === 27, `${rockCount}`);
+// country (genre 2): 7 globals + 5 instruments × 4 columns (drums/bass/rhythm gtr/keys/lead gtr)
+check('country VibeFieldCount is 27', E.VibeFieldCount(2) === 27, `${E.VibeFieldCount(2)}`);
+// metal (genre 3): 7 globals + 4 instruments × 4 columns (drums/bass/rhythm gtr/lead gtr)
+check('metal VibeFieldCount is 23', E.VibeFieldCount(3) === 23, `${E.VibeFieldCount(3)}`);
 
 const vibe = E.EncodeVibe(cfg);
 check('ska vibe length == fields + genre char', vibe.length === skaCount + 1, `${vibe.length}`);
