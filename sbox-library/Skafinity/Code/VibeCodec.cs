@@ -44,6 +44,11 @@ public static class VibeCodec
 		public string Voice;
 		/// <summary>Matrix column: 0 volume, 1 tone, 2 character, 3 extra (ignored for globals).</summary>
 		public int Column;
+		/// <summary>Whether this knob travels in the shareable vibe seed. Per-instrument VOLUME knobs
+		/// set this false: volume is a local mix preference persisted per-voice (see
+		/// <see cref="ReadVolumes"/>), not part of the song's identity. The grid slot is still
+		/// reserved on the wire (filler char) so the other columns keep their fixed positions.</summary>
+		public bool InSeed = true;
 
 		/// <summary>Current value as a 0..1 fraction of the range.</summary>
 		public float GetNorm( MusicGen.Config c ) =>
@@ -83,6 +88,15 @@ public static class VibeCodec
 	static Field[] Row( string voice, Field vol, Field tone, Field character, Field extra )
 		=> new[] { vol, tone, character, extra };
 
+	// A per-instrument VOLUME knob (column 0). Marked out of the seed: volume is a local mix
+	// preference persisted per-voice (see ReadVolumes/ApplyVolumes), not part of the vibe.
+	static Field Vol( string voice, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+	{
+		var f = F( "VOLUME", 0f, 1.5f, false, g, s, voice, 0 );
+		f.InSeed = false;
+		return f;
+	}
+
 	// Shared GLOBAL knobs — the wire's global block, in order (append-only).
 	static readonly Field[] GlobalFields =
 	{
@@ -92,6 +106,7 @@ public static class VibeCodec
 		F( "SWING", 0f, 0.4f, false, c => c.Swing, ( c, v ) => c.Swing = v ),
 		F( "RESONANCE", 0.2f, 2f, false, c => c.Resonance, ( c, v ) => c.Resonance = v ),
 		F( "STEREO WIDTH", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
+		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
 	};
 
 	sealed class GenreDef
@@ -105,7 +120,7 @@ public static class VibeCodec
 	static GenreDef Ska()
 	{
 		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
-			=> F( "VOLUME", 0f, 1.5f, false, g, s, v, 0 );
+			=> Vol( v, g, s );
 		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
 			=> F( "TONE", lo, hi, false, g, s, v, 1 );
 		return new GenreDef
@@ -141,7 +156,7 @@ public static class VibeCodec
 	static GenreDef Rock()
 	{
 		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
-			=> F( "VOLUME", 0f, 1.5f, false, g, s, v, 0 );
+			=> Vol( v, g, s );
 		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
 			=> F( "TONE", lo, hi, false, g, s, v, 1 );
 		return new GenreDef
@@ -177,7 +192,7 @@ public static class VibeCodec
 	static GenreDef Country()
 	{
 		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
-			=> F( "VOLUME", 0f, 1.5f, false, g, s, v, 0 );
+			=> Vol( v, g, s );
 		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
 			=> F( "TONE", lo, hi, false, g, s, v, 1 );
 		return new GenreDef
@@ -213,7 +228,7 @@ public static class VibeCodec
 	static GenreDef Metal()
 	{
 		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
-			=> F( "VOLUME", 0f, 1.5f, false, g, s, v, 0 );
+			=> Vol( v, g, s );
 		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
 			=> F( "TONE", lo, hi, false, g, s, v, 1 );
 		return new GenreDef
@@ -271,6 +286,35 @@ public static class VibeCodec
 		return list;
 	}
 
+	/// <summary>True if <paramref name="f"/> is a per-instrument VOLUME knob — column 0 of an
+	/// instrument row, kept out of the shareable seed and persisted per-voice instead.</summary>
+	public static bool IsVolume( Field f ) => f != null && f.Voice != null && f.Column == 0;
+
+	/// <summary>Read the per-instrument volumes of <paramref name="genre"/> off
+	/// <paramref name="c"/> as a <c>voice → 0..1 level</c> map. The key is the instrument's voice
+	/// NAME (not its genre/position), so a voice that appears in several genres (e.g. BASS, DRUMS)
+	/// shares one persisted level. Merge this into a single store across genres.</summary>
+	public static Dictionary<string, float> ReadVolumes( int genre, MusicGen.Config c )
+	{
+		var d = new Dictionary<string, float>();
+		if ( c == null ) return d;
+		foreach ( var f in Fields( genre ) )
+			if ( IsVolume( f ) ) d[f.Voice] = f.GetNorm( c );
+		return d;
+	}
+
+	/// <summary>Overlay a <c>voice → 0..1 level</c> map (from <see cref="ReadVolumes"/> / storage)
+	/// onto <paramref name="c"/> for <paramref name="genre"/>. Voices absent from the map keep
+	/// their current/default level. Call this after <see cref="Apply"/> so a song's saved mix
+	/// rides on top of the seed's voicing.</summary>
+	public static void ApplyVolumes( int genre, IReadOnlyDictionary<string, float> vols, MusicGen.Config c )
+	{
+		if ( c == null || vols == null ) return;
+		foreach ( var f in Fields( genre ) )
+			if ( IsVolume( f ) && vols.TryGetValue( f.Voice, out var n ) )
+				f.SetNorm( c, n );
+	}
+
 	/// <summary>Encode the vibe-defining knobs of <paramref name="c"/> (including its genre)
 	/// to a base-36 string.</summary>
 	public static string Encode( MusicGen.Config c )
@@ -282,7 +326,7 @@ public static class VibeCodec
 		foreach ( var f in GlobalFields ) sb.Append( Quant( f, c ) );
 		foreach ( var row in Def( genre ).Grid )
 			for ( int col = 0; col < Columns; col++ )
-				sb.Append( row[col] != null ? Quant( row[col], c ) : Alphabet[0] );
+				sb.Append( row[col] != null && row[col].InSeed ? Quant( row[col], c ) : Alphabet[0] );
 		return sb.ToString();
 	}
 
@@ -319,7 +363,7 @@ public static class VibeCodec
 
 	static void ApplyAt( string vibe, int pos, Field f, MusicGen.Config c )
 	{
-		if ( f == null || pos >= vibe.Length ) return;
+		if ( f == null || !f.InSeed || pos >= vibe.Length ) return;
 		int q = Alphabet.IndexOf( vibe[pos] );
 		if ( q < 0 ) return; // skip unknown chars, keep the knob value
 		f.SetNorm( c, q / (float)(Levels - 1) );

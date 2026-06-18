@@ -103,7 +103,7 @@ public sealed class MusicGen
 
 		// Master room reverb — a touch of stereo space so the mix reads with depth
 		// instead of dry/"16-bit". Wet = blend, Decay = tail length (0..1).
-		public float MasterReverb = 0.16f;
+		public float MasterReverb = 0.5f;
 		public float ReverbDecay = 0.5f;
 
 		// Feel

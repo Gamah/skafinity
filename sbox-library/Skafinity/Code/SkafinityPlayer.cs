@@ -162,6 +162,10 @@ public sealed class SkafinityPlayer : Component
 	short[] _curRaw;            // current song, full single loop (raw, for export)
 	readonly System.Collections.Generic.List<short[]> _ahead = new(); // pre-generated n+1, n+2, …
 	int _curN;                 // index of the currently-playing song
+	// Per-instrument volumes, keyed by voice NAME (BASS, DRUMS, …) so the level follows the
+	// instrument across genres. Pulled out of the vibe seed; persisted to FileSystem.Data and
+	// overlaid onto every BuildConfig. See VibeCodec.ReadVolumes/ApplyVolumes.
+	System.Collections.Generic.Dictionary<string, float> _vols = new();
 	int _curReserve;           // samples of the current song's tail held back for the crossfade
 	double _pushedSeconds;     // total audio pushed to the stream
 	TimeSince _sinceStart;     // wall clock since playback started
@@ -194,6 +198,7 @@ public sealed class SkafinityPlayer : Component
 	{
 		_lastConfigHash = ConfigHash();
 		_curN = Math.Max( 0, PersistProgress ? LoadN() ?? StartN : StartN );
+		_vols = LoadVols();
 		if ( AutoPlay ) StartSequence();
 	}
 
@@ -274,6 +279,8 @@ public sealed class SkafinityPlayer : Component
 		// voicing regardless of this client's inspector knobs).
 		if ( !string.IsNullOrEmpty( Vibe ) )
 			VibeCodec.Apply( Vibe, cfg );
+		// Per-instrument volumes are NOT in the seed — overlay the persisted per-voice mix on top.
+		VibeCodec.ApplyVolumes( cfg.Genre, _vols, cfg );
 		return cfg;
 	}
 
@@ -636,8 +643,18 @@ public sealed class SkafinityPlayer : Component
 		var cfg = BuildConfig();
 		var fields = VibeCodec.Fields( cfg.Genre );
 		if ( index < 0 || index >= fields.Count ) return;
-		fields[index].SetNorm( cfg, norm );
-		Vibe = VibeCodec.Encode( cfg );
+		var f = fields[index];
+		f.SetNorm( cfg, norm );
+		if ( VibeCodec.IsVolume( f ) )
+		{
+			// Volume is a local mix preference, not part of the seed — store per-voice + persist.
+			_vols[f.Voice] = norm;
+			SaveVols();
+		}
+		else
+		{
+			Vibe = VibeCodec.Encode( cfg );
+		}
 		_restartPending = true;
 		_restartPendingSince = 0;
 	}
@@ -671,6 +688,13 @@ public sealed class SkafinityPlayer : Component
 		}
 		if ( cfg.BpmMin > cfg.BpmMax ) (cfg.BpmMin, cfg.BpmMax) = (cfg.BpmMax, cfg.BpmMin);
 		Vibe = VibeCodec.Encode( cfg );
+		if ( includeVolumes )
+		{
+			// Capture the freshly-randomized volumes into the persisted per-voice store (they
+			// don't ride in the encoded vibe).
+			foreach ( var kv in VibeCodec.ReadVolumes( cfg.Genre, cfg ) ) _vols[kv.Key] = kv.Value;
+			SaveVols();
+		}
 		_restartPending = true;
 		_restartPendingSince = 0;
 	}
@@ -713,5 +737,28 @@ public sealed class SkafinityPlayer : Component
 		}
 		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: load progress failed: {e.Message}" ); }
 		return null;
+	}
+
+	// ── Per-instrument volume persistence (FileSystem.Data, keyed by SaveSlot) ──
+	// Stored as JSON voice→0..1 level, separate from progress and from the (volume-free) seed,
+	// so the mix is a local preference that survives sessions and follows each voice across genres.
+	string VolumeFile => $"skafinity_{(string.IsNullOrEmpty( SaveSlot ) ? "default" : SaveSlot)}.vol";
+
+	void SaveVols()
+	{
+		try { FileSystem.Data.WriteAllText( VolumeFile, Json.Serialize( _vols ) ); }
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: save volumes failed: {e.Message}" ); }
+	}
+
+	System.Collections.Generic.Dictionary<string, float> LoadVols()
+	{
+		try
+		{
+			if ( FileSystem.Data.FileExists( VolumeFile ) )
+				return Json.Deserialize<System.Collections.Generic.Dictionary<string, float>>(
+					FileSystem.Data.ReadAllText( VolumeFile ) ) ?? new();
+		}
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: load volumes failed: {e.Message}" ); }
+		return new();
 	}
 }
