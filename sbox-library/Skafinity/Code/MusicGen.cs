@@ -151,7 +151,7 @@ public sealed class MusicGen
 	// re-balance, not the Vol defaults.
 	const float KickBalance = 0.800f;
 	const float SnareBalance = 0.900f;
-	const float TomBalance = 1.000f;
+	const float TomBalance = 1.400f;   // pushed up ~40% by ear — toms were buried in the kit
 	const float HatBalance = 0.407f;   // equal-peak baseline (0.582) backed off 30% by ear —
 	                                   // the constant hats were masking the sparser kick/snare/toms
 	const float CrashBalance = 0.515f;
@@ -399,6 +399,7 @@ public sealed class MusicGen
 	int _genre;              // 0 ska, 1 rock
 	string _tag;             // the per-song seed string, reused to seed per-section streams
 	int _drumPush;           // per-song-constant kit timing bias in samples (− ahead / + back)
+	float _swing;            // per-song shuffle: offbeat eighths pushed late by this fraction of an eighth (whole band, via Swung)
 	float _drumTone = 0.5f;  // DrumTone 0..1 → toms↔cymbals CONTENT bias in fills/groove decoration
 	float _drumLowMul = 1f;  // DrumTone → kick/tom gain lean (gentle, on top of the content bias)
 	float _drumHighMul = 1f; // DrumTone → hat/cymbal gain lean (gentle, on top of the content bias)
@@ -493,7 +494,7 @@ public sealed class MusicGen
 		// styles' songs byte-identical.
 		_kickAccents = rng.Pick( BackbeatKickAccents );
 
-		float swing = _fast ? _c.FastSwing : _c.Swing;
+		_swing = _fast ? _c.FastSwing : _c.Swing;
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 
@@ -522,7 +523,7 @@ public sealed class MusicGen
 		for ( int si = 0; si < structure.Count; si++ )
 		{
 			var part = structure[si];
-			RenderSection( part, si, barCursor * EighthsPerBar * spe, spe, secPerEighth, swing );
+			RenderSection( part, si, barCursor * EighthsPerBar * spe, spe, secPerEighth );
 			barCursor += part.Bars;
 		}
 	}
@@ -531,7 +532,7 @@ public sealed class MusicGen
 	// of a section type reproduce identical backing, while the lead key folds in the verse
 	// index (so the Nth verse's lead differs) and the fill key folds in the absolute section
 	// index (so every section closes with a unique fill).
-	void RenderSection( Part part, int absIndex, int sectionStart, int spe, double secPerEighth, float swing )
+	void RenderSection( Part part, int absIndex, int sectionStart, int spe, double secPerEighth )
 	{
 		string bk = SectionKey( part.Type );
 		string lk = part.Type == Section.Verse ? $"verse:{part.VerseIndex}" : bk;
@@ -587,7 +588,7 @@ public sealed class MusicGen
 						RenderMetalRiffBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
 						break;
 					default: // ska: skank chop + horn stabs
-						RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng, exprRng );
+						RenderRhythmBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
 						if ( _hasHorns && playTop )
 							RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng, exprRng );
 						break;
@@ -603,6 +604,23 @@ public sealed class MusicGen
 	// lets the chord ring out into the tail RingOutTail reserved — a landing, not a turnaround.
 	// The previous bar's fill (see RenderSection) leads in and its terminal crash lands right
 	// here, so the ending itself only adds the kick + the sustained, decaying chord.
+	// ── Swing: warp the eighth-note grid so the whole band shuffles together ──
+	// On-beat (even) eighths are anchors that stay put; off-beat (odd) eighths are pushed late
+	// by _swing of an eighth, and positions between anchors interpolate. So a sixteenth (e+0.5)
+	// or a triplet subdivision lands on the SAME warped grid as the eighths — every voice swings
+	// in lockstep instead of the skank chop alone. `eighths` is a within-bar position measured in
+	// eighth-notes (0.5 = a sixteenth); returns the absolute sample index.
+	int Swung( int barStart, int spe, double eighths )
+	{
+		double baseE = Math.Floor( eighths );
+		double frac = eighths - baseE;
+		long slot = (long)baseE;
+		double startShift = (slot & 1) == 1 ? _swing : 0.0;          // this eighth's onset shift
+		double endShift   = ((slot + 1) & 1) == 1 ? _swing : 0.0;    // the next eighth's onset shift
+		double pos = baseE + startShift + frac * (1.0 + endShift - startShift);
+		return barStart + (int)Math.Round( pos * spe );
+	}
+
 	void RenderEnding( int barStart, int spe, Rng noise )
 	{
 		int at = Math.Max( 0, barStart );
@@ -872,12 +890,12 @@ public sealed class MusicGen
 				for ( int k = 0; k < n; k++ )
 				{
 					int bm = midi + (k == 0 ? 0 : moves[bassOrn.Int( moves.Length )]);
-					EmitBass( barStart + e * spe + k * step, (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
+					EmitBass( Swung( barStart, spe, e + (double)k / n ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
 				}
 				continue;
 			}
 
-			EmitBass( barStart + e * spe, (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
+			EmitBass( Swung( barStart, spe, e ), (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
 		}
 	}
 
@@ -909,7 +927,7 @@ public sealed class MusicGen
 	}
 
 	// ── Skank guitar (the signature) + reggae organ bubble — offbeats, centered ──
-	void RenderRhythmBar( int barStart, int spe, double secPerEighth, int chord, float swing, Rng rng, Rng exprRng )
+	void RenderRhythmBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
 	{
 		// +24: skank/organ sit an octave above the old register — at +12 (E2..B2) the
 		// chop was too low/muddy to cut through and read as missing. Organ stays a
@@ -921,7 +939,7 @@ public sealed class MusicGen
 
 		for ( int e = 1; e < EighthsPerBar; e += 2 ) // offbeats
 		{
-			int at = barStart + e * spe + (int)(swing * spe);
+			int at = Swung( barStart, spe, e );   // odd e = offbeat → Swung pushes it late by _swing
 
 			// bright, thin, short guitar chop
 			foreach ( var d in degs )
@@ -1000,7 +1018,7 @@ public sealed class MusicGen
 				{
 					int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
 					int m2 = ScaleMidi( melBase, d2 );
-					RenderLeadNote( barStart + e * spe + k * step, (int)(step * 0.9f),
+					RenderLeadNote( Swung( barStart, spe, e + (double)k * spanE / n ), (int)(step * 0.9f),
 						m2, amp, secPerEighth * spanE / (double)n * 0.85, drive, runVc );
 					prevMidi = m2;
 				}
@@ -1035,7 +1053,7 @@ public sealed class MusicGen
 
 			int midi = ScaleMidi( melBase, degree );
 			var vc = Roll( ex, midi, prevMidi, exprRng );
-			RenderLeadNote( barStart + e * spe, (int)(spe * len * 0.9f), midi,
+			RenderLeadNote( Swung( barStart, spe, e ), (int)(spe * len * 0.9f), midi,
 				amp, secPerEighth * len * 0.7f, drive, vc );
 			prevMidi = midi;
 			e += len;
@@ -1109,7 +1127,7 @@ public sealed class MusicGen
 					Drive = keysDrive, Pan = 0f,
 				};
 				ApplyVoicing( ref keys, keysVc );
-				RenderPatch( barStart + e * spe, dur, Midi( ScaleMidi( kBase, d ) ), keys );
+				RenderPatch( Swung( barStart, spe, e ), dur, Midi( ScaleMidi( kBase, d ) ), keys );
 			}
 		}
 	}
@@ -1138,7 +1156,7 @@ public sealed class MusicGen
 			int dur = (int)(spe * Math.Max( 0.12f, lenFrac ));
 			double dec = secPerEighth * (accent ? 0.8 : 0.3);
 			foreach ( var o in chordOffs )
-				RenderPatch( barStart + e * spe, dur, Midi( root + o ), new Patch
+				RenderPatch( Swung( barStart, spe, e ), dur, Midi( root + o ), new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 					Amp = _c.RhythmGtrVol * RhythmGtrBalance / chordOffs.Length * (accent ? 1f : 0.7f),
@@ -1163,7 +1181,7 @@ public sealed class MusicGen
 		float driveAmt = 4f + MathF.Max( 1f, _c.RhythmGtrDrive ); // heavy
 		for ( int s = 0; s < EighthsPerBar * 2; s++ )     // 16 sixteenths
 		{
-			int at = barStart + s * six;
+			int at = Swung( barStart, spe, s * 0.5 );   // 16 sixteenths on the swung grid
 			bool beat = s % 4 == 0;                        // quarter-note downbeats → ring a chord
 			bool ring = beat || (s % 2 == 0 && rng.Chance( 0.3f )); // some offbeat eighths ring too
 			int[] offs = ring ? power : new[] { 0 };       // accents = power chord, chugs = root only
@@ -1226,7 +1244,7 @@ public sealed class MusicGen
 		for ( int e = 0; e < EighthsPerBar; e++ )
 		{
 			if ( !_hornMask[e] ) continue;
-			int at = barStart + e * spe;
+			int at = Swung( barStart, spe, e );
 			hornVc = Roll( ex, baseMidi, NoPrev, exprRng );
 
 			if ( six > 0 && orn.Chance( ornChance ) )
@@ -1237,18 +1255,18 @@ public sealed class MusicGen
 					// rolling arpeggio: chord tones climb across a 16th-triplet
 					int step = spe / 3;
 					for ( int k = 0; k < degs.Length; k++ )
-						Note( at + k * step, (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
+						Note( Swung( barStart, spe, e + (double)k / 3 ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
 					continue;
 				}
 				if ( r < 0.75f )
 				{
 					// 16th pair: stab on the beat, softer echo on the "e"
 					Stab( at, (int)(six * 0.85f), secPerEighth * 0.5 * 0.8, 1f );
-					Stab( at + six, (int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
+					Stab( Swung( barStart, spe, e + 0.5 ), (int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
 					continue;
 				}
 				// grace pickup: a soft single tone just before the block stab
-				Note( at - six, (int)(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f );
+				Note( Swung( barStart, spe, e - 0.5 ), (int)(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f );
 				Stab( at, (int)(spe * 0.6f), 0.22, 1f );
 				continue;
 			}
@@ -1559,7 +1577,7 @@ public sealed class MusicGen
 		// the open hat still punctuating the "and of 4".
 		for ( int e = 0; e < hatEnd; e++ )
 		{
-			int at = barStart + e * spe;
+			int at = Swung( barStart, spe, e );
 			bool open = e == 7;
 			float amp = e % 2 == 1 ? _c.HatVol : _c.HatVol * 0.6f;
 			if ( _ride && !open )
@@ -1568,15 +1586,16 @@ public sealed class MusicGen
 				RenderHat( at, open, amp, noise );
 			if ( !open && six > 0 && noise.Chance( busy ) )
 			{
-				if ( _ride ) RenderRide( at + six, false, _c.HatVol * 0.4f, noise );
-				else RenderHat( at + six, false, _c.HatVol * 0.4f, noise );
+				int sixAt = Swung( barStart, spe, e + 0.5 );
+				if ( _ride ) RenderRide( sixAt, false, _c.HatVol * 0.4f, noise );
+				else RenderHat( sixAt, false, _c.HatVol * 0.4f, noise );
 			}
 		}
 
 		if ( fillEnd )
 		{
 			RenderKickSnareGroove( barStart, spe, 0, 6, busy, noise );   // first 3 beats normal
-			RenderFill( barStart + 6 * spe, spe, fillNoise, fillRng );
+			RenderFill( barStart, spe, 6, fillNoise, fillRng );
 			return;
 		}
 		RenderKickSnareGroove( barStart, spe, 0, EighthsPerBar, busy, noise );
@@ -1603,7 +1622,8 @@ public sealed class MusicGen
 		int six = spe / 2;
 		for ( int e = from; e < to; e++ )
 		{
-			int at = barStart + e * spe;
+			int at = Swung( barStart, spe, e );
+			int sixAt = six > 0 ? Swung( barStart, spe, e + 0.5 ) : at;
 			switch ( _drumStyle )
 			{
 				case 0: // one-drop: kick + snare together on beat 3
@@ -1617,7 +1637,7 @@ public sealed class MusicGen
 				case 3: // metal double-kick: 16th-note kick gallop + crashing, snare backbeat
 					if ( e == 0 && noise.Chance( 0.55f ) ) RenderCrash( at, noise, noise.Chance( 0.35f ) );
 					RenderKick( at, noise );
-					if ( six > 0 ) RenderKick( at + six, noise ); // the second pedal → the 16th gallop
+					if ( six > 0 ) RenderKick( sixAt, noise ); // the second pedal → the 16th gallop
 					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
 					break;
 				default: // straight backbeat — anchors on beats 1 & 3, plus this song's kick
@@ -1638,34 +1658,37 @@ public sealed class MusicGen
 			if ( _drumStyle != 3 && six > 0 && e != 4 && noise.Chance( _c.GhostSnareChance * busy ) )
 			{
 				if ( noise.Chance( (1f - _drumTone) * 0.5f ) )
-					RenderTom( at + six, 110f + 30f * (e & 1), noise );
+					RenderTom( sixAt, 150f + 40f * (e & 1), noise );
 				else
-					RenderSnare( at + six, noise, true );
+					RenderSnare( sixAt, noise, true );
 			}
 		}
 	}
 
 	// Tom/snare roll across the last beat (two eighths). Straight = four 16ths;
 	// triplet (TripletChance) = six even subdivisions for a rolling shuffle feel.
-	void RenderFill( int at, int spe, Rng noise, Rng rng )
+	// The fill rolls across the last beat — the two eighths starting at baseE (6) up to the bar
+	// line — on the same swung grid as the rest of the band.
+	void RenderFill( int barStart, int spe, int baseE, Rng noise, Rng rng )
 	{
 		// straight = four 16ths; triplet = either an eighth-note triplet (3) or a
 		// faster 16th-note triplet (6) across the beat.
 		int n = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6) : 4;
 		int step = (spe * 2) / n;
-		float[] toms = { 200f, 165f, 135f, 110f, 90f, 72f };
+		float[] toms = { 260f, 215f, 175f, 145f, 120f, 100f };
 		// Half the hits stay snare so it still reads as a drum fill; the rest are biased by
 		// DrumTone — toms when the tone leans low, cymbals (ride hits) when it leans high.
 		for ( int i = 0; i < n; i++ )
 		{
-			int t = at + i * step;
+			int t = Swung( barStart, spe, baseE + i * 2.0 / n );
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
 			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
 			else RenderTom( t, toms[i], noise );
 		}
-		// crash into the downbeat (may land at bar end) — a bright crash or a darker, washier
-		// crash, picked off the fill stream so the cymbal colour varies section to section.
-		RenderCrash( at + n * step, noise, rng.Chance( 0.4f ) );
+		// crash into the downbeat (lands on the bar line, an on-beat anchor → dead straight) — a
+		// bright crash or a darker, washier crash, picked off the fill stream so the cymbal colour
+		// varies section to section.
+		RenderCrash( Swung( barStart, spe, baseE + 2.0 ), noise, rng.Chance( 0.4f ) );
 	}
 
 	void RenderKick( int start, Rng noise )
@@ -1730,14 +1753,30 @@ public sealed class MusicGen
 		start = Math.Max( 0, start + _drumPush );
 		int dur = (int)(_sr * 0.18f);
 		double decay = dur * 0.3;
-		double phase = 0;
+		double attackDecay = dur * 0.06;        // fast-decaying upper partial → beater "snap"
+		double phase = 0, phase2 = 0;
+		// deterministic per-hit stick attack — a local LFSR so the shared drum RNG stream
+		// (and therefore every other pattern) is left byte-identical.
+		uint ns = (uint)start * 2654435761u | 1u;
+		int clickLen = (int)(_sr * 0.006f);
 		int end = Math.Min( _bufL.Length, start + dur );
 		for ( int i = 0; start + i < end; i++ )
 		{
 			float t = (float)i / dur;
-			phase += (baseFreq * (1f - 0.35f * t)) / _sr;
+			float pf = baseFreq * (1f - 0.22f * t);   // less pitch sag → holds its note, more bite
+			phase += pf / _sr;
+			phase2 += pf * 2.5f / _sr;                 // inharmonic upper partial for attack snap
 			float env = (float)Math.Exp( -i / decay );
-			float v = MathF.Sin( (float)(phase * 2 * Math.PI) ) * env * _c.TomVol * TomBalance * _drumGain * _drumLowMul;
+			float aenv = (float)Math.Exp( -i / attackDecay );
+			float body = MathF.Sin( (float)(phase * 2 * Math.PI) ) * env;
+			float snap = MathF.Sin( (float)(phase2 * 2 * Math.PI) ) * aenv * 0.5f;
+			float click = 0f;
+			if ( i < clickLen )
+			{
+				ns ^= ns << 13; ns ^= ns >> 17; ns ^= ns << 5;
+				click = ((ns & 0xffff) / 32768f - 1f) * 0.45f * (1f - i / (float)clickLen);
+			}
+			float v = (body + snap + click) * _c.TomVol * TomBalance * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
