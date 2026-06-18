@@ -18,7 +18,7 @@ skafinitymusicpanel {
 	position: absolute; top: 0; left: 0; right: 0; bottom: 0;
 	justify-content: center; align-items: center;
 	pointer-events: none;
-	font-family: Poppins;
+	font-family: Consolas, 'Roboto Mono', monospace;
 
 	// Floating toggle button (shown when the board is closed), bottom-left.
 	.fab {

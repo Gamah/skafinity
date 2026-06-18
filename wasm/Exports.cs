@@ -181,6 +181,37 @@ public partial class Engine
 		var c = Cfg.From( cfg );
 		return Fields( c.Genre )[i].Display( c );
 	}
+
+	// ── Advanced / tuning-only fields (NOT vibe sliders) ──────────────────────────────────
+	// The baseline-mix knobs (VibeCodec.AdvancedFields). Surfaced by NAME so the web host can
+	// overlay a config.json onto DefaultConfig without a rebuild; names match Config 1:1.
+	[JSExport]
+	internal static int AdvancedFieldCount() => VibeCodec.AdvancedFields.Length;
+
+	[JSExport]
+	internal static string AdvancedFieldName( int i ) => VibeCodec.AdvancedFields[i].Name;
+
+	[JSExport]
+	internal static double AdvancedFieldMin( int i ) => VibeCodec.AdvancedFields[i].Min;
+
+	[JSExport]
+	internal static double AdvancedFieldMax( int i ) => VibeCodec.AdvancedFields[i].Max;
+
+	[JSExport]
+	internal static double GetAdvancedField( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg, int i )
+		=> VibeCodec.AdvancedFields[i].Get( Cfg.From( cfg ) );
+
+	// Set advanced field `i` to a RAW value (not normalized), clamped to its range. Returns the
+	// new cfg. Unknown names are simply not called by the host, so no error path is needed here.
+	[JSExport]
+	[return: JSMarshalAs<JSType.Array<JSType.Number>>]
+	internal static double[] SetAdvancedField( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg, int i, double raw )
+	{
+		var c = Cfg.From( cfg );
+		var f = VibeCodec.AdvancedFields[i];
+		f.Set( c, (float)Math.Clamp( raw, f.Min, f.Max ) );
+		return Cfg.To( c );
+	}
 }
 
 // Flat double[] <-> MusicGen.Config. The order is internal (JS never reads individual
@@ -188,7 +219,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 72;
+	public const int Size = 86;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -210,6 +241,11 @@ static class Cfg
 		c.LeadGtrVol, c.LeadGtrCutoff, c.LeadGtrDrive, c.LeadGtrBend,
 		c.RhythmGtrVol, c.RhythmGtrCutoff, c.RhythmGtrDrive, c.RhythmGtrChug,
 		c.MasterReverb,
+		// advanced peak-balance / level tuning (not vibe knobs; see VibeCodec.AdvancedFields)
+		c.KitPresence,
+		c.KickBalance, c.SnareBalance, c.TomBalance, c.HatBalance, c.CrashBalance,
+		c.BassBalance, c.SkankBalance, c.OrganBalance, c.MelodyBalance, c.HornBalance,
+		c.KeysBalance, c.RhythmGtrBalance, c.LeadGtrBalance,
 	};
 
 	public static MusicGen.Config From( double[] a )
@@ -235,6 +271,10 @@ static class Cfg
 		c.LeadGtrVol = (float)a[i++]; c.LeadGtrCutoff = (float)a[i++]; c.LeadGtrDrive = (float)a[i++]; c.LeadGtrBend = (float)a[i++];
 		c.RhythmGtrVol = (float)a[i++]; c.RhythmGtrCutoff = (float)a[i++]; c.RhythmGtrDrive = (float)a[i++]; c.RhythmGtrChug = (float)a[i++];
 		c.MasterReverb = (float)a[i++];
+		c.KitPresence = (float)a[i++];
+		c.KickBalance = (float)a[i++]; c.SnareBalance = (float)a[i++]; c.TomBalance = (float)a[i++]; c.HatBalance = (float)a[i++]; c.CrashBalance = (float)a[i++];
+		c.BassBalance = (float)a[i++]; c.SkankBalance = (float)a[i++]; c.OrganBalance = (float)a[i++]; c.MelodyBalance = (float)a[i++]; c.HornBalance = (float)a[i++];
+		c.KeysBalance = (float)a[i++]; c.RhythmGtrBalance = (float)a[i++]; c.LeadGtrBalance = (float)a[i++];
 		return c;
 	}
 }

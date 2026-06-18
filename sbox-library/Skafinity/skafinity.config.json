@@ -1,0 +1,19 @@
+{
+  "_comment": "SINGLE shared house-mix config for BOTH targets. Canonical copy lives here in the s&box library: the plugin reads it at runtime (SkafinityPlayer), and `make` copies it to web/config.json for the web toy. Keys under 'advanced' match MusicGen.Config field names 1:1 (see VibeCodec.AdvancedFields); unknown keys are ignored, values clamped per field. These shape the BASELINE peak balance / level mix — NOT the vibe sliders (those ride in the shareable seed). Values below are the engine defaults, so this is a no-op until changed. Edit here then `make` to refresh the web copy (or edit web/config.json directly for quick web-only iteration).",
+  "advanced": {
+    "KitPresence": 2.0,
+    "KickBalance": 0.8,
+    "SnareBalance": 0.9,
+    "TomBalance": 0.78,
+    "HatBalance": 0.407,
+    "CrashBalance": 0.515,
+    "BassBalance": 0.733,
+    "SkankBalance": 1.223,
+    "OrganBalance": 1.237,
+    "MelodyBalance": 0.896,
+    "HornBalance": 1.142,
+    "KeysBalance": 1.065,
+    "RhythmGtrBalance": 1.053,
+    "LeadGtrBalance": 0.896
+  }
+}
