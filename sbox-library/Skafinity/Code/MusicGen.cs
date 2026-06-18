@@ -143,15 +143,17 @@ public sealed class MusicGen
 	readonly float _drumGain;   // master kit gain — straight 0..1.5 slider × KitPresence baseline
 	// Per-voice level balance. The kit pieces synthesise at very different raw levels (a kick
 	// is huge, a hat is thin noise), so these bake in the differences that used to live in the
-	// per-part Vol defaults. The target is EQUAL PEAK LEVEL IN THE FILE: with each applied here
-	// every piece peaks at the same level (~0 dBFS pre-master) when its Vol knob sits at the
-	// shared 1.0 default — so the kit sits at its own relative loudness in the mix (a kick reads
-	// bigger than a hat) rather than every piece being perceptually matched. Derived by soloing
-	// each voice and measuring its pre-master peak; tune these to re-balance, not the Vol defaults.
-	const float KickBalance = 0.400f;
-	const float SnareBalance = 0.476f;
-	const float TomBalance = 0.496f;
-	const float HatBalance = 0.582f;
+	// per-part Vol defaults — applied at Vol = 1.0 so the knobs stay a flat default and these
+	// carry the balance. The starting point was EQUAL PRE-MASTER PEAK (every piece soloed to
+	// ~0 dBFS: kick 0.40 / snare 0.476 / tom 0.496 / hat 0.582 / crash 0.515), then the kit was
+	// hand-tuned by ear from there: equal peak buried the sparse kick/snare/toms under the
+	// constant hats, so the drums are pushed back up and the hats backed off. Tune these to
+	// re-balance, not the Vol defaults.
+	const float KickBalance = 0.800f;
+	const float SnareBalance = 0.900f;
+	const float TomBalance = 1.000f;
+	const float HatBalance = 0.407f;   // equal-peak baseline (0.582) backed off 30% by ear —
+	                                   // the constant hats were masking the sparser kick/snare/toms
 	const float CrashBalance = 0.515f;
 
 	// Melodic-voice peak balance — the instrument analog of the kit *Balance consts above.
