@@ -1,6 +1,15 @@
 # skafinity — C#-as-source ska engine compiled to WebAssembly with the .NET wasm-tools
 # workload (the same MusicGen.cs / VibeCodec.cs the s&box library ships, no port).
 #
+# ── Docker (the deploy/serve path — no local .NET needed) ──
+#   make up         → build the wasm bundle in Docker + serve it (nginx, container
+#                     skafinity-1, host 127.0.0.1:6970 — loopback so it stays behind ufw)
+#   make rebuild    → rebuild the image from scratch (no cache) and restart
+#   make down       → stop and remove the container
+#   make logs       → follow the container logs
+#   make ps         → container status
+#
+# ── Local (.NET SDK on the host) ──
 #   make            → publish the engine, stage web/_framework for the web layer
 #   make build      → compile-only typecheck of the shared C# (no publish/stage) — the fast
 #                     synth-check after editing MusicGen.cs / VibeCodec.cs / Exports.cs
@@ -8,11 +17,13 @@
 #   make deploy     → clean, verified release build: wipes stale artifacts, full AOT
 #                     publish, then runs the smoke test (the cruft-free bundle to ship)
 #   make test       → node smoke test of the JS↔wasm boundary (needs web/_framework/)
-#   make serve      → static server rooted at web/ (same docroot you'd give nginx)
+#   make serve      → static server rooted at web/ (quick no-Docker preview; `make up` is
+#                     the real, nginx-parity host)
 #   make dist       → (follow-up) single-file bundle; see note below
 #   make clean
 #
-# One-time setup: dotnet-sdk-10.0 + `dotnet workload install wasm-tools`.
+# One-time setup: Docker (for `make up`), or dotnet-sdk-10.0 + `dotnet workload install
+# wasm-tools` for the local targets.
 
 DOTNET   ?= dotnet
 # Resolve the binary (command -v skips a stale `node` *directory* an emsdk PATH may shadow it
@@ -21,8 +32,33 @@ NODE     ?= $(shell command -v node)
 PROJECT   = wasm/Skafinity.Wasm.csproj
 PUBDIR    = wasm/bin/Release/net10.0/publish/wwwroot/_framework
 PORT     ?= 8000
+COMPOSE   = docker compose -f docker/docker-compose.yml
 
-.PHONY: all build dev deploy stage test serve dist release clean
+# Bare `make` stays the local publish (the docker targets below are first in the file but
+# are opt-in via `make up`).
+.DEFAULT_GOAL := all
+
+.PHONY: all build dev deploy stage test serve dist release clean up rebuild down logs ps
+
+# ── Docker: build the wasm bundle inside the image and serve it with nginx. The container
+# is skafinity-1 and the port is loopback-bound (127.0.0.1:6970) so Docker's iptables rules
+# can't punch through ufw — a host reverse proxy fronts it publicly. ──
+up:
+	$(COMPOSE) up -d --build
+	@echo "skafinity-1 up — http://127.0.0.1:6970/  (loopback; front it with your host proxy)"
+
+rebuild:
+	$(COMPOSE) build --no-cache
+	$(COMPOSE) up -d
+
+down:
+	$(COMPOSE) down
+
+logs:
+	$(COMPOSE) logs -f
+
+ps:
+	$(COMPOSE) ps
 
 all:
 	$(DOTNET) publish $(PROJECT) -c Release

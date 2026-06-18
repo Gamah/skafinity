@@ -1,0 +1,19 @@
+# The `name:` below pins the Compose project, which namespaces the container, network and
+# volumes (skafinity_*). Without it the project defaults to the parent dir name ("docker"),
+# colliding with any other repo whose compose file also lives under docker/ (they'd share
+# container `docker-web-1` and the network). Mirrors the rotaliate convention.
+name: skafinity
+
+services:
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # Explicit name so it's `skafinity-1`, not the compose default `skafinity-web-1`.
+    container_name: skafinity-1
+    restart: unless-stopped
+    ports:
+      # Bound to loopback so Docker's iptables rules can't bypass ufw — only a host-side
+      # reverse proxy (e.g. Caddy/nginx) fronting 127.0.0.1:6970 reaches the toy publicly.
+      - "127.0.0.1:6970:80"
