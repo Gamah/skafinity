@@ -394,6 +394,11 @@ public sealed class MusicGen
 	// it evolves across the Nth verse; the section-end fill is seeded by absolute index so
 	// every section closes with a different fill.
 	enum Section { Intro, Chorus, Verse, Ending }
+
+	// Extra seconds appended after the last bar so the ending's final tonic chord (and the
+	// master reverb) can ring out naturally instead of being clipped at the buffer edge.
+	const float RingOutTail = 2.4f;
+
 	readonly struct Part
 	{
 		public readonly Section Type; public readonly int Bars; public readonly int VerseIndex;
@@ -489,7 +494,10 @@ public sealed class MusicGen
 		var structure = BuildStructure();
 		int totalBars = 0;
 		foreach ( var p in structure ) totalBars += p.Bars;
-		int total = spe * EighthsPerBar * totalBars;
+		// Size to the structure plus a ring-out tail, so the ending's final chord and the
+		// reverb decay into real silence past the last bar rather than being cut off.
+		int structured = spe * EighthsPerBar * totalBars;
+		int total = structured + (int)(_sr * RingOutTail);
 		_bufL = new float[total];
 		_bufR = new float[total];
 
@@ -523,35 +531,93 @@ public sealed class MusicGen
 		var fillRng = new Rng( Xmur3( $"{_tag}:fill:{absIndex}" ) );
 		var fillNoise = new Rng( Xmur3( $"{_tag}:fillnoise:{absIndex}" ) );
 
+		bool isIntro = part.Type == Section.Intro;
+		bool isEnding = part.Type == Section.Ending;
+
 		for ( int bar = 0; bar < part.Bars; bar++ )
 		{
 			int chord = (bar / 2) % _prog.Length;
 			int nextChord = ((bar / 2) + 1) % _prog.Length;
 			int barStart = sectionStart + bar * EighthsPerBar * spe;
-			bool lastBar = bar == part.Bars - 1;          // every section ends with a fill
+
+			// The ending lands on a held tonic chord that rings out — the band stops on the
+			// "one", it doesn't roll forward as if looping. The bar before it fills to lead in.
+			if ( isEnding && bar == part.Bars - 1 )
+			{
+				RenderEnding( barStart, spe, noise );
+				continue;
+			}
+			// Every section's last bar fills; for the ending that fill moves one bar earlier so
+			// it sets up the final hit instead of pushing past the end into nothing.
+			bool lastBar = bar == part.Bars - 1 || (isEnding && bar == part.Bars - 2);
+
+			// Intro build-in: rather than slamming in at full band (which reads as looping back
+			// into the middle of the song), the voices enter a layer at a time — bass + drums
+			// lay down the groove first, then the chordal voice, then the horns/lead on top.
+			bool playChord = !isIntro || bar >= 1;
+			bool playTop = !isIntro || bar >= 2;
 
 			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn, exprRng );
-			switch ( _genre )
-			{
-				case 1: // rock: keys comp + power-chord guitar
-				case 2: // country: honky-tonk piano comp + strummed twang guitar
-					RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
-					RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
-					break;
-				case 3: // metal: palm-muted gallop riff carries the bar
-					RenderMetalRiffBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
-					break;
-				default: // ska: skank chop + horn stabs
-					RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng, exprRng );
-					if ( _hasHorns )
-						RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng, exprRng );
-					break;
-			}
+			if ( playChord )
+				switch ( _genre )
+				{
+					case 1: // rock: keys comp + power-chord guitar
+					case 2: // country: honky-tonk piano comp + strummed twang guitar
+						RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
+						RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						break;
+					case 3: // metal: palm-muted gallop riff carries the bar
+						RenderMetalRiffBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						break;
+					default: // ska: skank chop + horn stabs
+						RenderRhythmBar( barStart, spe, secPerEighth, chord, swing, rhythmRng, exprRng );
+						if ( _hasHorns && playTop )
+							RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng, exprRng );
+						break;
+				}
 			RenderDrumBar( barStart, spe, lastBar, noise, fillRng, fillNoise );
 
-			if ( bar % 2 == 0 )
+			if ( playTop && bar % 2 == 0 )
 				RenderLeadPhrase( barStart, spe, secPerEighth, chord, leadRng, exprRng );
 		}
+	}
+
+	// The song's final downbeat. The whole band resolves home to the tonic on the "one" and
+	// lets the chord ring out into the tail RingOutTail reserved — a landing, not a turnaround.
+	// The previous bar's fill (see RenderSection) leads in and its terminal crash lands right
+	// here, so the ending itself only adds the kick + the sustained, decaying chord.
+	void RenderEnding( int barStart, int spe, Rng noise )
+	{
+		int at = Math.Max( 0, barStart );
+		RenderKick( at, noise );
+
+		// Resolve to the progression's tonic (slot 0) wherever the chord cycle happened to
+		// land, and ring it with a natural exponential tail (Sustained = false) long enough to
+		// bloom into the reserved tail room. A held triad up top + the root an octave below.
+		int dur = (int)(_sr * RingOutTail * 0.92f);
+		int baseMidi = _rootMidi + 19;
+		int[] degs = { _prog[0], _prog[0] + 2, _prog[0] + 4, _prog[0] + 7 };
+		foreach ( var d in degs )
+		{
+			var pad = new Patch
+			{
+				Osc = 1, Voices = 3, Detune = _c.Detune,
+				Amp = 0.7f / degs.Length, Attack = 0.006f, Decay = 1.2,
+				Sustain = 0f, Sustained = false,
+				Cutoff = _c.SkankCutoff, CutEnv = 700f, Reso = 0.8f,
+				Drive = _genre == 3 ? 3.5f : 1.3f, Pan = 0f,
+			};
+			RenderPatch( at, dur, Midi( ScaleMidi( baseMidi, d ) ), pad );
+		}
+		var low = new Patch
+		{
+			Osc = 3, Voices = 2, Detune = _c.Detune * 0.4f,
+			Amp = _c.BassVol, Attack = 0.004f, Decay = 1.4,
+			Sustain = 0f, Sustained = false,
+			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
+			Drive = _c.BassDrive, Pan = 0f,
+		};
+		RenderPatch( at, dur, Midi( ChordRoot( 0 ) ), low );
 	}
 
 	// Master: gentle soft-clip + normalize. The mix peak is first normalized to 1.0
