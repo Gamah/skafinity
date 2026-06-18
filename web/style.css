@@ -1,15 +1,15 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:      #020503;
-  --surface: #07120a;
-  --panel:   #0b1c10;
-  --border:  #163a22;
-  --text:    #c8f7d4;
-  --muted:   #5c8a6c;
-  --accent:  #39ff14;
-  --green:   #39ff14;
-  --red:     #ff4d4d;
+  --bg:      #010402;
+  --surface: #040d07;
+  --panel:   #07150c;
+  --border:  #102b1a;
+  --text:    #aedcbb;
+  --muted:   #4c6f59;
+  --accent:  #2f9450;
+  --green:   #2f9450;
+  --red:     #d24545;
   --mono:    ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
@@ -51,13 +51,13 @@ button:hover { border-color: var(--muted); background: var(--surface); }
 
 /* accent-tinted action buttons (primary) */
 button.big, #seedGo, #playBtn {
-  background: rgba(57,255,20,0.1);
-  border: 1px solid rgba(57,255,20,0.5);
+  background: rgba(47,148,80,0.1);
+  border: 1px solid rgba(47,148,80,0.5);
   color: var(--accent);
   font-weight: 600;
 }
 button.big:hover, #seedGo:hover, #playBtn:hover {
-  background: rgba(57,255,20,0.2);
+  background: rgba(47,148,80,0.2);
   border-color: var(--accent);
 }
 button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding: 0; }
@@ -129,11 +129,11 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
 .playlist { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .plrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 2px; }
 .plrow:hover { background: var(--panel); }
-.plrow.now { background: rgba(57,255,20,0.08); outline: 1px solid rgba(57,255,20,0.5); }
+.plrow.now { background: rgba(47,148,80,0.08); outline: 1px solid rgba(47,148,80,0.5); }
 .pllabel { flex: 1; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; }
 .plstatus { color: var(--muted); font-size: 11px; min-width: 46px; text-align: right; }
 .pldl { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; font-size: 11px; }
-.pldl:hover { color: var(--accent); border-color: rgba(57,255,20,0.5); }
+.pldl:hover { color: var(--accent); border-color: rgba(47,148,80,0.5); }
 
 .jump { margin-top: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
 .jump input[type=number] {

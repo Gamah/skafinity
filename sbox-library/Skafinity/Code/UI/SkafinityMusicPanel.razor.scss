@@ -1,15 +1,15 @@
 // ── Theme ─────────────────────────────────────────────────────────────────────
 // Re-theming the panel is a one-stop edit: override these variables. The palette is
 // a dark-green-on-black neon look; nothing below hardcodes a colour outside this block.
-$bg:        #04120a;                 // panel background (deep green-black)
-$btn:       #020a05;                 // buttons / cells — deeper than the panel
-$btn-hover: #0a2614;                 // button / cell hover
-$border:    rgba(57,255,20,0.6);     // hover border (neon green)
-$filled:    #1f7a3a;                 // filled ticks / selected volume cells
-$accent:    #39ff14;                 // on / ok accent (neon green)
-$accent-bg: rgba(57,255,20,0.22);    // accent toggle background
-$text:      rgba(220,255,228,0.9);   // primary text (green-tinted)
-$text-dim:  rgba(200,247,212,0.45);  // labels
+$bg:        #030d07;                 // panel background (deep green-black)
+$btn:       #010603;                 // buttons / cells — deeper than the panel
+$btn-hover: #07190e;                 // button / cell hover
+$border:    rgba(47,148,80,0.6);     // hover border (muted green)
+$filled:    #185c2c;                 // filled ticks / selected volume cells
+$accent:    #2f9450;                 // on / ok accent (muted green)
+$accent-bg: rgba(47,148,80,0.2);     // accent toggle background
+$text:      rgba(200,236,210,0.9);   // primary text (green-tinted)
+$text-dim:  rgba(180,224,194,0.42);  // labels
 // ────────────────────────────────────────────────────────────────────────────────
 
 skafinitymusicpanel {
@@ -105,7 +105,7 @@ skafinitymusicpanel {
 		&.wide { min-width: 96px; }
 		&.reroll { height: 28px; padding: 0 12px; font-size: 13px; margin-left: 12px; }
 		&:hover { background-color: $btn-hover; border: 2px solid $border; }
-		&.toggle.on { background-color: $accent-bg; border: 2px solid rgba(57,255,20,0.7); color: #d6ffe2; }
+		&.toggle.on { background-color: $accent-bg; border: 2px solid rgba(47,148,80,0.7); color: #cdebd6; }
 	}
 
 	.cell {
