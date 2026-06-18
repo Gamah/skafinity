@@ -16,7 +16,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--mono);
   font-size: 13px;
   min-height: 100dvh;
 }
@@ -124,6 +124,7 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
   letter-spacing: 0;
 }
 .panel h2 .reroll:hover { color: var(--text); border-color: var(--muted); }
+.panel h2 .reroll.toggle.on { color: var(--bg); background: var(--accent); border-color: var(--accent); }
 
 /* ── Playlist ── */
 .playlist { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }

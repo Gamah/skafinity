@@ -62,6 +62,25 @@ function makeMod(E) {
       choices: E.VibeFieldChoices(genre, i),
     }),
 
+    // Advanced / tuning-only fields (baseline mix; NOT vibe sliders). Addressed by name so a
+    // host config.json can overlay them onto a cfg without knowing the double[] layout.
+    advancedFieldCount: () => E.AdvancedFieldCount(),
+    advancedFieldName: (i) => E.AdvancedFieldName(i),
+    getAdvancedField: (cfg, i) => E.GetAdvancedField(asArray(cfg), i),
+    setAdvancedField: (cfg, i, raw) => E.SetAdvancedField(asArray(cfg), i, raw),
+    // Overlay { Name: rawValue } onto cfg (raw, clamped per field). Unknown keys are ignored.
+    // Returns the new cfg.
+    applyAdvancedConfig(cfg, obj) {
+      if (!obj || typeof obj !== 'object') return cfg;
+      const idx = {};
+      for (let i = 0, n = E.AdvancedFieldCount(); i < n; i++) idx[E.AdvancedFieldName(i)] = i;
+      let out = cfg;
+      for (const [k, v] of Object.entries(obj)) {
+        if (k in idx && typeof v === 'number' && Number.isFinite(v)) out = E.SetAdvancedField(asArray(out), idx[k], v);
+      }
+      return out;
+    },
+
     // Mirrors MusicController.PlaySeed parsing: vibe:tag:n | tag:n | tag.
     parseSeed(seedIn) {
       const seed = (seedIn || '').trim();

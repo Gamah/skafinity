@@ -98,7 +98,8 @@ deploy:
 stage:
 	rm -rf web/_framework
 	cp -r $(PUBDIR) web/_framework
-	@echo "staged web/_framework ($$(ls web/_framework | wc -l) files)"
+	cp sbox-library/Skafinity/skafinity.config.json web/config.json
+	@echo "staged web/_framework ($$(ls web/_framework | wc -l) files) + web/config.json"
 
 test:
 	$(NODE) test/smoke.mjs

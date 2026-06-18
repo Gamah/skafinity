@@ -34,6 +34,19 @@ const VOLS_KEY = 'skafinity.vol';
 let vols = loadVols();
 function loadVols() { try { return JSON.parse(localStorage.getItem(VOLS_KEY)) || {}; } catch (_) { return {}; } }
 function saveVols() { try { localStorage.setItem(VOLS_KEY, JSON.stringify(vols)); } catch (_) {} }
+// Overlay an optional web/config.json onto the base cfg: the baseline-mix tuning (peak
+// balances, kit presence) that used to be hardcoded consts. Edit the file + reload to retune
+// the house mix — no rebuild. Shape: { "advanced": { "TomBalance": 0.78, ... } } (or a flat
+// { name: value } map). Missing file / bad JSON / unknown keys are ignored silently.
+async function applyHouseConfig() {
+  try {
+    const res = await fetch('./config.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const advanced = (data && typeof data.advanced === 'object') ? data.advanced : data;
+    cfg = mod.applyAdvancedConfig(cfg, advanced);
+  } catch (_) { /* no config.json (or invalid) — keep engine defaults */ }
+}
 // Overlay the stored per-voice volumes onto cfg for the current genre (voices without a saved
 // level keep the song default). Call after building cfg from a vibe/genre.
 function applyStoredVolumes() {
@@ -41,6 +54,21 @@ function applyStoredVolumes() {
     if (f.column === 0 && f.voice && vols[f.voice] !== undefined)
       cfg = mod.setVibeField(cfg, f.i, vols[f.voice]);
   }
+}
+// 🎲 Shuffle ("random every song"): each new song renders with a freshly re-rolled vibe.
+// Matches the s&box panel — re-rolls the vibe knobs only, keeping the current genre and your
+// saved per-voice volumes (volume isn't part of the seed). Each upcoming index caches its own
+// re-rolled cfg so the look-ahead renders (and the audible song) stay consistent.
+const SHUFFLE_KEY = 'skafinity.shuffle';
+let randomEverySong = (() => { try { return localStorage.getItem(SHUFFLE_KEY) === '1'; } catch (_) { return false; } })();
+function saveShuffle() { try { localStorage.setItem(SHUFFLE_KEY, randomEverySong ? '1' : '0'); } catch (_) {} }
+const shuffleCfgs = new Map();   // n -> re-rolled cfg (shuffle mode only)
+// The cfg to render song `nn` with: shared cfg normally; a per-index re-roll under shuffle.
+function cfgForN(nn) {
+  if (!randomEverySong) return cfg;
+  let c = shuffleCfgs.get(nn);
+  if (!c) { c = randomizedCfg(cfg); shuffleCfgs.set(nn, c); }
+  return c;
 }
 let seq = 0;                  // bumped on every restart; stale renders are dropped
 let playing = false;
@@ -92,7 +120,7 @@ function dispatch() {
     reqMap.set(id, nn);
     slot.busy = true;
     slot.n = nn;
-    slot.worker.postMessage({ type: 'gen', id, n: nn, mySeq: seq, seed: seedFor(nn), cfg: cfg.slice() });
+    slot.worker.postMessage({ type: 'gen', id, n: nn, mySeq: seq, seed: seedFor(nn), cfg: cfgForN(nn).slice() });
   }
 }
 
@@ -176,6 +204,19 @@ function scheduleOneSong(buffer, songN, startTime) {
   setTimeout(() => {
     if (mySeq !== seq) return;
     displayN = songN;
+    // Shuffle: adopt the vibe this song was actually rendered with, so the editor / seed / hash
+    // reflect what's audible (and the link reproduces it). Falls back to the live cfg if the
+    // per-index re-roll has already been pruned.
+    if (randomEverySong) {
+      const c = shuffleCfgs.get(songN);
+      if (c) {
+        cfg = c;
+        genre = mod.getGenre(cfg);
+        if ($('genre')) $('genre').value = String(genre);
+        vibe = mod.encodeVibe(cfg);
+        buildVibeEditor();
+      }
+    }
     localStorage.setItem('skafinity.n', String(songN));
     setHash();
     updateTransport();
@@ -202,6 +243,7 @@ function pump() {
     nextTime = nextStart;
     // drop the buffer we just consumed (keep a small trailing cache for the playlist)
     for (const k of rendered.keys()) if (k < nextN - 2) rendered.delete(k);
+    for (const k of shuffleCfgs.keys()) if (k < nextN - 2) shuffleCfgs.delete(k);
     firstScheduled = true;
     nextN++;
   }
@@ -216,6 +258,7 @@ function startSequence() {
   activeNodes = [];
   // abort in-flight renders (terminate busy workers) and clear the generation state
   abortAll();
+  shuffleCfgs.clear();   // re-roll fresh vibes for the new run (shuffle mode)
   nextN = n;
   firstScheduled = false;
   if (!ctx) return;
@@ -473,21 +516,24 @@ function setGenre(g) {
   if (playing) startSequence();
 }
 
-// Randomize cfg's knobs in place — every knob of the current genre except the per-instrument
-// volumes — then keep TEMPO MIN ≤ MAX (ranges are identical so swapping the normalized values
-// swaps the tempos). Pure on cfg; callers handle UI/hash/restart.
-function randomizeVibeCfg() {
+// Return a copy of `base` with every knob of its genre randomized EXCEPT per-instrument volumes
+// (a local mix preference, kept out of the seed), then keep TEMPO MIN ≤ MAX (ranges are
+// identical so swapping the normalized values swaps the tempos). Pure — does not touch globals.
+function randomizedCfg(base) {
+  let c = base.slice();
   for (const f of genreFields()) {
     if (f.column === 0 && f.voice) continue; // skip per-instrument volumes
-    cfg = mod.setVibeField(cfg, f.i, Math.random());
+    c = mod.setVibeField(c, f.i, Math.random());
   }
   const lo = findFieldIndex('TEMPO MIN'), hi = findFieldIndex('TEMPO MAX');
   if (lo >= 0 && hi >= 0) {
-    const a = mod.getVibeNorm(cfg, lo), b = mod.getVibeNorm(cfg, hi);
-    if (a > b) { cfg = mod.setVibeField(cfg, lo, b); cfg = mod.setVibeField(cfg, hi, a); }
+    const a = mod.getVibeNorm(c, lo), b = mod.getVibeNorm(c, hi);
+    if (a > b) { c = mod.setVibeField(c, lo, b); c = mod.setVibeField(c, hi, a); }
   }
-  vibe = mod.encodeVibe(cfg);
+  return c;
 }
+// Randomize the live cfg in place (manual 🎲 reroll). Callers handle UI/hash/restart.
+function randomizeVibeCfg() { cfg = randomizedCfg(cfg); vibe = mod.encodeVibe(cfg); }
 
 // Populate the genre <select> from the wasm genre list (once).
 function populateGenres() {
@@ -513,12 +559,29 @@ function rerollVibe() {
   if (playing) startSequence();
 }
 
+// 🎲 Shuffle toggle ("random every song"): flip the mode, drop any cached re-rolls, and
+// restart so the look-ahead re-renders under the new mode.
+function toggleShuffle() {
+  randomEverySong = !randomEverySong;
+  saveShuffle();
+  shuffleCfgs.clear();
+  updateShuffleBtn();
+  if (playing) startSequence();
+}
+function updateShuffleBtn() {
+  const b = $('shuffleBtn');
+  if (!b) return;
+  b.classList.toggle('on', randomEverySong);
+  b.textContent = randomEverySong ? '🎲 every song: ON' : '🎲 every song: OFF';
+}
+
 // ── Wire up ──
 async function init() {
   mod = await Skafinity();
   for (let i = 0; i < POOL_SIZE; i++) makeWorker(i);
 
   cfg = mod.defaultConfig();
+  await applyHouseConfig();   // overlay web/config.json baseline-mix tuning (no rebuild needed)
   populateGenres();
 
   // initial seed: a shared URL (location.hash) wins; otherwise a fresh random song —
@@ -562,6 +625,8 @@ async function init() {
     try { await navigator.clipboard.writeText(location.href); $('copyBtn').textContent = 'copied!'; setTimeout(() => ($('copyBtn').textContent = 'copy link'), 1200); } catch (_) {}
   };
   $('rerollBtn').onclick = () => rerollVibe();
+  if ($('shuffleBtn')) $('shuffleBtn').onclick = () => toggleShuffle();
+  updateShuffleBtn();
   $('genre').onchange = () => setGenre(parseInt($('genre').value, 10));
   $('dlBtn').onclick = () => exportWav(displayN, $('stereo').checked);
   $('vol').oninput = () => { if (masterGain) masterGain.gain.value = parseFloat($('vol').value); };

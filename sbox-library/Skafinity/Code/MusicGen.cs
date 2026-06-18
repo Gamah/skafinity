@@ -133,44 +133,45 @@ public sealed class MusicGen
 		// Backing horn section
 		public float HornSectionChance = 0.5f;
 		public float HornDensity = 0.35f;
+
+		// ── Advanced peak-balance / level tuning (NOT vibe knobs) ──
+		// These were hardcoded consts; they're Config fields so the house mix can be retuned at
+		// runtime (web: config.json) without a rebuild. They're deliberately kept OUT of the vibe
+		// seed and the per-genre slider grid (see VibeCodec.AdvancedFields) — they shape the
+		// baseline mix, not a song's shareable identity. Edit these to re-balance, not the *Vol
+		// defaults (which stay a flat 1.0 so the knobs read as pure user trims around this).
+		//
+		// KitPresence: drums are short transients fighting a sustained melodic bed; this baseline
+		// boost lets the kit sit in the mix at DRUMS = 1.0 (parity with the other voice sliders).
+		public float KitPresence = 2.0f;
+		// Kit per-voice level balance. The pieces synthesise at very different raw levels (a kick
+		// is huge, a hat is thin noise). Starting point was EQUAL PRE-MASTER PEAK (kick 0.40 /
+		// snare 0.476 / tom 0.496 / hat 0.582 / crash 0.515), then hand-tuned by ear: equal peak
+		// buried the sparse kick/snare/toms under the constant hats, so drums were pushed back up
+		// and the hats backed off.
+		public float KickBalance = 0.800f;
+		public float SnareBalance = 0.900f;
+		public float TomBalance = 0.780f;     // tuned by ear
+		public float HatBalance = 0.407f;     // equal-peak baseline (0.582) backed off 30% by ear
+		public float CrashBalance = 0.515f;
+		// Melodic-voice peak balance — the instrument analog of the kit balances above (same
+		// equal-peak-then-tune workflow). Bass measured the same peak across genres, so one value.
+		public float BassBalance = 0.733f;
+		public float SkankBalance = 1.223f;
+		public float OrganBalance = 1.237f;
+		public float MelodyBalance = 0.896f;  // ska horn lead
+		public float HornBalance = 1.142f;    // backing horn section
+		public float KeysBalance = 1.065f;    // rock offbeat keys
+		public float RhythmGtrBalance = 1.053f;
+		public float LeadGtrBalance = 0.896f;
 	}
 
 	readonly Config _c;
 	readonly int _sr;
-	// Drums are short transients fighting a sustained melodic bed; this baseline boost
-	// lets the kit sit in the mix at DRUMS = 1.0 (parity with the other voice sliders).
-	const float KitPresence = 2.0f;
-	readonly float _drumGain;   // master kit gain — straight 0..1.5 slider × KitPresence baseline
-	// Per-voice level balance. The kit pieces synthesise at very different raw levels (a kick
-	// is huge, a hat is thin noise), so these bake in the differences that used to live in the
-	// per-part Vol defaults — applied at Vol = 1.0 so the knobs stay a flat default and these
-	// carry the balance. The starting point was EQUAL PRE-MASTER PEAK (every piece soloed to
-	// ~0 dBFS: kick 0.40 / snare 0.476 / tom 0.496 / hat 0.582 / crash 0.515), then the kit was
-	// hand-tuned by ear from there: equal peak buried the sparse kick/snare/toms under the
-	// constant hats, so the drums are pushed back up and the hats backed off. Tune these to
-	// re-balance, not the Vol defaults.
-	const float KickBalance = 0.800f;
-	const float SnareBalance = 0.900f;
-	const float TomBalance = 0.780f;   // tuned by ear
-	const float HatBalance = 0.407f;   // equal-peak baseline (0.582) backed off 30% by ear —
-	                                   // the constant hats were masking the sparser kick/snare/toms
-	const float CrashBalance = 0.515f;
-
-	// Melodic-voice peak balance — the instrument analog of the kit *Balance consts above.
-	// Same target (equal pre-master peak at Vol = 1.0), same measure-and-tune workflow, so
-	// the Vol knobs stay a flat 1.0 default and these carry the level differences. Bass
-	// measured the same peak across genres, so it shares one value.
-	const float BassBalance = 0.733f;
-	const float SkankBalance = 1.223f;
-	const float OrganBalance = 1.237f;
-	const float MelodyBalance = 0.896f;   // ska horn lead
-	const float HornBalance = 1.142f;     // backing horn section
-	const float KeysBalance = 1.065f;     // rock offbeat keys
-	const float RhythmGtrBalance = 1.053f;
-	const float LeadGtrBalance = 0.896f;
+	readonly float _drumGain;   // master kit gain — straight 0..1.5 slider × Config.KitPresence baseline
 	float[] _bufL, _bufR;
 
-	MusicGen( Config c ) { _c = c ?? new Config(); _sr = _c.SampleRate; _drumGain = Math.Clamp( _c.DrumVol, 0f, 1.5f ) * KitPresence; }
+	MusicGen( Config c ) { _c = c ?? new Config(); _sr = _c.SampleRate; _drumGain = Math.Clamp( _c.DrumVol, 0f, 1.5f ) * _c.KitPresence; }
 
 	public const int Channels = 2;
 
@@ -647,7 +648,7 @@ public sealed class MusicGen
 		var low = new Patch
 		{
 			Osc = 3, Voices = 2, Detune = _c.Detune * 0.4f,
-			Amp = _c.BassVol * BassBalance, Attack = 0.004f, Decay = 1.4,
+			Amp = _c.BassVol * _c.BassBalance, Attack = 0.004f, Decay = 1.4,
 			Sustain = 0f, Sustained = false,
 			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive, Pan = 0f,
@@ -908,7 +909,7 @@ public sealed class MusicGen
 		var body = new Patch
 		{
 			Osc = 3, Voices = 2, Detune = _c.Detune * 0.4f,
-			Amp = _c.BassVol * BassBalance, Attack = 0.004f, Decay = decaySec,
+			Amp = _c.BassVol * _c.BassBalance, Attack = 0.004f, Decay = decaySec,
 			Sustain = 0.55f, Sustained = true,
 			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive, Pan = 0f,
@@ -916,7 +917,7 @@ public sealed class MusicGen
 		var sub = new Patch
 		{
 			Osc = 2, Voices = 1, Detune = 0f,
-			Amp = _c.BassVol * 0.4f * BassBalance, Attack = 0.004f, Decay = decaySec,
+			Amp = _c.BassVol * 0.4f * _c.BassBalance, Attack = 0.004f, Decay = decaySec,
 			Sustain = 0.55f, Sustained = true,
 			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive, Pan = 0f,
@@ -946,7 +947,7 @@ public sealed class MusicGen
 				RenderPatch( at, (int)(spe * Math.Clamp( _c.SkankChop, 0.15f, 1f )), Midi( ScaleMidi( gBase, d ) ), new Patch
 				{
 					Osc = 1, Voices = 3, Detune = _c.Detune,
-					Amp = _c.SkankVol * SkankBalance / degs.Length, Attack = 0.002f, Decay = 0.10,
+					Amp = _c.SkankVol * _c.SkankBalance / degs.Length, Attack = 0.002f, Decay = 0.10,
 					Sustain = 0f, Sustained = false,
 					Cutoff = _c.SkankCutoff, CutEnv = 1500f, Reso = 0.8f,
 					Highpass = _c.SkankHighpass, Drive = _c.SkankDrive, Pan = 0f,
@@ -959,7 +960,7 @@ public sealed class MusicGen
 					var organ = new Patch
 					{
 						Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
-						Amp = _c.OrganVol * OrganBalance / degs.Length, Attack = 0.004f, Decay = 0.16,
+						Amp = _c.OrganVol * _c.OrganBalance / degs.Length, Attack = 0.004f, Decay = 0.16,
 						Sustain = 0.3f, Sustained = false,
 						Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,
 						Vibrato = _c.OrganVibrato,
@@ -978,7 +979,7 @@ public sealed class MusicGen
 		int[] tones = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 6 }; // chord tones
 		int degree = tones[rng.Int( 3 )];
 		bool guitarLead = _genre != 0;                    // ska is the only horn lead
-		float amp = guitarLead ? _c.LeadGtrVol * LeadGtrBalance : _c.MelodyVol * MelodyBalance;
+		float amp = guitarLead ? _c.LeadGtrVol * _c.LeadGtrBalance : _c.MelodyVol * _c.MelodyBalance;
 		float drive = guitarLead ? _c.LeadGtrDrive : _c.MelodyDrive;
 		// Rock lead trades fast RUNS for BENDINESS (handled via expression), so its run rate is
 		// forced to 0; metal shreds (a high floor of runs); ska/country keep the TRIPLETS knob.
@@ -1121,7 +1122,7 @@ public sealed class MusicGen
 				var keys = new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.KeysVol * KeysBalance / degs.Length,
+					Amp = _c.KeysVol * _c.KeysBalance / degs.Length,
 					Attack = 0.004f, Decay = dec, Sustain = ring ? 0.6f : 0.2f, Sustained = ring,
 					Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
 					Drive = keysDrive, Pan = 0f,
@@ -1159,7 +1160,7 @@ public sealed class MusicGen
 				RenderPatch( Swung( barStart, spe, e ), dur, Midi( root + o ), new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.RhythmGtrVol * RhythmGtrBalance / chordOffs.Length * (accent ? 1f : 0.7f),
+					Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance / chordOffs.Length * (accent ? 1f : 0.7f),
 					Attack = 0.002f, Decay = dec, Sustain = accent ? 0.45f : 0f, Sustained = accent,
 					Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = 0.8f,   // twang
 					Drive = driveAmt, Pan = 0f,
@@ -1193,7 +1194,7 @@ public sealed class MusicGen
 				RenderPatch( at, dur, Midi( root + o ), new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.RhythmGtrVol * RhythmGtrBalance / offs.Length * gain,
+					Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance / offs.Length * gain,
 					Attack = 0.002f, Decay = dec, Sustain = ring ? 0.35f : 0f, Sustained = ring,
 					Cutoff = _c.RhythmGtrCutoff, CutEnv = 1100f, Reso = 0.7f,
 					Drive = driveAmt, Pan = 0f,
@@ -1225,7 +1226,7 @@ public sealed class MusicGen
 			var horn = new Patch
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = _c.HornVol * HornBalance / degs.Length * gain, Attack = 0.008f, Decay = dec,
+				Amp = _c.HornVol * _c.HornBalance / degs.Length * gain, Attack = 0.008f, Decay = dec,
 				Sustain = 0.2f, Sustained = false,
 				Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
 				Drive = _c.HornDrive, Pan = spread * (k / (float)(degs.Length - 1) * 2f - 1f),
@@ -1712,7 +1713,7 @@ public sealed class MusicGen
 			float body = (float)Math.Tanh( MathF.Sin( (float)(phase * 2 * Math.PI) ) * 1.6f ) * env;
 			float sub = MathF.Sin( (float)(subPhase * 2 * Math.PI) ) * 0.3f * subEnv;
 			float click = i < clickLen ? (noise.Next() * 2f - 1f) * 0.55f * (1f - i / (float)clickLen) : 0f;
-			float v = (body + sub + click) * _c.KickVol * KickBalance * _drumGain * _drumLowMul;
+			float v = (body + sub + click) * _c.KickVol * _c.KickBalance * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -1728,7 +1729,7 @@ public sealed class MusicGen
 		int dur = (int)(_sr * (ghost ? 0.06f : 0.15f));
 		double decay = dur * (ghost ? 0.3 : 0.32);
 		double phase = 0, phase2 = 0;
-		float amp = _c.SnareVol * SnareBalance * (ghost ? 0.3f : 1f) * _drumGain;
+		float amp = _c.SnareVol * _c.SnareBalance * (ghost ? 0.3f : 1f) * _drumGain;
 		float a = HpCoeff( 1350f );           // slightly crisper wire crack (was 1200)
 		float inPrev = 0f, outPrev = 0f;
 		int end = Math.Min( _bufL.Length, start + dur );
@@ -1776,7 +1777,7 @@ public sealed class MusicGen
 				ns ^= ns << 13; ns ^= ns >> 17; ns ^= ns << 5;
 				click = ((ns & 0xffff) / 32768f - 1f) * 0.45f * (1f - i / (float)clickLen);
 			}
-			float v = (body + snap + click) * _c.TomVol * TomBalance * _drumGain * _drumLowMul;
+			float v = (body + snap + click) * _c.TomVol * _c.TomBalance * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -1794,7 +1795,7 @@ public sealed class MusicGen
 			float env = (float)Math.Exp( -i / decay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * env * amp * HatBalance * _drumGain * _drumHighMul;
+			float v = hp * env * amp * _c.HatBalance * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -1807,7 +1808,7 @@ public sealed class MusicGen
 		int dur = (int)(_sr * (dark ? 0.9f : 0.6f));
 		double decay = dur * (dark ? 0.5 : 0.45);
 		float a = HpCoeff( dark ? 2600f : 4000f );
-		float amp = _c.CrashVol * CrashBalance * (dark ? 0.85f : 1f);
+		float amp = _c.CrashVol * _c.CrashBalance * (dark ? 0.85f : 1f);
 		float inPrev = 0f, outPrev = 0f;
 		int end = Math.Min( _bufL.Length, start + dur );
 		for ( int i = 0; start + i < end; i++ )
@@ -1839,7 +1840,7 @@ public sealed class MusicGen
 			float env = (float)Math.Exp( -i / decay );
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * 0.7f * env * amp * HatBalance * _drumGain * _drumHighMul;
+			float v = hp * 0.7f * env * amp * _c.HatBalance * _drumGain * _drumHighMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}

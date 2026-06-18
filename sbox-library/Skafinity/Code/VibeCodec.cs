@@ -109,6 +109,45 @@ public static class VibeCodec
 		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
 	};
 
+	// ── Advanced / tuning-only knobs ──
+	// Config fields that shape the BASELINE MIX (peak balances, kit presence) rather than a
+	// song's shareable identity. They are NOT in the vibe wire (Encode/Apply never touch them)
+	// and NOT in Fields() (so they don't appear as per-genre sliders). Membership in THIS list
+	// is exactly the "config value, not a vibe slider" marker. Surfaced to the host (web:
+	// config.json) by NAME — names match the MusicGen.Config field 1:1 — so the house mix can
+	// be retuned at runtime without a rebuild. Ranges are generous tuning bounds, not the seed
+	// grid. Genre-independent; append-only is irrelevant here (not positional / not in seeds).
+	public static readonly Field[] AdvancedFields =
+	{
+		F( "KitPresence", 0f, 4f, false, c => c.KitPresence, ( c, v ) => c.KitPresence = v ),
+		F( "KickBalance", 0f, 2f, false, c => c.KickBalance, ( c, v ) => c.KickBalance = v ),
+		F( "SnareBalance", 0f, 2f, false, c => c.SnareBalance, ( c, v ) => c.SnareBalance = v ),
+		F( "TomBalance", 0f, 2f, false, c => c.TomBalance, ( c, v ) => c.TomBalance = v ),
+		F( "HatBalance", 0f, 2f, false, c => c.HatBalance, ( c, v ) => c.HatBalance = v ),
+		F( "CrashBalance", 0f, 2f, false, c => c.CrashBalance, ( c, v ) => c.CrashBalance = v ),
+		F( "BassBalance", 0f, 2f, false, c => c.BassBalance, ( c, v ) => c.BassBalance = v ),
+		F( "SkankBalance", 0f, 2f, false, c => c.SkankBalance, ( c, v ) => c.SkankBalance = v ),
+		F( "OrganBalance", 0f, 2f, false, c => c.OrganBalance, ( c, v ) => c.OrganBalance = v ),
+		F( "MelodyBalance", 0f, 2f, false, c => c.MelodyBalance, ( c, v ) => c.MelodyBalance = v ),
+		F( "HornBalance", 0f, 2f, false, c => c.HornBalance, ( c, v ) => c.HornBalance = v ),
+		F( "KeysBalance", 0f, 2f, false, c => c.KeysBalance, ( c, v ) => c.KeysBalance = v ),
+		F( "RhythmGtrBalance", 0f, 2f, false, c => c.RhythmGtrBalance, ( c, v ) => c.RhythmGtrBalance = v ),
+		F( "LeadGtrBalance", 0f, 2f, false, c => c.LeadGtrBalance, ( c, v ) => c.LeadGtrBalance = v ),
+	};
+
+	/// <summary>Overlay a <c>name → raw value</c> map (the shared config file's "advanced" block)
+	/// onto <paramref name="c"/>. Keys match <see cref="AdvancedFields"/> names (= Config field
+	/// names) 1:1; unknown keys are ignored and values are clamped to each field's range. Both
+	/// hosts use this: s&box reads the file and calls this; the web mirrors it in JS over the
+	/// same field list. Call it where the baseline mix is assembled (after defaults/vibe).</summary>
+	public static void ApplyAdvanced( IReadOnlyDictionary<string, float> values, MusicGen.Config c )
+	{
+		if ( c == null || values == null ) return;
+		foreach ( var f in AdvancedFields )
+			if ( values.TryGetValue( f.Name, out var v ) )
+				f.Set( c, Math.Clamp( v, f.Min, f.Max ) );
+	}
+
 	sealed class GenreDef
 	{
 		public string Name;

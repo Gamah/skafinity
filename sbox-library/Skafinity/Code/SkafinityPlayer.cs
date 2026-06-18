@@ -166,6 +166,9 @@ public sealed class SkafinityPlayer : Component
 	// instrument across genres. Pulled out of the vibe seed; persisted to FileSystem.Data and
 	// overlaid onto every BuildConfig. See VibeCodec.ReadVolumes/ApplyVolumes.
 	System.Collections.Generic.Dictionary<string, float> _vols = new();
+	// Shared house-mix config (peak balances / kit presence) read from the addon's
+	// skafinity.config.json — the SAME file the web toy uses. Overlaid onto every BuildConfig.
+	System.Collections.Generic.Dictionary<string, float> _houseConfig = new();
 	int _curReserve;           // samples of the current song's tail held back for the crossfade
 	double _pushedSeconds;     // total audio pushed to the stream
 	TimeSince _sinceStart;     // wall clock since playback started
@@ -199,6 +202,7 @@ public sealed class SkafinityPlayer : Component
 		_lastConfigHash = ConfigHash();
 		_curN = Math.Max( 0, PersistProgress ? LoadN() ?? StartN : StartN );
 		_vols = LoadVols();
+		_houseConfig = LoadHouseConfig();
 		if ( AutoPlay ) StartSequence();
 	}
 
@@ -275,6 +279,9 @@ public sealed class SkafinityPlayer : Component
 	MusicGen.Config BuildConfig()
 	{
 		var cfg = BuildKnobConfig();
+		// Shared house-mix baseline (peak balances / kit presence) from skafinity.config.json —
+		// the same file the web toy reads. Independent of the vibe/volume knobs below.
+		VibeCodec.ApplyAdvanced( _houseConfig, cfg );
 		// A vibe override sets the important knobs (so a shared vibe:tag:n reproduces the same
 		// voicing regardless of this client's inspector knobs).
 		if ( !string.IsNullOrEmpty( Vibe ) )
@@ -572,9 +579,10 @@ public sealed class SkafinityPlayer : Component
 			_curN++;
 			if ( PersistProgress ) SaveN( _curN );
 
-			// Shuffle mode: each new song gets a fresh set of knobs. Reroll the vibe so the
-			// look-ahead fill (OnUpdate) generates the upcoming songs with the new voicing.
-			if ( RandomEverySong ) RerollVibe( includeVolumes: true, includeGenre: true );
+			// Shuffle mode: each new song gets a fresh set of vibe knobs (NOT volumes — those are
+			// a local mix preference, kept out of the seed — and NOT genre, matching the web toy).
+			// The look-ahead fill (OnUpdate) then generates upcoming songs with the new voicing.
+			if ( RandomEverySong ) RerollVibe();
 		}
 		catch ( Exception e )
 		{
@@ -759,6 +767,29 @@ public sealed class SkafinityPlayer : Component
 					FileSystem.Data.ReadAllText( VolumeFile ) ) ?? new();
 		}
 		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: load volumes failed: {e.Message}" ); }
+		return new();
+	}
+
+	// ── Shared house-mix config (read-only, shipped with the addon) ──
+	// The SAME JSON the web toy uses (web/config.json is `make`-copied from the library's
+	// skafinity.config.json). Its "advanced" block overlays the baseline peak-balance / level
+	// mix onto every BuildConfig, so the house mix is retuned by editing one file rather than
+	// recompiling. Read-only addon content → FileSystem.Mounted. See VibeCodec.ApplyAdvanced.
+	const string HouseConfigFile = "skafinity.config.json";
+
+	class HouseConfigDto { public System.Collections.Generic.Dictionary<string, float> advanced { get; set; } }
+
+	System.Collections.Generic.Dictionary<string, float> LoadHouseConfig()
+	{
+		try
+		{
+			if ( FileSystem.Mounted.FileExists( HouseConfigFile ) )
+			{
+				var dto = Json.Deserialize<HouseConfigDto>( FileSystem.Mounted.ReadAllText( HouseConfigFile ) );
+				return dto?.advanced ?? new();
+			}
+		}
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: load house config failed: {e.Message}" ); }
 		return new();
 	}
 }

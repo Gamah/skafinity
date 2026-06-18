@@ -313,8 +313,8 @@
 		if ( Player == null ) return;
 		bool on = !Player.RandomEverySong;
 		Player.RandomEverySong = on;
-		if ( on ) Player.RerollVibe( includeVolumes: true, includeGenre: true );
-		_msg = on ? "Shuffle: every new song randomizes every knob" : "Shuffle off";
+		if ( on ) Player.RerollVibe();
+		_msg = on ? "Shuffle: every new song re-rolls the vibe (keeps your volumes)" : "Shuffle off";
 	}
 
 	protected override int BuildHash() =>
