@@ -30,7 +30,8 @@ DOTNET   ?= dotnet
 # with). Override with `make test NODE=/path/to/node` if needed.
 NODE     ?= $(shell command -v node)
 PROJECT   = wasm/Skafinity.Wasm.csproj
-PUBDIR    = wasm/bin/Release/net10.0/publish/wwwroot/_framework
+PUBROOT   = wasm/bin/Release/net10.0/publish
+PUBDIR    = $(PUBROOT)/wwwroot/_framework
 PORT     ?= 8000
 COMPOSE   = docker compose -f docker/docker-compose.yml
 
@@ -60,7 +61,12 @@ logs:
 ps:
 	$(COMPOSE) ps
 
+# Wipe the publish OUTPUT dir first: `dotnet publish` never prunes old content-hashed
+# assemblies, so re-publishing into a dirty dir accumulates stale *.wasm that `stage` then
+# copies into web/. Clearing just $(PUBROOT) (not obj/) keeps the AOT cache, so the rebuild
+# stays incremental while the staged bundle only ever holds the canonical files.
 all:
+	rm -rf $(PUBROOT)
 	$(DOTNET) publish $(PROJECT) -c Release
 	@$(MAKE) --no-print-directory stage
 
@@ -73,13 +79,14 @@ build:
 # Faster iteration: interpreted runtime (no AOT). Composition/output are identical; only
 # the per-sample synthesis loop runs slower.
 dev:
+	rm -rf $(PUBROOT)
 	$(DOTNET) publish $(PROJECT) -c Release -p:RunAOTCompilation=false
 	@$(MAKE) --no-print-directory stage
 
-# Ship build: `dotnet publish` reuses wasm/bin and never prunes old hashed assemblies, so an
-# incremental `make` can leave stale .wasm cruft in the staged bundle. `deploy` clears
-# wasm/bin + wasm/obj first so the AOT publish regenerates only the canonical files, then
-# runs the smoke test so the staged web/ is verified before it goes out.
+# Ship build: a full from-scratch rebuild + smoke test. `all` already wipes the publish dir
+# so the staged bundle is cruft-free on every build; `deploy` goes further and clears
+# wasm/bin + wasm/obj (the AOT cache too) for a guaranteed-clean release, then runs the smoke
+# test so the staged web/ is verified before it goes out.
 deploy:
 	@$(MAKE) --no-print-directory clean
 	@$(MAKE) --no-print-directory all
