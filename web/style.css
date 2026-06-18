@@ -1,15 +1,15 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:      #101014;
-  --surface: #16161c;
-  --panel:   #1b1b22;
-  --border:  #2a2a33;
-  --text:    #d6d6dc;
-  --muted:   #7a7a85;
-  --accent:  #5b8def;
-  --green:   #3dd68c;
-  --red:     #e5484d;
+  --bg:      #020503;
+  --surface: #07120a;
+  --panel:   #0b1c10;
+  --border:  #163a22;
+  --text:    #c8f7d4;
+  --muted:   #5c8a6c;
+  --accent:  #39ff14;
+  --green:   #39ff14;
+  --red:     #ff4d4d;
   --mono:    ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
@@ -40,7 +40,7 @@ button {
   background: var(--panel);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 6px 14px;
   font: inherit;
   font-size: 12px;
@@ -51,13 +51,13 @@ button:hover { border-color: var(--muted); background: var(--surface); }
 
 /* accent-tinted action buttons (primary) */
 button.big, #seedGo, #playBtn {
-  background: rgba(91,141,239,0.1);
-  border: 1px solid rgba(91,141,239,0.5);
+  background: rgba(57,255,20,0.1);
+  border: 1px solid rgba(57,255,20,0.5);
   color: var(--accent);
   font-weight: 600;
 }
 button.big:hover, #seedGo:hover, #playBtn:hover {
-  background: rgba(91,141,239,0.2);
+  background: rgba(57,255,20,0.2);
   border-color: var(--accent);
 }
 button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding: 0; }
@@ -76,7 +76,7 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 8px 12px;
   font: inherit;
   font-family: var(--mono);
@@ -90,7 +90,7 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 2px;
   padding: 18px;
 }
 .panel h2 {
@@ -109,7 +109,7 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
   color: var(--text);
   padding: 2px 6px;
   font-size: 11px;
-  border-radius: 4px;
+  border-radius: 2px;
   margin-left: 4px;
 }
 .panel h2 .genre select:focus { outline: none; border-color: var(--accent); }
@@ -127,18 +127,18 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
 
 /* ── Playlist ── */
 .playlist { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.plrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; }
+.plrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 2px; }
 .plrow:hover { background: var(--panel); }
-.plrow.now { background: rgba(91,141,239,0.08); outline: 1px solid rgba(91,141,239,0.5); }
+.plrow.now { background: rgba(57,255,20,0.08); outline: 1px solid rgba(57,255,20,0.5); }
 .pllabel { flex: 1; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; }
 .plstatus { color: var(--muted); font-size: 11px; min-width: 46px; text-align: right; }
 .pldl { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; font-size: 11px; }
-.pldl:hover { color: var(--accent); border-color: rgba(91,141,239,0.5); }
+.pldl:hover { color: var(--accent); border-color: rgba(57,255,20,0.5); }
 
 .jump { margin-top: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
 .jump input[type=number] {
   width: 64px; background: var(--bg); border: 1px solid var(--border);
-  color: var(--text); border-radius: 4px; padding: 6px; font: inherit; font-family: var(--mono);
+  color: var(--text); border-radius: 2px; padding: 6px; font: inherit; font-family: var(--mono);
 }
 .jump input[type=number]:focus { outline: none; border-color: var(--accent); }
 .export { margin-left: auto; display: flex; align-items: center; gap: 8px; }
@@ -163,7 +163,7 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
 .knob-input[type=range] { accent-color: var(--accent); }
 select.knob-input {
   background: var(--bg); color: var(--text); border: 1px solid var(--border);
-  border-radius: 4px; padding: 3px; font: inherit; font-size: 11px;
+  border-radius: 2px; padding: 3px; font: inherit; font-size: 11px;
 }
 select.knob-input:focus { outline: none; border-color: var(--accent); }
 
@@ -176,7 +176,7 @@ footer {
 footer code {
   font-family: var(--mono); font-size: 11px;
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 3px; padding: 1px 6px; color: var(--accent);
+  border-radius: 2px; padding: 1px 6px; color: var(--accent);
 }
 
 @media (max-width: 560px) {
