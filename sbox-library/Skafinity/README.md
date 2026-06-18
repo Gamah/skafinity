@@ -24,6 +24,7 @@ Copy the `Skafinity/` folder there:
 ```
 <your-project>/Libraries/Skafinity/
   Skafinity.sbproj
+  skafinity.config.json # baseline house-mix (peak balances) — edit to retune without recompiling
   Code/
     MusicGen.cs        # composer + subtractive synth (portable, deterministic)
     VibeCodec.cs       # base-36 "vibe" knob encoding (the shareable seed fragment)
@@ -56,11 +57,11 @@ music.PrevSong();          // n-1
 music.SetN( 100 );         // jump
 
 // Vibe knobs (the shareable subset of the config)
-music.RerollVibe();                    // randomise the vibe, keep per-instrument volumes
-music.RerollVibe( includeVolumes: true, includeGenre: true ); // full shuffle
+music.RerollVibe();                    // randomise the vibe knobs, keep per-instrument volumes
+music.RerollVibe( includeVolumes: true, includeGenre: true ); // opt-in full shuffle (also rolls volumes + genre)
 music.SetVibe( 0, 0.5f );              // set field 0 (TEMPO MIN) from a 0..1 fraction
 music.SetGenre( 1 );                   // switch genre (re-encodes the vibe so it sticks)
-music.RandomEverySong = true;          // re-randomise every knob as each new song begins
+music.RandomEverySong = true;          // re-roll the vibe each new song (keeps your volumes + genre)
 
 string seed = music.CurrentSeed;       // "vibe:tag:n" — share this
 var cfg     = music.EffectiveConfig(); // the MusicGen.Config currently in effect
@@ -106,6 +107,23 @@ against the same `SkafinityPlayer` API.
 | **Output** | `SampleRate`, `TargetSeconds`, `RenderThreads` (synthesis is split across worker threads) |
 | **Crossfade** | `Crossfade` window, `CrossfadeOverlap`, `LoopsPerSong`, `AheadCount` (look-ahead depth) |
 | Tempo / Mix / Tone / Feel / Stereo / Instrument / Horns | The full generator knob set — see `MusicGen.Config` |
+
+## House-mix config
+
+`skafinity.config.json` (next to `Skafinity.sbproj`) tunes the **baseline mix** — the per-voice
+peak balances and kit presence that sit *under* the seed's vibe. `SkafinityPlayer` reads it at
+startup (`FileSystem.Mounted`) and overlays its `advanced` block onto every generated config, so
+you can re-balance the kit/instruments by editing one JSON file instead of recompiling:
+
+```json
+{ "advanced": { "TomBalance": 0.78, "HatBalance": 0.407, "BassBalance": 0.733 } }
+```
+
+Keys match `MusicGen.Config` field names 1:1 (see `VibeCodec.AdvancedFields`); unknown keys are
+ignored and values are clamped per field. These are **not** vibe knobs — they shape the house
+mix, not a song's shareable identity, so they never appear in the seed or the panel's sliders.
+This is the *same* file the web toy uses (the web build copies it from here), so both stay in
+sync. Missing/invalid file → the engine's built-in defaults.
 
 ## Determinism
 

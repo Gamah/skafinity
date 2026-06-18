@@ -19,7 +19,8 @@ the single source of truth for both the game and this web toy**. The web build c
 | File | Role |
 |---|---|
 | `sbox-library/Skafinity/Code/MusicGen.cs` | The composer + subtractive synthesiser. Portable PRNG → every musical choice → interleaved stereo PCM. **The spec.** |
-| `sbox-library/Skafinity/Code/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. |
+| `sbox-library/Skafinity/Code/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. Also holds the `AdvancedFields` registry — the baseline-mix knobs that are config-only (NOT in the seed or the sliders). |
+| `sbox-library/Skafinity/skafinity.config.json` | The single shared **house-mix config** (peak balances / kit presence). Canonical here; the s&box plugin reads it at runtime and `make` copies it to `web/config.json`. Edit it to retune the baseline mix without a rebuild. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
 | `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. Re-themeable via the `.scss` variable block. |
 | `reference/*.cs` | The original Rotaliate-client copies, kept for context. **Read-only.** The `sbox-library` copies are what actually compile. |
@@ -66,6 +67,7 @@ skafinity/
   CLAUDE.md
   reference/              # read-only original C# (context only)
   sbox-library/Skafinity/ # the s&box library — Code/MusicGen.cs + VibeCodec.cs are THE source
+    skafinity.config.json # canonical shared house-mix config (make copies it to web/)
   wasm/
     Skafinity.Wasm.csproj # browser-wasm project; <Compile Include>s the shared .cs
     Exports.cs            # [JSExport] boundary: generate, vibe codec, WAV, config <-> double[]
@@ -76,6 +78,7 @@ skafinity/
     app.js                # Web Audio sequencer (port of the controller's scheduling)
     worker.js             # generation worker (its own runtime instance)
     style.css
+    config.json           # house-mix overlay fetched at startup (make-copied from sbox-library)
     _framework/           # published runtime bundle (committed; rebuilt by `make`)
   test/smoke.mjs          # node smoke test of the JS↔wasm boundary
   Makefile
@@ -111,9 +114,9 @@ determinism, and WAV output — run it after engine or boundary changes.
 - `tag` — any string (a name, a word). It seeds the PRNG together with `n`: the per-song PRNG
   seed string is **`"{tag}:{n}"`** (empty tag ⇒ `"rotaliate"`).
 - `n` — song index in the infinite sequence (0, 1, 2 …). Prev/Next step `n`.
-- `vibe` — a base-36 string at **12 levels/knob**, encoding the genre + knob overrides. The
-  **first char is the genre** (0 = Ska, 1 = Rock); the rest follow the fixed wire grid below.
-  Empty/absent ⇒ default knobs (genre 0).
+- `vibe` — a base-36 string at **16 levels/knob** (`VibeCodec.Levels`), encoding the genre + knob
+  overrides. The **first char is the genre** (0 = Ska, 1 = Rock, 2 = Country, 3 = Metal); the rest
+  follow the fixed wire grid below. Empty/absent ⇒ default knobs (genre 0).
 
 Parsing (in `web/engine.js`, `parseSeed`) mirrors the controller: accept `vibe:tag:n`,
 `tag:n`, or `tag`. The page keeps the current seed in `location.hash` so it's shareable and
@@ -133,6 +136,29 @@ list — including each field's `voice`/`column` — straight from the wasm expo
 (`VibeFieldName/Min/Max/IsInt/Voice/Column/Choices`, all genre-parameterized) and lays out
 the matrix generically, so there's no second field table to keep in lockstep — just edit
 `VibeCodec.cs`.
+
+---
+
+## House-mix config (runtime, NOT in the seed)
+
+The peak-balance / kit-presence values that shape the *baseline mix* (`KickBalance`, `TomBalance`,
+… `KitPresence`) are `MusicGen.Config` fields, but they are deliberately **not** vibe knobs:
+they don't ride in the shareable seed and don't appear as sliders. They live in
+`VibeCodec.AdvancedFields` — a separate registry, kept out of `Fields()` and out of the wire
+format. Membership in `AdvancedFields` *is* the "config value, not a vibe slider" marker.
+
+One JSON file tunes them for **both** targets without a rebuild:
+
+- **Canonical:** `sbox-library/Skafinity/skafinity.config.json`, an `{ "advanced": { Name: value } }`
+  map whose keys match the `Config` field names 1:1.
+- **s&box:** `SkafinityPlayer` reads it (`FileSystem.Mounted`) in `OnStart` and overlays it in
+  `BuildConfig` via `VibeCodec.ApplyAdvanced`.
+- **Web:** `make` copies it to `web/config.json`; `web/app.js` fetches it at startup and overlays
+  it onto the base cfg (the JS mirror of `ApplyAdvanced`, over the same field list).
+
+To add a baseline-mix knob: add the `Config` field, add a row to `VibeCodec.AdvancedFields`, add
+it to `Cfg.To`/`From` (+ bump `Cfg.Size`), and add a key to the JSON. To make something a *vibe*
+knob instead, put it in a genre grid / `GlobalFields` (see above), not here.
 
 ---
 
@@ -167,5 +193,8 @@ button.
   serve it with the docroot pointed straight at `web/`. `web/_framework` is committed so a
   clone is testable without the SDK.
 - Keep `MusicGen.cs` / `VibeCodec.cs` framework-free; web-specific code goes in `Exports.cs`.
+- The house-mix config has ONE canonical copy (`sbox-library/Skafinity/skafinity.config.json`);
+  `make`'s `stage` step copies it to `web/config.json`. Edit the canonical and re-`make`, or edit
+  `web/config.json` directly for quick web-only iteration (the next `make` overwrites it).
 - Commit messages end with the Co-Authored-By trailer (see global instructions).
 - Feature work goes on branches.

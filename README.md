@@ -44,7 +44,8 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 | `wasm/Exports.cs` | The `[JSExport]` boundary (generate, vibe codec, WAV, config) — the only web-specific code. |
 | `wasm/Skafinity.Wasm.csproj` | `browser-wasm` project that `<Compile Include>`s the shared `.cs` and builds the runtime. |
 | `web/engine.js` | Boots the .NET runtime and adapts the exports to the small `mod` API the app uses. |
-| `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export. |
+| `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export, shuffle. |
+| `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix without a rebuild. |
 | `test/smoke.mjs` | Node smoke test that boots the published runtime and exercises every export. |
 
 ## Features
@@ -56,6 +57,12 @@ make serve    # static server rooted at web/; open http://localhost:8000/
   Stereo or mono (the game's export is mono).
 - **Share via URL** — the seed lives in `location.hash`, so a reload or a shared link
   reproduces the exact same song.
+- **Random every song** — a 🎲 toggle that re-rolls the vibe for each new song (keeping your
+  per-voice volumes), so the stream keeps reinventing itself. Mirrors the s&box panel.
+- **House-mix config, no rebuild** — the baseline peak balances live in `web/config.json`
+  (copied from the shared `sbox-library/Skafinity/skafinity.config.json`); edit + reload to
+  retune the mix without recompiling the wasm. These shape the baseline level mix and are
+  *not* vibe knobs, so they never travel in the seed.
 
 ## Instruments & their inputs
 
