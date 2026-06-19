@@ -119,8 +119,10 @@ public sealed class MusicGen
 		public float MelodyLeapChance = 0.18f;
 		public float MelodyVibrato = 5.0f;
 
-		// Stereo — how far off-center the lead sits; horns spread around it.
-		public float PanAmount = 0.4f;
+		// STEREO WIDTH (vibe slider): master 0..1 stereo amount. Scales the lead/horn placement
+		// AND the drum pan + double-tracking spread/decorrelation (see _widthScale). 1 = full
+		// design width (the "100%" the rest of the mix is tuned for); 0 = mono.
+		public float PanAmount = 1.0f;
 
 		// Lead instrument weights (RNG picks one; ForceInstrument overrides:
 		// -1 = RNG, 0=Trumpet 1=Sax 2=Organ 3=Trombone).
@@ -398,6 +400,10 @@ public sealed class MusicGen
 	int _rootMidi;
 	Instrument _lead;
 	float _leadPan;
+	float _widthScale = 1f;  // STEREO WIDTH slider (PanAmount) as a 0..1 master: scales the drum
+	                         // pan AND the double-tracking spread/decorrelation. 1 = full (design)
+	                         // width; 0 = everything collapses to centre (mono).
+	float _drumPan = DrumPan;// per-song effective drum spread = DrumPan * _widthScale
 	bool _hasHorns;
 	bool[] _hornMask;
 	int[] _bassPat;
@@ -437,13 +443,13 @@ public sealed class MusicGen
 
 	static List<Part> BuildStructure() => new()
 	{
-		new Part( Section.Intro,  4, 0 ),
+		new Part( Section.Intro,  2, 0 ),
 		new Part( Section.Chorus, 8, 0 ),
 		new Part( Section.Verse,  8, 0 ),
 		new Part( Section.Chorus, 8, 0 ),
 		new Part( Section.Verse,  8, 1 ),
 		new Part( Section.Chorus, 8, 0 ),
-		new Part( Section.Ending, 4, 0 ),
+		new Part( Section.Ending, 2, 0 ),
 	};
 
 	static string SectionKey( Section s ) => s switch
@@ -483,6 +489,8 @@ public sealed class MusicGen
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
 		_lead = Instrument.Trumpet;                       // ska lead is fixed; other genres use guitar
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
+		_widthScale = Math.Clamp( _c.PanAmount, 0f, 1f );
+		_drumPan = DrumPan * _widthScale;
 		_bassPat = rng.Pick( BassPatternsFor( _genre ) );
 		_drumStyle = _genre switch                        // 0 ska rolls a style; the rest are fixed
 		{
@@ -1409,10 +1417,14 @@ public sealed class MusicGen
 			_events.Add( new NoteEvent { Start = start, Dur = dur, Freq = freq, P = p } );
 			return;
 		}
-		float width = Math.Clamp( lead ? _c.WidthLead : _c.WidthBacking, 0f, 1f );
-		float halfCents = _c.WidthDetune * 0.5f;
-		int delay = (int)(_c.WidthDelayMs * 0.001f * _sr);
-		int jit = (int)(_c.WidthJitterMs * 0.001f * _sr);
+		// The STEREO WIDTH slider (_widthScale) scales the whole effect: pan AND the
+		// decorrelation (detune / delay / jitter / phase / per-note variation, all scaled inside
+		// AddTake). At 100% it's the full design width; at 0% both takes collapse onto each other
+		// at centre → effectively mono.
+		float width = Math.Clamp( lead ? _c.WidthLead : _c.WidthBacking, 0f, 1f ) * _widthScale;
+		float halfCents = _c.WidthDetune * 0.5f * _widthScale;
+		int delay = (int)(_c.WidthDelayMs * 0.001f * _sr * _widthScale);
+		int jit = (int)(_c.WidthJitterMs * 0.001f * _sr * _widthScale);
 		// Take A sits left and slightly flat; take B sits right, slightly sharp, and lags by the
 		// constant offset. Both get independent phase + per-note amp/cutoff/timing variation, so
 		// the two channels are genuinely different performances (the source of the width) rather
@@ -1436,9 +1448,11 @@ public sealed class MusicGen
 		if ( st < 0 ) st = 0;
 		var q = p;
 		q.Pan = pan;
-		q.PhaseSeed = r1;
-		q.Amp = p.Amp * (1f + (r2 * 2f - 1f) * _c.WidthAmpVar);
-		q.Cutoff = p.Cutoff * (1f + (r3 * 2f - 1f) * _c.WidthCutoffVar);
+		// Phase + per-note variation also scale with the width slider, so at 0% the two takes
+		// become identical and centred (clean mono) instead of a flangy centred double.
+		q.PhaseSeed = r1 * _widthScale;
+		q.Amp = p.Amp * (1f + (r2 * 2f - 1f) * _c.WidthAmpVar * _widthScale);
+		q.Cutoff = p.Cutoff * (1f + (r3 * 2f - 1f) * _c.WidthCutoffVar * _widthScale);
 		float f = freq * (float)Math.Pow( 2.0, cents / 1200.0 );
 		_events.Add( new NoteEvent { Start = st, Dur = dur, Freq = f, P = q } );
 	}
@@ -1753,9 +1767,12 @@ public sealed class MusicGen
 		for ( int i = 0; i < n; i++ )
 		{
 			int t = Swung( barStart, spe, baseE + i * 2.0 / n );
+			// Spread the toms left→right across the fill (high→low), centred: the first hit pans
+			// hard-ish left, the last hard-ish right, evenly regardless of how many toms play.
+			float pos = n > 1 ? i / (float)(n - 1) : 0.5f;
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
 			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
-			else RenderTom( t, toms[i], noise );
+			else RenderTom( t, toms[i], noise, (pos * 2f - 1f) * _drumPan );
 		}
 		// crash into the downbeat (lands on the bar line, an on-beat anchor → dead straight) — a
 		// bright crash or a darker, washier crash, picked off the fill stream so the cymbal colour
@@ -1820,14 +1837,13 @@ public sealed class MusicGen
 		}
 	}
 
-	void RenderTom( int start, float baseFreq, Rng noise )
+	// pan: where this tom sits across the kit, −DrumPan (rack/high, left) .. +DrumPan (floor/low,
+	// right). Caller-supplied so a fill spreads evenly across however many toms it actually plays
+	// (panning by absolute pitch bunched short fills to the left). Default 0 = centred.
+	void RenderTom( int start, float baseFreq, Rng noise, float pan = 0f )
 	{
 		start = Math.Max( 0, start + _drumPush );
-		// Toms spread across the kit by pitch: rack (high) on the left, floor (low) on the
-		// right, the way they sit in front of a drummer. Fixed ±25%, derived from the note so
-		// every tom caller pans consistently. u: 0 at the lowest tom .. 1 at the highest.
-		float u = Math.Clamp( (baseFreq - 100f) / (260f - 100f), 0f, 1f );
-		StereoGains( -DrumPan * (u * 2f - 1f), out float gL, out float gR );
+		StereoGains( pan, out float gL, out float gR );
 		int dur = (int)(_sr * 0.18f);
 		double decay = dur * 0.3;
 		double attackDecay = dur * 0.06;        // fast-decaying upper partial → beater "snap"
@@ -1862,7 +1878,7 @@ public sealed class MusicGen
 	{
 		start = Math.Max( 0, start + _drumPush );
 		// Closed/open hats live on the left of the kit (the hi-hat stand); ride sits opposite.
-		StereoGains( -DrumPan, out float gL, out float gR );
+		StereoGains( -_drumPan, out float gL, out float gR );
 		int dur = (int)(_sr * (open ? 0.16f : 0.035f));
 		double decay = dur * 0.4;
 		float a = HpCoeff( 7000f );
@@ -1885,7 +1901,7 @@ public sealed class MusicGen
 	void RenderCrash( int start, Rng noise, bool dark = false )
 	{
 		start = Math.Max( 0, start + _drumPush );
-		StereoGains( (dark == _crashBrightLeft ? DrumPan : -DrumPan), out float gL, out float gR );
+		StereoGains( (dark == _crashBrightLeft ? _drumPan : -_drumPan), out float gL, out float gR );
 		int dur = (int)(_sr * (dark ? 0.9f : 0.6f));
 		double decay = dur * (dark ? 0.5 : 0.45);
 		float a = HpCoeff( dark ? 2600f : 4000f );
@@ -1912,7 +1928,7 @@ public sealed class MusicGen
 	{
 		start = Math.Max( 0, start + _drumPush );
 		// Ride sits opposite the hats, on the right of the kit.
-		StereoGains( DrumPan, out float gL, out float gR );
+		StereoGains( _drumPan, out float gL, out float gR );
 		int dur = (int)(_sr * (bell ? 0.34f : 0.22f));
 		double decay = dur * 0.42;
 		float a = HpCoeff( 7000f );
