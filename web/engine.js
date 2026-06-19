@@ -31,8 +31,8 @@ function makeMod(E) {
       return { sampleRate: E.SampleRate(), frames, left: copyChannel(E, 0), right: copyChannel(E, 1) };
     },
 
-    songToWav(seed, cfg, stereo) {
-      E.GenerateWav(seed, asArray(cfg), !!stereo);
+    songToWav(seed, cfg) {
+      E.GenerateWav(seed, asArray(cfg));                 // interleaved stereo
       return E.WavBytes().slice();                       // Uint8Array, off-heap
     },
 

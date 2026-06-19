@@ -53,8 +53,8 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 - **Rolling playlist** — `n` auto-advances on every crossfade and is persisted; a full
   playlist panel shows played / now-playing / up-next, with click-to-jump and per-song
   export.
-- **Export to disk** — generate the loop as a WAV in-browser and download it (no server).
-  Stereo or mono (the game's export is mono).
+- **Export to disk** — generate the loop as an interleaved-stereo WAV in-browser and download
+  it (no server).
 - **Share via URL** — the seed lives in `location.hash`, so a reload or a shared link
   reproduces the exact same song.
 - **Random every song** — a 🎲 toggle that re-rolls the vibe for each new song (keeping your

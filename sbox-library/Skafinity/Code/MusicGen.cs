@@ -194,7 +194,7 @@ public sealed class MusicGen
 	// pulls no RNG, so the caller can split it across worker threads. Flow:
 	//   var g = MusicGen.BeginPlan( tag, cfg );            // sequential plan + drums
 	//   parallel-for window in 0..g.TotalSamples: g.RenderPitchedRange( from, to );
-	//   short[] mono = g.FinishMono();                     // master + downmix
+	//   short[] pcm = g.FinishStereo();                    // master + interleave
 	public static MusicGen BeginPlan( string tag, Config cfg )
 	{
 		var g = new MusicGen( cfg );
@@ -205,17 +205,9 @@ public sealed class MusicGen
 	public int TotalSamples => _bufL?.Length ?? 0;
 	public int SampleRate => _sr;
 
-	/// <summary>Master-normalize and downmix to mono. Call after every
+	/// <summary>Master-normalize and interleave to stereo 16-bit PCM. Call after every
 	/// <see cref="RenderPitchedRange"/> window has finished.</summary>
-	public short[] FinishMono()
-	{
-		float gain = Master();
-		int n = _bufL.Length;
-		var mono = new short[n];
-		for ( int i = 0; i < n; i++ )
-			mono[i] = ToS16( (_bufL[i] + _bufR[i]) * 0.5f * gain );
-		return mono;
-	}
+	public short[] FinishStereo() => ToShorts( Master() );
 
 	const int EighthsPerBar = 8;
 
@@ -444,7 +436,7 @@ public sealed class MusicGen
 	};
 
 	// Single-threaded generation (used by Generate / GenerateSamples). The controller
-	// uses the chunked path instead (BeginPlan → parallel RenderPitchedRange → FinishMono).
+	// uses the chunked path instead (BeginPlan → parallel RenderPitchedRange → FinishStereo).
 	float Compose( string tag )
 	{
 		ComposePlan( tag );

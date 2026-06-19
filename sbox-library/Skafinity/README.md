@@ -76,7 +76,7 @@ You can also generate audio without the component, off any thread:
 // One-shot WAV bytes
 byte[] wav = MusicGen.Generate( "mytag:0", new MusicGen.Config { TargetSeconds = 60f } );
 
-// Or raw 16-bit mono PCM
+// Or raw interleaved-stereo 16-bit PCM
 short[] pcm = MusicGen.GenerateSamples( "mytag:0", new MusicGen.Config(), out int sampleRate );
 ```
 

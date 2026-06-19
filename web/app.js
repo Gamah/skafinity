@@ -325,8 +325,8 @@ function applySeedString(s) {
 }
 
 // ── Export ──
-function exportWav(songN, stereo) {
-  const bytes = mod.songToWav(seedFor(songN), cfg, stereo);
+function exportWav(songN) {
+  const bytes = mod.songToWav(seedFor(songN), cfg);
   const blob = new Blob([bytes], { type: 'audio/wav' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -360,7 +360,7 @@ function renderPlaylist() {
     dl.className = 'pldl';
     dl.textContent = '⬇';
     dl.title = `Export #${k} to WAV`;
-    dl.onclick = (ev) => { ev.stopPropagation(); exportWav(k, $('stereo').checked); };
+    dl.onclick = (ev) => { ev.stopPropagation(); exportWav(k); };
     row.append(label, status, dl);
     list.append(row);
   }
@@ -628,7 +628,7 @@ async function init() {
   if ($('shuffleBtn')) $('shuffleBtn').onclick = () => toggleShuffle();
   updateShuffleBtn();
   $('genre').onchange = () => setGenre(parseInt($('genre').value, 10));
-  $('dlBtn').onclick = () => exportWav(displayN, $('stereo').checked);
+  $('dlBtn').onclick = () => exportWav(displayN);
   $('vol').oninput = () => { if (masterGain) masterGain.gain.value = parseFloat($('vol').value); };
   window.addEventListener('hashchange', () => {
     const h = location.hash.slice(1);

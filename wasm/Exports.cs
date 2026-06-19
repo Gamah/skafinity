@@ -57,27 +57,12 @@ public partial class Engine
 	internal static Span<byte> ChannelBytes( int channel )
 		=> MemoryMarshal.AsBytes( (channel == 0 ? _left : _right).AsSpan() );
 
-	// WAV bytes for download. stereo=false downmixes to mono (game parity).
+	// Interleaved-stereo WAV bytes for download.
 	[JSExport]
-	internal static int GenerateWav( string seed, [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg, bool stereo )
+	internal static int GenerateWav( string seed, [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg )
 	{
 		short[] s = MusicGen.GenerateSamples( seed, Cfg.From( cfg ), out int sr );
-		short[] outSamples;
-		int channels;
-		if ( stereo )
-		{
-			outSamples = s;
-			channels = 2;
-		}
-		else
-		{
-			int frames = s.Length / 2;
-			outSamples = new short[frames];
-			for ( int i = 0; i < frames; i++ )
-				outSamples[i] = (short)Math.Clamp( (s[i * 2] + s[i * 2 + 1]) / 2, short.MinValue, short.MaxValue );
-			channels = 1;
-		}
-		_wav = MusicGen.WavFromSamples( outSamples, channels, sr );
+		_wav = MusicGen.WavFromSamples( s, MusicGen.Channels, sr );
 		return _wav.Length;
 	}
 
