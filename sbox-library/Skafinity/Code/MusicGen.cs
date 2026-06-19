@@ -624,7 +624,11 @@ public sealed class MusicGen
 				}
 			RenderDrumBar( barStart, spe, lastBar, noise, fillRng, fillNoise );
 
-			if ( playTop && bar % 2 == 0 )
+			// No lead in the ending: a lead phrase starts every two bars and runs ~two bars, so in
+			// the short outro it spilled melody notes across the held final chord — the band has
+			// already resolved and stopped, so the lead must too (it read as "random notes after
+			// the hold"). The ending is just the fill bar → the ringing tonic.
+			if ( playTop && bar % 2 == 0 && !isEnding )
 				RenderLeadPhrase( barStart, spe, secPerEighth, chord, leadRng, exprRng );
 		}
 	}
@@ -1767,12 +1771,9 @@ public sealed class MusicGen
 		for ( int i = 0; i < n; i++ )
 		{
 			int t = Swung( barStart, spe, baseE + i * 2.0 / n );
-			// Spread the toms left→right across the fill (high→low), centred: the first hit pans
-			// hard-ish left, the last hard-ish right, evenly regardless of how many toms play.
-			float pos = n > 1 ? i / (float)(n - 1) : 0.5f;
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
 			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
-			else RenderTom( t, toms[i], noise, (pos * 2f - 1f) * _drumPan );
+			else RenderTom( t, toms[i], noise );  // pan derived from pitch inside RenderTom
 		}
 		// crash into the downbeat (lands on the bar line, an on-beat anchor → dead straight) — a
 		// bright crash or a darker, washier crash, picked off the fill stream so the cymbal colour
@@ -1837,13 +1838,15 @@ public sealed class MusicGen
 		}
 	}
 
-	// pan: where this tom sits across the kit, −DrumPan (rack/high, left) .. +DrumPan (floor/low,
-	// right). Caller-supplied so a fill spreads evenly across however many toms it actually plays
-	// (panning by absolute pitch bunched short fills to the left). Default 0 = centred.
-	void RenderTom( int start, float baseFreq, Rng noise, float pan = 0f )
+	void RenderTom( int start, float baseFreq, Rng noise )
 	{
 		start = Math.Max( 0, start + _drumPush );
-		StereoGains( pan, out float gL, out float gR );
+		// Pan by PITCH so a given tom always sits in the same spot (rack/high left → floor/low
+		// right). Mapped across the commonly-played fill range (~145 Hz floor .. 260 Hz rack) so a
+		// normal fill sweeps the full field and the low toms read clearly to the right; anything
+		// below the range clamps hard right. Scaled by the STEREO WIDTH slider via _drumPan.
+		float u = Math.Clamp( (baseFreq - 145f) / (260f - 145f), 0f, 1f ); // 0 = low/floor, 1 = high/rack
+		StereoGains( -_drumPan * (u * 2f - 1f), out float gL, out float gR );
 		int dur = (int)(_sr * 0.18f);
 		double decay = dur * 0.3;
 		double attackDecay = dur * 0.06;        // fast-decaying upper partial → beater "snap"
