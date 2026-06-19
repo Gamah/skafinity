@@ -204,7 +204,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 86;
+	public const int Size = 94;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -231,6 +231,9 @@ static class Cfg
 		c.KickBalance, c.SnareBalance, c.TomBalance, c.HatBalance, c.CrashBalance,
 		c.BassBalance, c.SkankBalance, c.OrganBalance, c.MelodyBalance, c.HornBalance,
 		c.KeysBalance, c.RhythmGtrBalance, c.LeadGtrBalance,
+		// stereo double-tracking / width (see VibeCodec.AdvancedFields)
+		c.DoubleTrack, c.WidthBacking, c.WidthLead, c.WidthDetune,
+		c.WidthDelayMs, c.WidthJitterMs, c.WidthAmpVar, c.WidthCutoffVar,
 	};
 
 	public static MusicGen.Config From( double[] a )
@@ -260,6 +263,8 @@ static class Cfg
 		c.KickBalance = (float)a[i++]; c.SnareBalance = (float)a[i++]; c.TomBalance = (float)a[i++]; c.HatBalance = (float)a[i++]; c.CrashBalance = (float)a[i++];
 		c.BassBalance = (float)a[i++]; c.SkankBalance = (float)a[i++]; c.OrganBalance = (float)a[i++]; c.MelodyBalance = (float)a[i++]; c.HornBalance = (float)a[i++];
 		c.KeysBalance = (float)a[i++]; c.RhythmGtrBalance = (float)a[i++]; c.LeadGtrBalance = (float)a[i++];
+		c.DoubleTrack = (float)a[i++]; c.WidthBacking = (float)a[i++]; c.WidthLead = (float)a[i++]; c.WidthDetune = (float)a[i++];
+		c.WidthDelayMs = (float)a[i++]; c.WidthJitterMs = (float)a[i++]; c.WidthAmpVar = (float)a[i++]; c.WidthCutoffVar = (float)a[i++];
 		return c;
 	}
 }

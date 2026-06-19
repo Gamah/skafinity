@@ -164,6 +164,23 @@ public sealed class MusicGen
 		public float KeysBalance = 1.065f;    // rock offbeat keys
 		public float RhythmGtrBalance = 1.053f;
 		public float LeadGtrBalance = 0.896f;
+
+		// ── Stereo double-tracking (width) ── (config-only; see VibeCodec.AdvancedFields)
+		// Widen the non-drum voices the way a band double-tracks guitars (bass excepted — it
+		// stays centred for a tight, mono-safe low end): each widened note is rendered
+		// as TWO decorrelated "takes" panned apart — NOT one mono signal copied to both channels
+		// (that just collapses to centre). The width comes entirely from the micro-differences
+		// between the takes: a few cents of detune, a small constant timing offset + per-note
+		// jitter, independent oscillator start phase, and per-note amplitude/cutoff variation.
+		// Tunable at runtime (no rebuild). Drums are panned separately (see DrumPan).
+		public float DoubleTrack = 1f;        // master enable: <0.5 = off (single centred take, as before)
+		public float WidthBacking = 0.5f;     // pan spread (±) for backing voices — 50% L/R
+		public float WidthLead = 1.0f;        // pan spread (±) for the lead — full wide (100%)
+		public float WidthDetune = 6f;        // cents BETWEEN the two takes (split ±half each)
+		public float WidthDelayMs = 9f;       // constant timing offset of the 2nd take (ms)
+		public float WidthJitterMs = 4f;      // extra random per-note timing jitter (ms, ± per take)
+		public float WidthAmpVar = 0.08f;     // per-note amplitude variation between takes (0..1)
+		public float WidthCutoffVar = 0.10f;  // per-note filter-cutoff variation between takes (0..1)
 	}
 
 	readonly Config _c;
@@ -386,7 +403,9 @@ public sealed class MusicGen
 	int[] _bassPat;
 	int _drumStyle;          // 0 one-drop, 1 steppers, 2 straight backbeat
 	int[] _kickAccents = Array.Empty<int>(); // per-song backbeat kick accents (see BackbeatKickAccents)
-	bool _ride;              // per-song: ride cymbal drives the eighth pulse instead of closed hats
+	bool _ride;              // per-SECTION: ride cymbal drives the eighth pulse instead of closed hats (set in RenderSection from _ridePref)
+	float _ridePref;         // per-song lean toward riding the ride vs the hats; each section rolls its own _ride against this
+	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
 	bool _organBubble;
 	bool _fast;
 	int _genre;              // 0 ska, 1 rock
@@ -478,13 +497,18 @@ public sealed class MusicGen
 		_hornMask[0] = true;
 		for ( int e = 1; e < EighthsPerBar; e++ )
 			_hornMask[e] = rng.Chance( _c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f) );
-		// Some songs ride a ride cymbal instead of closed hats for the main pulse (more common
-		// in rock). Drawn last so it can't shift any earlier musical choice.
-		_ride = rng.Chance( _genre switch { 1 => 0.5f, 3 => 0.6f, 2 => 0.2f, _ => 0.3f } );
+		// How much this song leans on the ride cymbal vs the closed hats for the main pulse.
+		// Every song can do both — each SECTION rolls its own choice against this preference
+		// (see RenderSection), so a song can hat the verse and ride the chorus. The lean is
+		// genre-biased (rock/metal ride more) and spread per song so some strongly prefer one.
+		// One rng.Next() (same draw count as the old single Chance), so later draws stay aligned.
+		float rideBase = _genre switch { 1 => 0.55f, 3 => 0.65f, 2 => 0.30f, _ => 0.40f };
+		_ridePref = Math.Clamp( rideBase - 0.25f + 0.5f * rng.Next(), 0f, 1f );
+		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
+		_crashBrightLeft = rng.Chance( 0.5f );
 		// This song's backbeat kick personality — which off-beat eighths the kick leans into
 		// beyond the fixed beat-1 & 3 anchors. Only the straight backbeat (rock/country/fast
-		// ska) reads it; drawn after _ride so it shifts no earlier choice and leaves the other
-		// styles' songs byte-identical.
+		// ska) reads it; drawn last so it shifts no earlier choice.
 		_kickAccents = rng.Pick( BackbeatKickAccents );
 
 		_swing = _fast ? _c.FastSwing : _c.Swing;
@@ -539,6 +563,10 @@ public sealed class MusicGen
 		// leaves every voice's existing note CHOICES untouched — only pitch-shaping is layered on.
 		var exprRng = new Rng( Xmur3( $"{_tag}:expr:{lk}" ) );
 		var noise = new Rng( Xmur3( $"{_tag}:drums:{bk}" ) );
+		// Hats vs ride is decided per section off its own stream (keyed by section TYPE, so every
+		// chorus rides-or-hats the same, but a verse can differ). Rolled against the song's
+		// _ridePref — independent stream, so it disturbs no other voice's draws.
+		_ride = new Rng( Xmur3( $"{_tag}:ride:{bk}" ) ).Chance( _ridePref );
 		var fillRng = new Rng( Xmur3( $"{_tag}:fill:{absIndex}" ) );
 		var fillNoise = new Rng( Xmur3( $"{_tag}:fillnoise:{absIndex}" ) );
 
@@ -645,7 +673,7 @@ public sealed class MusicGen
 			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive, Pan = 0f,
 		};
-		RenderPatch( at, dur, Midi( ChordRoot( 0 ) ), low );
+		RenderPatch( at, dur, Midi( ChordRoot( 0 ) ), low, mono: true );
 	}
 
 	// Master: gentle soft-clip + normalize. The mix peak is first normalized to 1.0
@@ -915,8 +943,8 @@ public sealed class MusicGen
 			Drive = _c.BassDrive, Pan = 0f,
 		};
 		ApplyVoicing( ref body, vc ); ApplyVoicing( ref sub, vc );
-		RenderPatch( at, dur, Midi( midi ), body );
-		RenderPatch( at, dur, Midi( midi ), sub );
+		RenderPatch( at, dur, Midi( midi ), body, mono: true );
+		RenderPatch( at, dur, Midi( midi ), sub, mono: true );
 	}
 
 	// ── Skank guitar (the signature) + reggae organ bubble — offbeats, centered ──
@@ -1079,7 +1107,7 @@ public sealed class MusicGen
 				Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
 			};
 			ApplyVoicing( ref gtr, vc );
-			RenderPatch( at, dur, Midi( midi ), gtr );
+			RenderPatch( at, dur, Midi( midi ), gtr, lead: true );
 			return;
 		}
 		RenderLead( at, dur, midi, amp, decaySec, drive, vc );
@@ -1331,7 +1359,7 @@ public sealed class MusicGen
 				break;
 		}
 		ApplyVoicing( ref p, vc );
-		RenderPatch( at, dur, Midi( m ), p );
+		RenderPatch( at, dur, Midi( m ), p, lead: true );
 	}
 
 	// ── Synth core: unison osc → optional high-pass → resonant low-pass (cutoff
@@ -1359,6 +1387,8 @@ public sealed class MusicGen
 		public float BendSemis;  // pitch offset in semitones at note START, glides to 0 (bend-in / glide); −ve starts below
 		public float BendTime;   // 0..1 fraction of the note over which BendSemis glides to 0
 		public float ScoopSemis; // height (semitones) of a mid-note bend-up-and-back hump (0 = none)
+		public float PhaseSeed;  // oscillator start phase (0..1); 0 = legacy in-phase start. Used to
+		                         // decorrelate the two double-tracking takes (see RenderPatch).
 	}
 
 	// Pitched note events collected during ComposePlan, then synthesized by
@@ -1367,10 +1397,57 @@ public sealed class MusicGen
 	readonly List<NoteEvent> _events = new();
 
 	// During ComposePlan this only enqueues; the synthesis happens in RenderPitchedRange.
-	void RenderPatch( int start, int dur, float freq, Patch p )
+	// When DoubleTrack is on, every (non-drum) note is widened into two decorrelated takes
+	// panned apart — see the Config "width" block. `lead` selects the wider lead spread.
+	void RenderPatch( int start, int dur, float freq, Patch p, bool lead = false, bool mono = false )
 	{
 		if ( start < 0 || dur <= 0 || p.Voices < 1 ) return;
-		_events.Add( new NoteEvent { Start = start, Dur = dur, Freq = freq, P = p } );
+		// Bass stays centred (mono): doubling/detuning low frequencies smears the low end and
+		// cancels in mono, so the bass is the one voice kept dead-centre regardless of width.
+		if ( mono || _c.DoubleTrack < 0.5f )
+		{
+			_events.Add( new NoteEvent { Start = start, Dur = dur, Freq = freq, P = p } );
+			return;
+		}
+		float width = Math.Clamp( lead ? _c.WidthLead : _c.WidthBacking, 0f, 1f );
+		float halfCents = _c.WidthDetune * 0.5f;
+		int delay = (int)(_c.WidthDelayMs * 0.001f * _sr);
+		int jit = (int)(_c.WidthJitterMs * 0.001f * _sr);
+		// Take A sits left and slightly flat; take B sits right, slightly sharp, and lags by the
+		// constant offset. Both get independent phase + per-note amp/cutoff/timing variation, so
+		// the two channels are genuinely different performances (the source of the width) rather
+		// than a phantom-centre mono copy.
+		AddTake( start, dur, freq, p, 0, -width, -halfCents, 0, jit );
+		AddTake( start, dur, freq, p, 1, +width, +halfCents, delay, jit );
+	}
+
+	// Enqueue one double-tracking take. All per-note variation is derived from a local hash of
+	// (start, freq, take) so it stays deterministic and pulls no RNG (synthesis must remain a
+	// pure function for the parallel RenderPitchedRange windows).
+	void AddTake( int start, int dur, float freq, Patch p, int take, float pan, float cents, int delayBase, int jit )
+	{
+		uint s = unchecked( (uint)start * 2654435761u + (uint)(int)freq * 40503u )
+			^ (take == 0 ? 0x85EBCA6Bu : 0xC2B2AE35u);
+		float r1 = Hash01( ref s );   // start phase
+		float r2 = Hash01( ref s );   // amplitude
+		float r3 = Hash01( ref s );   // cutoff
+		float r4 = Hash01( ref s );   // timing jitter
+		int st = start + delayBase + (int)((r4 * 2f - 1f) * jit);
+		if ( st < 0 ) st = 0;
+		var q = p;
+		q.Pan = pan;
+		q.PhaseSeed = r1;
+		q.Amp = p.Amp * (1f + (r2 * 2f - 1f) * _c.WidthAmpVar);
+		q.Cutoff = p.Cutoff * (1f + (r3 * 2f - 1f) * _c.WidthCutoffVar);
+		float f = freq * (float)Math.Pow( 2.0, cents / 1200.0 );
+		_events.Add( new NoteEvent { Start = st, Dur = dur, Freq = f, P = q } );
+	}
+
+	// Fast deterministic [0,1) hash step (xorshift32).
+	static float Hash01( ref uint s )
+	{
+		s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+		return (s & 0xFFFFFFu) / 16777216f;
 	}
 
 	/// <summary>Synthesize every pitched event whose span overlaps <c>[from, to)</c>,
@@ -1413,7 +1490,7 @@ public sealed class MusicGen
 
 		for ( int v = 0; v < voices; v++ )
 		{
-			ph[v] = 0;
+			ph[v] = p.PhaseSeed;   // 0 for un-doubled notes → identical to the old in-phase start
 			float cents = voices == 1 ? 0f : (v - (voices - 1) * 0.5f) * p.Detune;
 			inc[v] = freq * Math.Pow( 2, cents / 1200.0 ) / _sr;
 		}
@@ -1545,6 +1622,8 @@ public sealed class MusicGen
 	static float Midi( int m ) => 440f * MathF.Pow( 2f, (m - 69) / 12f );
 
 	const float Sqrt2 = 1.41421356f;
+	// Fixed (not randomized) stereo spread for the kit's off-centre voices: 25% each way.
+	const float DrumPan = 0.25f;
 	static void StereoGains( float pan, out float gL, out float gR )
 	{
 		pan = Math.Clamp( pan, -1f, 1f );
@@ -1744,6 +1823,11 @@ public sealed class MusicGen
 	void RenderTom( int start, float baseFreq, Rng noise )
 	{
 		start = Math.Max( 0, start + _drumPush );
+		// Toms spread across the kit by pitch: rack (high) on the left, floor (low) on the
+		// right, the way they sit in front of a drummer. Fixed ±25%, derived from the note so
+		// every tom caller pans consistently. u: 0 at the lowest tom .. 1 at the highest.
+		float u = Math.Clamp( (baseFreq - 100f) / (260f - 100f), 0f, 1f );
+		StereoGains( -DrumPan * (u * 2f - 1f), out float gL, out float gR );
 		int dur = (int)(_sr * 0.18f);
 		double decay = dur * 0.3;
 		double attackDecay = dur * 0.06;        // fast-decaying upper partial → beater "snap"
@@ -1770,13 +1854,15 @@ public sealed class MusicGen
 				click = ((ns & 0xffff) / 32768f - 1f) * 0.45f * (1f - i / (float)clickLen);
 			}
 			float v = (body + snap + click) * _c.TomVol * _c.TomBalance * _drumGain * _drumLowMul;
-			_bufL[start + i] += v; _bufR[start + i] += v;
+			_bufL[start + i] += v * gL; _bufR[start + i] += v * gR;
 		}
 	}
 
 	void RenderHat( int start, bool open, float amp, Rng noise )
 	{
 		start = Math.Max( 0, start + _drumPush );
+		// Closed/open hats live on the left of the kit (the hi-hat stand); ride sits opposite.
+		StereoGains( -DrumPan, out float gL, out float gR );
 		int dur = (int)(_sr * (open ? 0.16f : 0.035f));
 		double decay = dur * 0.4;
 		float a = HpCoeff( 7000f );
@@ -1788,15 +1874,18 @@ public sealed class MusicGen
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
 			float v = hp * env * amp * _c.HatBalance * _drumGain * _drumHighMul;
-			_bufL[start + i] += v; _bufR[start + i] += v;
+			_bufL[start + i] += v * gL; _bufR[start + i] += v * gR;
 		}
 	}
 
 	// Two crash colours off one voice: the bright crash (short-ish, high-passed high) and a
 	// dark crash — lower cutoff, longer wash, a touch quieter — for a bigger china/ride-crash.
+	// The kit has two crashes panned apart (±25%); the bright/dark colour picks which physical
+	// cymbal, and _crashBrightLeft (per song) decides which side that is.
 	void RenderCrash( int start, Rng noise, bool dark = false )
 	{
 		start = Math.Max( 0, start + _drumPush );
+		StereoGains( (dark == _crashBrightLeft ? DrumPan : -DrumPan), out float gL, out float gR );
 		int dur = (int)(_sr * (dark ? 0.9f : 0.6f));
 		double decay = dur * (dark ? 0.5 : 0.45);
 		float a = HpCoeff( dark ? 2600f : 4000f );
@@ -1809,7 +1898,7 @@ public sealed class MusicGen
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
 			float v = hp * env * amp * _drumGain * _drumHighMul;
-			_bufL[start + i] += v; _bufR[start + i] += v;
+			_bufL[start + i] += v * gL; _bufR[start + i] += v * gR;
 		}
 	}
 
@@ -1822,6 +1911,8 @@ public sealed class MusicGen
 	void RenderRide( int start, bool bell, float amp, Rng noise )
 	{
 		start = Math.Max( 0, start + _drumPush );
+		// Ride sits opposite the hats, on the right of the kit.
+		StereoGains( DrumPan, out float gL, out float gR );
 		int dur = (int)(_sr * (bell ? 0.34f : 0.22f));
 		double decay = dur * 0.42;
 		float a = HpCoeff( 7000f );
@@ -1833,7 +1924,7 @@ public sealed class MusicGen
 			float n = noise.Next() * 2f - 1f;
 			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
 			float v = hp * 0.7f * env * amp * _c.HatBalance * _drumGain * _drumHighMul;
-			_bufL[start + i] += v; _bufR[start + i] += v;
+			_bufL[start + i] += v * gL; _bufR[start + i] += v * gR;
 		}
 	}
 
