@@ -590,8 +590,17 @@ public sealed class SkafinityPlayer : Component
 
 			// Shuffle mode: each new song gets a fresh set of vibe knobs (NOT volumes — those are
 			// a local mix preference, kept out of the seed — and NOT genre, matching the web toy).
-			// The look-ahead fill (OnUpdate) then generates upcoming songs with the new voicing.
-			if ( RandomEverySong ) RerollVibe();
+			// Re-voice WITHOUT a restart (restart: false) — a restart would throw away the song we
+			// just crossfaded into and replay _curN from scratch, stalling the n+1 progression.
+			// Instead drop the look-ahead so FillAhead (OnUpdate) regenerates upcoming songs with
+			// the new vibe, and absorb the Vibe change into the config hash so LiveReload doesn't
+			// fire its own restart either. The current crossfade keeps playing; n keeps advancing.
+			if ( RandomEverySong )
+			{
+				RerollVibe( restart: false );
+				_ahead.Clear();
+				_lastConfigHash = ConfigHash();
+			}
 		}
 		catch ( Exception e )
 		{
@@ -691,8 +700,10 @@ public sealed class SkafinityPlayer : Component
 	/// <summary>Randomize the vibe knobs and restart on a short debounce. By default the
 	/// per-instrument volumes (and genre) are left alone so a reroll re-voices without upending
 	/// the mix; pass <paramref name="includeVolumes"/> / <paramref name="includeGenre"/> for a
-	/// full shuffle.</summary>
-	public void RerollVibe( bool includeVolumes = false, bool includeGenre = false )
+	/// full shuffle. Pass <paramref name="restart"/> = false to re-voice without yanking the
+	/// playhead — the caller is then responsible for letting the change take effect (e.g. by
+	/// clearing the look-ahead so upcoming songs regenerate with the new vibe).</summary>
+	public void RerollVibe( bool includeVolumes = false, bool includeGenre = false, bool restart = true )
 	{
 		var cfg = BuildConfig();
 		var rng = System.Random.Shared;
@@ -712,8 +723,11 @@ public sealed class SkafinityPlayer : Component
 			foreach ( var kv in VibeCodec.ReadVolumes( cfg.Genre, cfg ) ) _vols[kv.Key] = kv.Value;
 			SaveVols();
 		}
-		_restartPending = true;
-		_restartPendingSince = 0;
+		if ( restart )
+		{
+			_restartPending = true;
+			_restartPendingSince = 0;
+		}
 	}
 
 	/// <summary>Write the playing song's raw loop (no fade) to a WAV under FileSystem.Data.
