@@ -76,7 +76,7 @@ You can also generate audio without the component, off any thread:
 // One-shot WAV bytes
 byte[] wav = MusicGen.Generate( "mytag:0", new MusicGen.Config { TargetSeconds = 60f } );
 
-// Or raw 16-bit mono PCM
+// Or raw interleaved-stereo 16-bit PCM
 short[] pcm = MusicGen.GenerateSamples( "mytag:0", new MusicGen.Config(), out int sampleRate );
 ```
 
@@ -111,12 +111,13 @@ against the same `SkafinityPlayer` API.
 ## House-mix config
 
 `skafinity.config.json` (next to `Skafinity.sbproj`) tunes the **baseline mix** — the per-voice
-peak balances and kit presence that sit *under* the seed's vibe. `SkafinityPlayer` reads it at
-startup (`FileSystem.Mounted`) and overlays its `advanced` block onto every generated config, so
-you can re-balance the kit/instruments by editing one JSON file instead of recompiling:
+peak balances, kit presence, and **stereo width** that sit *under* the seed's vibe.
+`SkafinityPlayer` reads it at startup (`FileSystem.Mounted`) and overlays its `advanced` block
+onto every generated config, so you can re-balance the kit/instruments or retune the width by
+editing one JSON file instead of recompiling:
 
 ```json
-{ "advanced": { "TomBalance": 0.78, "HatBalance": 0.407, "BassBalance": 0.733 } }
+{ "advanced": { "TomBalance": 0.78, "HatBalance": 0.407, "BassBalance": 0.733, "WidthBacking": 0.5, "WidthLead": 1.0 } }
 ```
 
 Keys match `MusicGen.Config` field names 1:1 (see `VibeCodec.AdvancedFields`); unknown keys are
@@ -124,6 +125,19 @@ ignored and values are clamped per field. These are **not** vibe knobs — they 
 mix, not a song's shareable identity, so they never appear in the seed or the panel's sliders.
 This is the *same* file the web toy uses (the web build copies it from here), so both stay in
 sync. Missing/invalid file → the engine's built-in defaults.
+
+## Stereo image
+
+The mix is panned across the field rather than summed to centre. The kit is placed like a real
+drumset — hats left, ride right, toms spread by pitch (rack → left, floor → right), the two
+crashes split L/R (side chosen per song) — and every non-drum voice is **double-tracked**: two
+slightly-detuned, independently-phased takes panned apart, so the width comes from genuine
+decorrelation, not a mono signal copied to both channels. Bass stays centred for a tight low
+end. The `STEREO WIDTH` vibe knob (`Config.PanAmount`) is a 0–1 master that scales the whole
+image — the drum spread and the double-tracking amount — from full down to mono. The
+double-tracking knobs (`DoubleTrack`, `WidthBacking`, `WidthLead`, `WidthDetune`,
+`WidthDelayMs`, `WidthJitterMs`, `WidthAmpVar`, `WidthCutoffVar`) live in the house-mix config
+above — tune them without a rebuild.
 
 ## Determinism
 

@@ -45,7 +45,7 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 | `wasm/Skafinity.Wasm.csproj` | `browser-wasm` project that `<Compile Include>`s the shared `.cs` and builds the runtime. |
 | `web/engine.js` | Boots the .NET runtime and adapts the exports to the small `mod` API the app uses. |
 | `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export, shuffle. |
-| `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix without a rebuild. |
+| `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence / stereo-width knobs). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix or the width without a rebuild. |
 | `test/smoke.mjs` | Node smoke test that boots the published runtime and exercises every export. |
 
 ## Features
@@ -53,16 +53,22 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 - **Rolling playlist** — `n` auto-advances on every crossfade and is persisted; a full
   playlist panel shows played / now-playing / up-next, with click-to-jump and per-song
   export.
-- **Export to disk** — generate the loop as a WAV in-browser and download it (no server).
-  Stereo or mono (the game's export is mono).
+- **Export to disk** — generate the loop as an interleaved-stereo WAV in-browser and download
+  it (no server).
 - **Share via URL** — the seed lives in `location.hash`, so a reload or a shared link
   reproduces the exact same song.
-- **Random every song** — a 🎲 toggle that re-rolls the vibe for each new song (keeping your
-  per-voice volumes), so the stream keeps reinventing itself. Mirrors the s&box panel.
-- **House-mix config, no rebuild** — the baseline peak balances live in `web/config.json`
-  (copied from the shared `sbox-library/Skafinity/skafinity.config.json`); edit + reload to
-  retune the mix without recompiling the wasm. These shape the baseline level mix and are
-  *not* vibe knobs, so they never travel in the seed.
+- **Random every song** — a 🎲 toggle that re-rolls the vibe *and the genre* for each new song
+  (keeping your per-voice volumes), so the stream keeps reinventing itself.
+- **Stereo image** — the mix is laid out across the field, not summed to the centre: hats
+  left / ride right, toms spread by pitch (rack → left, floor → right), the kit's two crashes
+  split L/R, and every non-drum voice is **double-tracked** — two slightly-detuned,
+  independently-phased takes panned apart for genuine width (not a mono copy on both
+  channels). Bass stays centred for a tight low end. The `STEREO WIDTH` knob scales the whole
+  image from full down to mono, and the double-tracking parameters are config-tunable below.
+- **House-mix config, no rebuild** — the baseline peak balances *and the stereo-width knobs*
+  live in `web/config.json` (copied from the shared `sbox-library/Skafinity/skafinity.config.json`);
+  edit + reload to retune the mix or the width without recompiling the wasm. These shape the
+  baseline mix and are *not* vibe knobs, so they never travel in the seed.
 
 ## Instruments & their inputs
 
@@ -74,7 +80,7 @@ genre-specific knobs in each row — changes per genre; the field list is read s
 
 **Global** (all genres): `TEMPO MIN` / `TEMPO MAX` (BPM band, 60–200) · `TEMPO BIAS` (how
 often a song lands fast) · `SWING` (off-beat delay, 0–0.4) · `RESONANCE` (filter Q, 0.2–2) ·
-`STEREO WIDTH` (pan spread).
+`STEREO WIDTH` (master stereo amount — see *Stereo image* below; 100% = full, 0% = mono).
 
 Every instrument row shares the first two columns: **VOLUME** (0–150%) and **TONE** (low-pass
 cutoff). **DRUMS** carries the same four knobs in every genre — its `TONE` sweeps toms ↔

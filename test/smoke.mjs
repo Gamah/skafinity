@@ -117,12 +117,13 @@ for (const [g, name] of [[2, 'country'], [3, 'metal']]) {
 }
 
 // ── WAV ──
-const wavLen = E.GenerateWav('gamah:0', cfg, true);
+const wavLen = E.GenerateWav('gamah:0', cfg);
 const wav = E.WavBytes().slice();
 check('WAV length matches', wav.length === wavLen && wavLen > 44);
 check('WAV has RIFF/WAVE header',
   String.fromCharCode(wav[0], wav[1], wav[2], wav[3]) === 'RIFF' &&
   String.fromCharCode(wav[8], wav[9], wav[10], wav[11]) === 'WAVE');
+check('WAV is stereo', wav[22] === 2);    // fmt chunk numChannels (LE) at byte 22
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall good');
 process.exit(failures ? 1 : 0);

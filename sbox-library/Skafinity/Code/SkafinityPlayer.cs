@@ -397,8 +397,8 @@ public sealed class SkafinityPlayer : Component
 	// no single worker burst runs long enough to trip s&box's ~1000ms no-yield advisory.
 	// Composition + drum synthesis are RNG-bound and stay sequential (BeginPlan, one worker); the
 	// pitched voices pull no RNG, so they fan out across RenderThreads disjoint windows joined by
-	// Task.WhenAll; the master+downmix runs on one worker.
-	async Task<short[]> GenerateMonoAsync( string seedStr, MusicGen.Config cfg )
+	// Task.WhenAll; the master+interleave runs on one worker. Result is interleaved stereo PCM.
+	async Task<short[]> GenerateStereoAsync( string seedStr, MusicGen.Config cfg )
 	{
 		MusicGen g = null;
 		await GameTask.RunInThreadAsync( () => { g = MusicGen.BeginPlan( seedStr, cfg ); return Task.CompletedTask; } );
@@ -421,13 +421,16 @@ public sealed class SkafinityPlayer : Component
 			await Task.WhenAll( jobs );
 		}
 
-		short[] mono = null;
-		await GameTask.RunInThreadAsync( () => { mono = g.FinishMono(); return Task.CompletedTask; } );
+		short[] pcm = null;
+		await GameTask.RunInThreadAsync( () => { pcm = g.FinishStereo(); return Task.CompletedTask; } );
 		_sr = g.SampleRate;
-		return mono;
+		return pcm;
 	}
 
-	int FadeSamples => Math.Max( 1, (int)(Math.Clamp( Crossfade, 0.25f, 8f ) * _sr) );
+	int FadeFrames => Math.Max( 1, (int)(Math.Clamp( Crossfade, 0.25f, 8f ) * _sr) );
+
+	// All look-ahead buffers are interleaved stereo PCM; lengths/offsets below are in frames.
+	static int Frames( short[] pcm ) => pcm.Length / MusicGen.Channels;
 
 	/// <summary>Top the look-ahead buffer up to <see cref="AheadCount"/>, generating each song on
 	/// a worker thread. Fire-and-forget from OnUpdate; <paramref name="seq"/> guards against a
@@ -443,7 +446,7 @@ public sealed class SkafinityPlayer : Component
 			while ( seq == _seq && _curRaw != null && _ahead.Count < Math.Max( 1, AheadCount ) )
 			{
 				int n = _curN + 1 + _ahead.Count;
-				var song = await GenerateMonoAsync( SeedFor( tag, n ), cfg );
+				var song = await GenerateStereoAsync( SeedFor( tag, n ), cfg );
 				if ( seq != _seq ) return;   // sequence restarted while we were generating
 				_ahead.Add( song );
 			}
@@ -452,26 +455,30 @@ public sealed class SkafinityPlayer : Component
 		finally { _fillingAhead = false; }
 	}
 
-	/// <summary>Write <see cref="LoopsPerSong"/> passes of <paramref name="raw"/> to the stream,
-	/// given the first <paramref name="headConsumed"/> samples of pass 0 were already emitted,
-	/// holding back the final <paramref name="reserve"/> samples for the next crossfade. Optional
-	/// fade-in over the first <paramref name="fadeIn"/> samples of pass 0. Returns samples written.</summary>
+	/// <summary>Write <see cref="LoopsPerSong"/> passes of interleaved-stereo <paramref name="raw"/>
+	/// to the stream, given the first <paramref name="headConsumed"/> frames of pass 0 were already
+	/// emitted, holding back the final <paramref name="reserve"/> frames for the next crossfade.
+	/// Optional fade-in over the first <paramref name="fadeIn"/> frames of pass 0. Returns frames
+	/// written.</summary>
 	int WriteSongBody( short[] raw, int headConsumed, int reserve, int fadeIn )
 	{
+		const int ch = MusicGen.Channels;
 		int loops = Math.Max( 1, LoopsPerSong );
+		int rawFrames = raw.Length / ch;
 		int total = 0;
 		for ( int loop = 0; loop < loops; loop++ )
 		{
 			int start = loop == 0 ? headConsumed : 0;
-			int end = loop == loops - 1 ? raw.Length - reserve : raw.Length;
+			int end = loop == loops - 1 ? rawFrames - reserve : rawFrames;
 			if ( end <= start ) continue;
 			int len = end - start;
-			var seg = new short[len];
+			var seg = new short[len * ch];
 			for ( int i = 0; i < len; i++ )
 			{
-				int idx = start + i;
-				float g = (loop == 0 && fadeIn > 0 && idx < fadeIn) ? (float)idx / fadeIn : 1f;
-				seg[i] = (short)(raw[idx] * g);
+				int frame = start + i;
+				float g = (loop == 0 && fadeIn > 0 && frame < fadeIn) ? (float)frame / fadeIn : 1f;
+				for ( int c = 0; c < ch; c++ )
+					seg[i * ch + c] = (short)(raw[frame * ch + c] * g);
 			}
 			_stream.WriteData( seg );
 			total += len;
@@ -504,15 +511,15 @@ public sealed class SkafinityPlayer : Component
 			int n = Math.Max( 0, _curN );
 			string tag = SeedTag;
 			var cfg = BuildConfig();
-			var raw = await GenerateMonoAsync( SeedFor( tag, n ), cfg );
+			var raw = await GenerateStereoAsync( SeedFor( tag, n ), cfg );
 			if ( seq != _seq ) return;   // superseded by a newer StartSequence
 
 			_curN = n;
 			_curRaw = raw;
-			int fade = Math.Min( FadeSamples, _curRaw.Length / 3 );
+			int fade = Math.Min( FadeFrames, Frames( _curRaw ) / 3 );
 			_curReserve = fade;
 
-			_stream = new SoundStream( _sr );
+			_stream = new SoundStream( _sr, MusicGen.Channels );
 
 			// First song: LoopsPerSong passes, fade-in over the first `fade`, last `fade` of the
 			// final pass held back for the crossfade into the next song.
@@ -546,13 +553,14 @@ public sealed class SkafinityPlayer : Component
 			// Crossfade window = the current song's held-back tail (so there's no gap or overlap
 			// even when songs differ in length). The two songs only overlap for CrossfadeOverlap
 			// of this window, centred — the rest plays in the clear.
-			int W = Math.Min( _curReserve, next.Length / 3 );
-			int curStart = _curRaw.Length - W;
+			const int ch = MusicGen.Channels;
+			int W = Math.Min( _curReserve, Frames( next ) / 3 );
+			int curStart = Frames( _curRaw ) - W;
 			int cross = Math.Clamp( (int)(W * CrossfadeOverlap), 1, W );
 			int ws = (W - cross) / 2;     // overlap starts here
 			int we = ws + cross;          // overlap ends here
 
-			var xf = new short[W];
+			var xf = new short[W * ch];
 			for ( int i = 0; i < W; i++ )
 			{
 				float gOut, gIn;
@@ -564,13 +572,14 @@ public sealed class SkafinityPlayer : Component
 					gOut = (float)Math.Cos( t );
 					gIn = (float)Math.Sin( t );
 				}
-				xf[i] = (short)Math.Clamp( _curRaw[curStart + i] * gOut + next[i] * gIn, -32768, 32767 );
+				for ( int c = 0; c < ch; c++ )
+					xf[i * ch + c] = (short)Math.Clamp( _curRaw[(curStart + i) * ch + c] * gOut + next[i * ch + c] * gIn, -32768, 32767 );
 			}
 			_stream.WriteData( xf );
 
 			// next song: LoopsPerSong passes, first W of pass 0 already in the crossfade, last
 			// `nextReserve` of the final pass held back for the following crossfade.
-			int nextReserve = Math.Min( FadeSamples, next.Length / 3 );
+			int nextReserve = Math.Min( FadeFrames, Frames( next ) / 3 );
 			int written = WriteSongBody( next, W, nextReserve, 0 );
 			_pushedSeconds += (W + written) / (double)_sr;
 

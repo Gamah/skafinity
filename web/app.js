@@ -67,7 +67,7 @@ const shuffleCfgs = new Map();   // n -> re-rolled cfg (shuffle mode only)
 function cfgForN(nn) {
   if (!randomEverySong) return cfg;
   let c = shuffleCfgs.get(nn);
-  if (!c) { c = randomizedCfg(cfg); shuffleCfgs.set(nn, c); }
+  if (!c) { c = randomizedCfg(cfg, true); shuffleCfgs.set(nn, c); }
   return c;
 }
 let seq = 0;                  // bumped on every restart; stale renders are dropped
@@ -325,8 +325,8 @@ function applySeedString(s) {
 }
 
 // ── Export ──
-function exportWav(songN, stereo) {
-  const bytes = mod.songToWav(seedFor(songN), cfg, stereo);
+function exportWav(songN) {
+  const bytes = mod.songToWav(seedFor(songN), cfg);
   const blob = new Blob([bytes], { type: 'audio/wav' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -360,7 +360,7 @@ function renderPlaylist() {
     dl.className = 'pldl';
     dl.textContent = '⬇';
     dl.title = `Export #${k} to WAV`;
-    dl.onclick = (ev) => { ev.stopPropagation(); exportWav(k, $('stereo').checked); };
+    dl.onclick = (ev) => { ev.stopPropagation(); exportWav(k); };
     row.append(label, status, dl);
     list.append(row);
   }
@@ -379,12 +379,6 @@ function genreFields() {
   const count = mod.vibeFieldCount(genre);
   for (let i = 0; i < count; i++) out.push({ i, ...mod.vibeFieldInfo(genre, i) });
   return out;
-}
-
-function findFieldIndex(name) {
-  const count = mod.vibeFieldCount(genre);
-  for (let i = 0; i < count; i++) if (mod.vibeFieldInfo(genre, i).name === name) return i;
-  return -1;
 }
 
 // Build one editable cell (slider, or a <select> for enum/choice knobs) for field `f`.
@@ -519,13 +513,20 @@ function setGenre(g) {
 // Return a copy of `base` with every knob of its genre randomized EXCEPT per-instrument volumes
 // (a local mix preference, kept out of the seed), then keep TEMPO MIN ≤ MAX (ranges are
 // identical so swapping the normalized values swaps the tempos). Pure — does not touch globals.
-function randomizedCfg(base) {
+function randomizedCfg(base, randomizeGenre = false) {
   let c = base.slice();
-  for (const f of genreFields()) {
-    if (f.column === 0 && f.voice) continue; // skip per-instrument volumes
-    c = mod.setVibeField(c, f.i, Math.random());
+  // Optionally roll a fresh genre first (shuffle mode), then randomize THAT genre's knobs —
+  // field indices are genre-specific, so resolve them against c's genre, not the global one.
+  let g = mod.getGenre(c);
+  if (randomizeGenre) { g = Math.floor(Math.random() * mod.genreCount()); c = mod.setGenre(c, g); }
+  const count = mod.vibeFieldCount(g);
+  let lo = -1, hi = -1;
+  for (let i = 0; i < count; i++) {
+    const info = mod.vibeFieldInfo(g, i);
+    if (info.name === 'TEMPO MIN') lo = i; else if (info.name === 'TEMPO MAX') hi = i;
+    if (info.column === 0 && info.voice) continue; // skip per-instrument volumes
+    c = mod.setVibeField(c, i, Math.random());
   }
-  const lo = findFieldIndex('TEMPO MIN'), hi = findFieldIndex('TEMPO MAX');
   if (lo >= 0 && hi >= 0) {
     const a = mod.getVibeNorm(c, lo), b = mod.getVibeNorm(c, hi);
     if (a > b) { c = mod.setVibeField(c, lo, b); c = mod.setVibeField(c, hi, a); }
@@ -628,7 +629,7 @@ async function init() {
   if ($('shuffleBtn')) $('shuffleBtn').onclick = () => toggleShuffle();
   updateShuffleBtn();
   $('genre').onchange = () => setGenre(parseInt($('genre').value, 10));
-  $('dlBtn').onclick = () => exportWav(displayN, $('stereo').checked);
+  $('dlBtn').onclick = () => exportWav(displayN);
   $('vol').oninput = () => { if (masterGain) masterGain.gain.value = parseFloat($('vol').value); };
   window.addEventListener('hashchange', () => {
     const h = location.hash.slice(1);

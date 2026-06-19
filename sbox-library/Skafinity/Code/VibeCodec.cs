@@ -133,6 +133,15 @@ public static class VibeCodec
 		F( "KeysBalance", 0f, 2f, false, c => c.KeysBalance, ( c, v ) => c.KeysBalance = v ),
 		F( "RhythmGtrBalance", 0f, 2f, false, c => c.RhythmGtrBalance, ( c, v ) => c.RhythmGtrBalance = v ),
 		F( "LeadGtrBalance", 0f, 2f, false, c => c.LeadGtrBalance, ( c, v ) => c.LeadGtrBalance = v ),
+		// Stereo double-tracking / width (see MusicGen.Config "width" block).
+		F( "DoubleTrack", 0f, 1f, false, c => c.DoubleTrack, ( c, v ) => c.DoubleTrack = v ),
+		F( "WidthBacking", 0f, 1f, false, c => c.WidthBacking, ( c, v ) => c.WidthBacking = v ),
+		F( "WidthLead", 0f, 1f, false, c => c.WidthLead, ( c, v ) => c.WidthLead = v ),
+		F( "WidthDetune", 0f, 50f, false, c => c.WidthDetune, ( c, v ) => c.WidthDetune = v ),
+		F( "WidthDelayMs", 0f, 40f, false, c => c.WidthDelayMs, ( c, v ) => c.WidthDelayMs = v ),
+		F( "WidthJitterMs", 0f, 30f, false, c => c.WidthJitterMs, ( c, v ) => c.WidthJitterMs = v ),
+		F( "WidthAmpVar", 0f, 1f, false, c => c.WidthAmpVar, ( c, v ) => c.WidthAmpVar = v ),
+		F( "WidthCutoffVar", 0f, 1f, false, c => c.WidthCutoffVar, ( c, v ) => c.WidthCutoffVar = v ),
 	};
 
 	/// <summary>Overlay a <c>name → raw value</c> map (the shared config file's "advanced" block)

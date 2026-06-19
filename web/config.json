@@ -14,6 +14,14 @@
     "HornBalance": 1.142,
     "KeysBalance": 1.065,
     "RhythmGtrBalance": 1.053,
-    "LeadGtrBalance": 0.896
+    "LeadGtrBalance": 0.896,
+    "DoubleTrack": 1.0,
+    "WidthBacking": 0.5,
+    "WidthLead": 1.0,
+    "WidthDetune": 6.0,
+    "WidthDelayMs": 9.0,
+    "WidthJitterMs": 4.0,
+    "WidthAmpVar": 0.08,
+    "WidthCutoffVar": 0.1
   }
 }
