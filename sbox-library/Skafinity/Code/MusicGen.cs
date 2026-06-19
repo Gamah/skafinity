@@ -26,7 +26,8 @@ public sealed class MusicGen
 	public sealed class Config
 	{
 		// Genre — selects the instrument set + arrangement. 0 = Ska (bass/skank/organ/lead/
-		// horns/drums), 1 = Rock (drums/bass/rhythm-gtr/lead-gtr). New genres append here.
+		// horns/drums), 1 = Rock (drums/bass/keys/lead-gtr/rhythm-gtr), 2 = Country, 3 = Metal,
+		// 4 = Punk (lean power-pop), 5 = Pop (synth/dance). New genres append here.
 		public int Genre = 0;
 
 		// Output
@@ -393,13 +394,71 @@ public sealed class MusicGen
 		new[] { 0, Rest, 0, 0, Rest, 0, 0, Approach },   // syncopated driver
 	};
 
+	// ── Punk harmony (Genre 4) ──
+	// "Lean punk" / power-pop: bright and major (the opposite pole to rock's dark minor), riding
+	// the anthemic four-chord turnarounds at speed. Same RNG draws as the other tables.
+	static readonly int[][] PunkScales =
+	{
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (the pop-punk default)
+		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian (a little grit on the ♭7)
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
+	};
+
+	// Major degrees: 3 = IV, 4 = V, 5 = vi — the anthem turnarounds.
+	static readonly int[][] PunkProgressions =
+	{
+		new[] { 0, 4, 5, 3 }, // I–V–vi–IV (the pop-punk anthem)
+		new[] { 5, 3, 0, 4 }, // vi–IV–I–V
+		new[] { 0, 5, 3, 4 }, // I–vi–IV–V (50s changes, sped up)
+		new[] { 0, 3, 4, 4 }, // I–IV–V–V
+		new[] { 0, 4, 3, 4 }, // I–V–IV–V (three-chord drive)
+	};
+
+	// Driving root/octave eighths locked to the kick — same engine room as rock, pushed harder.
+	static readonly int[][] PunkBassPatterns =
+	{
+		new[] { 0, 0, 0, 0, 0, 0, 0, Approach },         // straight eighth chug
+		new[] { 0, 0, 12, 0, 0, 0, 12, Approach },       // root with octave pushes
+		new[] { 0, 0, 7, 0, 0, 0, 7, Approach },         // root–fifth gallop
+		new[] { 0, Rest, 0, Rest, 0, Rest, 0, Approach },// quarter-note pulse
+	};
+
+	// ── Pop harmony (Genre 5) ──
+	// Modern synth/dance-pop: bright major / lydian over the ubiquitous four-chord loops, built
+	// to sit on a four-on-the-floor kick. Same RNG draws as the other tables.
+	static readonly int[][] PopScales =
+	{
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major
+		new[] { 0, 2, 4, 6, 7, 9, 11 }, // lydian (the sparkly ♯4 — synth-pop shimmer)
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
+	};
+
+	static readonly int[][] PopProgressions =
+	{
+		new[] { 0, 4, 5, 3 }, // I–V–vi–IV
+		new[] { 5, 3, 0, 4 }, // vi–IV–I–V (the "Axis" loop)
+		new[] { 0, 5, 3, 4 }, // I–vi–IV–V
+		new[] { 0, 3, 0, 4 }, // I–IV–I–V (two-chord pulse)
+	};
+
+	// Four-on-the-floor synth bass: a steady root pulse with octave pops for bounce.
+	static readonly int[][] PopBassPatterns =
+	{
+		new[] { 0, Rest, 0, Rest, 0, Rest, 0, Approach },  // root on every beat (locks the floor)
+		new[] { 0, 0, 12, 0, 0, 0, 12, Approach },         // root with octave pops
+		new[] { 0, 0, 0, 0, 0, 0, 0, Approach },           // straight eighth pulse
+		new[] { 0, Rest, 0, 0, Rest, 0, 12, Approach },    // syncopated synth bass
+	};
+
 	// The genre's harmony tables (one RNG Pick each, so other genres stay byte-identical).
 	static int[][] ScalesFor( int g ) => g switch
-	{ 1 => RockScales, 2 => CountryScales, 3 => MetalScales, _ => Scales };
+	{ 1 => RockScales, 2 => CountryScales, 3 => MetalScales, 4 => PunkScales, 5 => PopScales, _ => Scales };
 	static int[][] ProgressionsFor( int g ) => g switch
-	{ 1 => RockProgressions, 2 => CountryProgressions, 3 => MetalProgressions, _ => Progressions };
+	{ 1 => RockProgressions, 2 => CountryProgressions, 3 => MetalProgressions, 4 => PunkProgressions, 5 => PopProgressions, _ => Progressions };
 	static int[][] BassPatternsFor( int g ) => g switch
-	{ 1 => RockBassPatterns, 2 => CountryBassPatterns, 3 => MetalBassPatterns, _ => BassPatterns };
+	{ 1 => RockBassPatterns, 2 => CountryBassPatterns, 3 => MetalBassPatterns, 4 => PunkBassPatterns, 5 => PopBassPatterns, _ => BassPatterns };
 
 	int[] _scale, _prog;
 	int _rootMidi;
@@ -419,7 +478,7 @@ public sealed class MusicGen
 	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
 	bool _organBubble;
 	bool _fast;
-	int _genre;              // 0 ska, 1 rock
+	int _genre;              // 0 ska, 1 rock, 2 country, 3 metal, 4 punk, 5 pop
 	string _tag;             // the per-song seed string, reused to seed per-section streams
 	int _drumPush;           // per-song-constant kit timing bias in samples (− ahead / + back)
 	float _swing;            // per-song shuffle: offbeat eighths pushed late by this fraction of an eighth (whole band, via Swung)
@@ -482,10 +541,12 @@ public sealed class MusicGen
 	{
 		_events.Clear();
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
-		_genre = Math.Clamp( _c.Genre, 0, 3 );
+		_genre = Math.Clamp( _c.Genre, 0, 5 );
 		var rng = new Rng( Xmur3( _tag.ToLowerInvariant() ) );
 
-		_fast = rng.Chance( _c.FastChance );              // TEMPO BIAS
+		// TEMPO BIAS — punk always runs hot (it's the fast genre); the roll still consumes one
+		// draw so every other genre's later picks stay byte-identical.
+		_fast = rng.Chance( _c.FastChance ) || _genre == 4;
 		int bpm = _fast
 			? _c.FastBpmMin + rng.Int( Math.Max( 1, _c.FastBpmMax - _c.FastBpmMin + 1 ) )
 			: _c.BpmMin + rng.Int( Math.Max( 1, _c.BpmMax - _c.BpmMin + 1 ) );
@@ -502,6 +563,8 @@ public sealed class MusicGen
 			1 => 2,                                       // rock: straight backbeat
 			2 => 2,                                       // country: train-beat backbeat
 			3 => 3,                                       // metal: double-kick
+			4 => 2,                                       // punk: straight backbeat (fast)
+			5 => 4,                                       // pop: four-on-the-floor
 			_ => _fast ? 2 : rng.Int( 2 ),
 		};
 		_organBubble = true;
@@ -515,7 +578,7 @@ public sealed class MusicGen
 		// (see RenderSection), so a song can hat the verse and ride the chorus. The lean is
 		// genre-biased (rock/metal ride more) and spread per song so some strongly prefer one.
 		// One rng.Next() (same draw count as the old single Chance), so later draws stay aligned.
-		float rideBase = _genre switch { 1 => 0.55f, 3 => 0.65f, 2 => 0.30f, _ => 0.40f };
+		float rideBase = _genre switch { 1 => 0.55f, 3 => 0.65f, 2 => 0.30f, 4 => 0.20f, 5 => 0.30f, _ => 0.40f };
 		_ridePref = Math.Clamp( rideBase - 0.25f + 0.5f * rng.Next(), 0f, 1f );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
 		_crashBrightLeft = rng.Chance( 0.5f );
@@ -525,6 +588,7 @@ public sealed class MusicGen
 		_kickAccents = rng.Pick( BackbeatKickAccents );
 
 		_swing = _fast ? _c.FastSwing : _c.Swing;
+		if ( _genre == 5 ) _swing *= 0.25f;               // pop sits on a tight, straight dance grid
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 
@@ -620,6 +684,12 @@ public sealed class MusicGen
 						break;
 					case 3: // metal: palm-muted gallop riff carries the bar
 						RenderMetalRiffBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						break;
+					case 4: // punk: lean — power-chord guitar carries it, no keys
+						RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						break;
+					case 5: // pop: synth comp (the keys voice, run clean + bright)
+						RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
 						break;
 					default: // ska: skank chop + horn stabs
 						RenderRhythmBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
@@ -829,6 +899,8 @@ public sealed class MusicGen
 				1 => new Expression( 0f, 0f, 0.10f, 0f ),     // rock: locked
 				2 => new Expression( 0f, 0f, 0.12f, 0.03f ),  // country: a subtle slide
 				3 => default,                                 // metal: dead straight, fast
+				4 => default,                                 // punk: dead straight, fast
+				5 => default,                                 // pop: tight synth bass, no slide
 				_ => new Expression( 0f, 0f, 0.25f, 0.05f ),  // reggae bass slides
 			};
 			case "SKANK":      return default;                          // staccato chops — dead straight
@@ -1113,9 +1185,13 @@ public sealed class MusicGen
 			{
 				3 => 4f + MathF.Max( 1f, _c.LeadGtrDrive ),         // metal: heavy
 				2 => 0.8f + 0.3f * MathF.Max( 1f, _c.LeadGtrDrive ),// country: clean twang
+				4 => 2f + MathF.Max( 1f, _c.LeadGtrDrive ),         // punk: bright, lightly driven
+				5 => 0.6f + 0.2f * MathF.Max( 1f, _c.LeadGtrDrive ),// pop: clean synth pluck/lead
 				_ => 3f + MathF.Max( 1f, _c.LeadGtrDrive ),         // rock
 			};
-			float cutEnv = _genre == 2 ? 3000f : 2200f;             // country: extra twang snap
+			// Country/pop get a brighter cutoff snap — country for telecaster twang, pop for a
+			// plucky synth attack.
+			float cutEnv = _genre == 2 ? 3000f : _genre == 5 ? 3500f : 2200f;
 			var gtr = new Patch
 			{
 				Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
@@ -1142,8 +1218,9 @@ public sealed class MusicGen
 		int kBase = _rootMidi + 24;                        // keyboard register, an octave over the rhythm guitar
 		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };  // diatonic triad
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
-		// Country reads this comp as a honky-tonk piano: keep it clean (rock drives it dirty).
-		float keysDrive = _genre == 2 ? 1f + 0.2f * MathF.Max( 1f, _c.KeysDrive )
+		// Country reads this comp as a honky-tonk piano and pop as a clean bright synth: keep both
+		// clean (rock drives it dirty).
+		float keysDrive = _genre == 2 || _genre == 5 ? 1f + 0.2f * MathF.Max( 1f, _c.KeysDrive )
 		                              : MathF.Max( 1f, _c.KeysDrive );
 		var keysVc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng ); // gentle vibrato only
 		for ( int oi = 0; oi < KeysOnsets.Length; oi++ )
@@ -1679,7 +1756,9 @@ public sealed class MusicGen
 		for ( int e = 0; e < hatEnd; e++ )
 		{
 			int at = Swung( barStart, spe, e );
-			bool open = e == 7;
+			// Pop pumps an open hat on every offbeat (the classic four-on-the-floor "ts-ts-ts");
+			// every other style opens only on the "and of 4".
+			bool open = e == 7 || (_drumStyle == 4 && e % 2 == 1);
 			float amp = e % 2 == 1 ? _c.HatVol : _c.HatVol * 0.6f;
 			if ( _ride && !open )
 				RenderRide( at, e % 2 == 0, amp, noise );    // bell accent on the downbeats
@@ -1740,6 +1819,11 @@ public sealed class MusicGen
 					RenderKick( at, noise );
 					if ( six > 0 ) RenderKick( sixAt, noise ); // the second pedal → the 16th gallop
 					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
+					break;
+				case 4: // pop four-on-the-floor: kick on every beat, backbeat snare/clap on 2 & 4
+					if ( e % 2 == 0 ) RenderKick( at, noise );
+					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
+					else if ( noise.Chance( _c.GhostSnareChance * busy * 0.5f ) ) RenderSnare( at, noise, true );
 					break;
 				default: // straight backbeat — anchors on beats 1 & 3, plus this song's kick
 					     // accents, each humanised per bar so the groove breathes

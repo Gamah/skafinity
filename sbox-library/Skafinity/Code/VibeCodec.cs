@@ -303,6 +303,71 @@ public static class VibeCodec
 		};
 	}
 
+	// Punk (Genre 4) — "lean punk" / power-pop. Reuses rock's voices but drops the keys: a lean
+	// guitar/bass/drums kit. Bright-major harmony + fast tempo live in MusicGen, not the grid.
+	static GenreDef Punk()
+	{
+		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> Vol( v, g, s );
+		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> F( "TONE", lo, hi, false, g, s, v, 1 );
+		return new GenreDef
+		{
+			Name = "Punk",
+			Grid = new[]
+			{
+				DrumsRow(),
+				Row( "BASS", vol( "BASS", c => c.BassVol, ( c, v ) => c.BassVol = v ),
+					tone( "BASS", 80f, 1200f, c => c.BassCutoff, ( c, v ) => c.BassCutoff = v ),
+					F( "DRIVE", 1f, 4f, false, c => c.BassDrive, ( c, v ) => c.BassDrive = v, "BASS", 2 ),
+					F( "OCTAVE POP", 0f, 1f, false, c => c.OctavePopChance, ( c, v ) => c.OctavePopChance = v, "BASS", 3 ) ),
+				// RHYTHM GTR — bright power chords, a touch under the lead's gain.
+				Row( "RHYTHM GTR", vol( "RHYTHM GTR", c => c.RhythmGtrVol, ( c, v ) => c.RhythmGtrVol = v ),
+					tone( "RHYTHM GTR", 500f, 8000f, c => c.RhythmGtrCutoff, ( c, v ) => c.RhythmGtrCutoff = v ),
+					F( "DISTORTION", 1f, 5f, false, c => c.RhythmGtrDrive, ( c, v ) => c.RhythmGtrDrive = v, "RHYTHM GTR", 2 ),
+					F( "CHUG", 0f, 1f, false, c => c.RhythmGtrChug, ( c, v ) => c.RhythmGtrChug = v, "RHYTHM GTR", 3 ) ),
+				// LEAD GTR — snotty, lightly-driven single-note lead.
+				Row( "LEAD GTR", vol( "LEAD GTR", c => c.LeadGtrVol, ( c, v ) => c.LeadGtrVol = v ),
+					tone( "LEAD GTR", 500f, 8000f, c => c.LeadGtrCutoff, ( c, v ) => c.LeadGtrCutoff = v ),
+					F( "DISTORTION", 1f, 6f, false, c => c.LeadGtrDrive, ( c, v ) => c.LeadGtrDrive = v, "LEAD GTR", 2 ),
+					F( "BENDINESS", 0f, 1f, false, c => c.LeadGtrBend, ( c, v ) => c.LeadGtrBend = v, "LEAD GTR", 3 ) ),
+			},
+		};
+	}
+
+	// Pop (Genre 5) — modern synth/dance-pop. A four-on-the-floor kit, a clean bright synth comp
+	// (the KEYS voice) and a plucky synth LEAD (the lead-gtr voice run clean). Bass stays tight.
+	static GenreDef Pop()
+	{
+		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> Vol( v, g, s );
+		Field tone( string v, float lo, float hi, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
+			=> F( "TONE", lo, hi, false, g, s, v, 1 );
+		return new GenreDef
+		{
+			Name = "Pop",
+			Grid = new[]
+			{
+				DrumsRow(),
+				Row( "BASS", vol( "BASS", c => c.BassVol, ( c, v ) => c.BassVol = v ),
+					tone( "BASS", 80f, 1200f, c => c.BassCutoff, ( c, v ) => c.BassCutoff = v ),
+					F( "DRIVE", 1f, 4f, false, c => c.BassDrive, ( c, v ) => c.BassDrive = v, "BASS", 2 ),
+					F( "OCTAVE POP", 0f, 1f, false, c => c.OctavePopChance, ( c, v ) => c.OctavePopChance = v, "BASS", 3 ) ),
+				// SYNTH — the chordal comp (KEYS voice), run clean + bright. PLUCK tightens the
+				// ringing pad toward short stabs.
+				Row( "SYNTH", vol( "SYNTH", c => c.KeysVol, ( c, v ) => c.KeysVol = v ),
+					tone( "SYNTH", 500f, 8000f, c => c.KeysCutoff, ( c, v ) => c.KeysCutoff = v ),
+					F( "PLUCK", 0f, 1f, false, c => c.KeysChug, ( c, v ) => c.KeysChug = v, "SYNTH", 2 ),
+					null ),
+				// LEAD — plucky synth lead (the lead-gtr voice, run clean). GLIDE = bend/slide feel.
+				Row( "LEAD", vol( "LEAD", c => c.LeadGtrVol, ( c, v ) => c.LeadGtrVol = v ),
+					tone( "LEAD", 500f, 8000f, c => c.LeadGtrCutoff, ( c, v ) => c.LeadGtrCutoff = v ),
+					F( "GLIDE", 0f, 1f, false, c => c.LeadGtrBend, ( c, v ) => c.LeadGtrBend = v, "LEAD", 2 ),
+					null ),
+			},
+		};
+	}
+
 	// DRUMS is the same four knobs in every genre: volume / tone (toms↔cymbals) / busy /
 	// drive (pull↔push).
 	static Field[] DrumsRow() => Row( "DRUMS",
@@ -311,7 +376,7 @@ public static class VibeCodec
 		F( "BUSY", 0f, 1f, false, c => c.DrumBusy, ( c, v ) => c.DrumBusy = v, "DRUMS", 2 ),
 		F( "DRIVE", 0f, 1f, false, c => c.DrumDrive, ( c, v ) => c.DrumDrive = v, "DRUMS", 3 ) );
 
-	static readonly GenreDef[] GenreDefs = { Ska(), Rock(), Country(), Metal() };
+	static readonly GenreDef[] GenreDefs = { Ska(), Rock(), Country(), Metal(), Punk(), Pop() };
 
 	public static int GenreCount => GenreDefs.Length;
 	public static IReadOnlyList<string> Genres

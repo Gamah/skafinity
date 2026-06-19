@@ -115,7 +115,7 @@ determinism, and WAV output — run it after engine or boundary changes.
   seed string is **`"{tag}:{n}"`** (empty tag ⇒ `"rotaliate"`).
 - `n` — song index in the infinite sequence (0, 1, 2 …). Prev/Next step `n`.
 - `vibe` — a base-36 string at **16 levels/knob** (`VibeCodec.Levels`), encoding the genre + knob
-  overrides. The **first char is the genre** (0 = Ska, 1 = Rock, 2 = Country, 3 = Metal); the rest
+  overrides. The **first char is the genre** (0 = Ska, 1 = Rock, 2 = Country, 3 = Metal, 4 = Punk, 5 = Pop); the rest
   follow the fixed wire grid below. Empty/absent ⇒ default knobs (genre 0).
 
 Parsing (in `web/engine.js`, `parseSeed`) mirrors the controller: accept `vibe:tag:n`,
