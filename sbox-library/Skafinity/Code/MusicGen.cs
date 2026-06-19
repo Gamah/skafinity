@@ -267,8 +267,8 @@ public sealed class MusicGen
 	{
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major
 		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian
-		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted twice)
-		new[] { 0, 2, 3, 5, 7, 9, 10 }, // dorian
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
+		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted — was dorian; ska/reggae stays bright)
 	};
 
 	static readonly int[][] Progressions =
@@ -298,12 +298,17 @@ public sealed class MusicGen
 	// Darker, power-chord-friendly modes (minor / dorian / mixolydian) so rock doesn't
 	// share ska's bright major themes. Picked with the SAME RNG draw as the ska tables, so
 	// ska songs are byte-identical — only genre 1 reads these.
+	// All minor-3rd modes: the RockProgressions are written/labelled as MINOR (i–♭VII–♭VI …), so
+	// pairing them with a major-3rd mode (e.g. mixolydian) flipped the tonic major and the dark
+	// rock vamp evaporated. Aeolian/dorian/phrygian keep a minor tonic — the progression reads as
+	// intended — while still giving modal variety (dorian's ♮6, phrygian's ♭II colour). 4 entries
+	// kept so the genre Pick stays at the same draw and other genres are byte-identical.
 	static readonly int[][] RockScales =
 	{
 		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (aeolian)
-		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian (classic-rock major-ish)
-		new[] { 0, 2, 3, 5, 7, 9, 10 }, // dorian
-		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (weighted twice)
+		new[] { 0, 2, 3, 5, 7, 9, 10 }, // dorian (minor, brighter ♮6 — classic rock)
+		new[] { 0, 1, 3, 5, 7, 8, 10 }, // phrygian (dark)
+		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (weighted)
 	};
 
 	// Degrees are read against the (often minor) scale, so 5 = ♭VI, 6 = ♭VII, 3 = iv, 4 = v.
@@ -1174,10 +1179,16 @@ public sealed class MusicGen
 	void RenderRhythmGuitarBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
 	{
 		bool country = _genre == 2;
-		int root = ChordRoot( chord ) + 12;               // chunky power-chord register
-		// Country strums a full open triad (root/3rd/5th/octave) clean and bright; rock chunks a
-		// bare power chord (root/5th/octave) with more base distortion.
-		int[] chordOffs = country ? new[] { 0, 4, 7, 12 } : new[] { 0, 7, 12 };
+		int root = ChordRoot( chord ) + 12;               // chunky register, an octave up
+		// Country strums a full DIATONIC triad (root/3rd/5th + octave) clean and bright — built in
+		// degree space (ScaleMidi) so the 3rd follows the mode, matching the keys/lead. A hardcoded
+		// major 3rd clashed on the minor chords of a progression (e.g. the vi in {0,4,5,3}). Rock
+		// chunks a bare, mode-neutral power chord (root/5th/octave) with more base distortion.
+		int triBase = _rootMidi + 12;                     // same register as `root`, in degree space
+		int[] notes = country
+			? new[] { ScaleMidi( triBase, _prog[chord] ),     ScaleMidi( triBase, _prog[chord] + 2 ),
+			          ScaleMidi( triBase, _prog[chord] + 4 ), ScaleMidi( triBase, _prog[chord] + 7 ) }
+			: new[] { root, root + 7, root + 12 };
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		float cutEnv = country ? 2600f : 1400f;            // brighter twang for the clean strum
 		float driveAmt = country ? 0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive )
@@ -1188,11 +1199,11 @@ public sealed class MusicGen
 			float lenFrac = accent ? (1f - 0.5f * chug) : (0.35f - 0.2f * chug);
 			int dur = (int)(spe * Math.Max( 0.12f, lenFrac ));
 			double dec = secPerEighth * (accent ? 0.8 : 0.3);
-			foreach ( var o in chordOffs )
-				RenderPatch( Swung( barStart, spe, e ), dur, Midi( root + o ), new Patch
+			foreach ( var m in notes )
+				RenderPatch( Swung( barStart, spe, e ), dur, Midi( m ), new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance / chordOffs.Length * (accent ? 1f : 0.7f),
+					Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance / notes.Length * (accent ? 1f : 0.7f),
 					Attack = 0.002f, Decay = dec, Sustain = accent ? 0.45f : 0f, Sustained = accent,
 					Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = 0.8f,   // twang
 					Drive = driveAmt, Pan = 0f,
