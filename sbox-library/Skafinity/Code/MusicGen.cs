@@ -177,7 +177,11 @@ public sealed class MusicGen
 		// Tunable at runtime (no rebuild). Drums are panned separately (see DrumPan).
 		public float DoubleTrack = 1f;        // master enable: <0.5 = off (single centred take, as before)
 		public float WidthBacking = 0.5f;     // pan spread (±) for backing voices — 50% L/R
-		public float WidthLead = 1.0f;        // pan spread (±) for the lead — full wide (100%)
+		public float WidthLead = 1.0f;        // pan spread (±) for a doubled lead. INERT by default: the
+		                                      // lead is monophonic and rendered as a single clean take
+		                                      // (see RenderLeadNote) — doubling a solo line smeared pitch
+		                                      // ("out of key"). Only takes effect if the lead path is
+		                                      // switched back to lead:true. Chordal voices use WidthBacking.
 		public float WidthDetune = 6f;        // cents BETWEEN the two takes (split ±half each)
 		public float WidthDelayMs = 9f;       // constant timing offset of the 2nd take (ms)
 		public float WidthJitterMs = 4f;      // extra random per-note timing jitter (ms, ± per take)
@@ -443,7 +447,7 @@ public sealed class MusicGen
 
 	static List<Part> BuildStructure() => new()
 	{
-		new Part( Section.Intro,  2, 0 ),
+		new Part( Section.Intro,  4, 0 ),
 		new Part( Section.Chorus, 8, 0 ),
 		new Part( Section.Verse,  8, 0 ),
 		new Part( Section.Chorus, 8, 0 ),
@@ -600,9 +604,12 @@ public sealed class MusicGen
 
 			// Intro build-in: rather than slamming in at full band (which reads as looping back
 			// into the middle of the song), the voices enter a layer at a time — bass + drums
-			// lay down the groove first, then the chordal voice, then the horns/lead on top.
-			bool playChord = !isIntro || bar >= 1;
-			bool playTop = !isIntro || bar >= 2;
+			// lay down the groove first, then the chordal voice, then the horns/lead on top. The
+			// thresholds are derived from the intro length (not hardcoded bar numbers) so the build
+			// always spans the whole intro and can't silently collapse if part.Bars changes: the
+			// chord enters a quarter of the way in, the top half-way. (4-bar intro ⇒ bars 1 and 2.)
+			bool playChord = !isIntro || bar >= part.Bars / 4;
+			bool playTop = !isIntro || bar >= part.Bars / 2;
 
 			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn, exprRng );
 			if ( playChord )
@@ -1119,7 +1126,11 @@ public sealed class MusicGen
 				Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
 			};
 			ApplyVoicing( ref gtr, vc );
-			RenderPatch( at, dur, Midi( midi ), gtr, lead: true );
+			// The lead is monophonic — a single clean take at its per-song pan (_leadPan). It is NOT
+			// double-tracked: splitting a solo line into two detuned, hard-panned, time-offset takes
+			// beats on sustained notes and overlaps adjacent pitches on runs, reading as "out of key".
+			// Double-tracking width is for the chordal/strummed voices, not the melody.
+			RenderPatch( at, dur, Midi( midi ), gtr, mono: true );
 			return;
 		}
 		RenderLead( at, dur, midi, amp, decaySec, drive, vc );
@@ -1371,7 +1382,10 @@ public sealed class MusicGen
 				break;
 		}
 		ApplyVoicing( ref p, vc );
-		RenderPatch( at, dur, Midi( m ), p, lead: true );
+		// Single clean take at _leadPan — the ska horn/organ lead is monophonic, so it is not
+		// double-tracked (see the guitar-lead note in RenderLeadNote: doubling a solo line smears
+		// pitch). Only chordal/strummed voices get the width.
+		RenderPatch( at, dur, Midi( m ), p, mono: true );
 	}
 
 	// ── Synth core: unison osc → optional high-pass → resonant low-pass (cutoff
