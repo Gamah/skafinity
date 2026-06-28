@@ -33,8 +33,9 @@ public sealed class SkafinityPlayer : Component
 	[Property, Group( "Music" )] public string MixerName { get; set; } = "";
 	/// <summary>Begin playing automatically in <see cref="OnStart"/>. Off = call <see cref="StartSequence"/> yourself.</summary>
 	[Property, Group( "Music" )] public bool AutoPlay { get; set; } = true;
-	/// <summary>Shuffle mode: re-randomise every knob (incl. genre + volumes) as each new song
-	/// begins, so the sequence keeps reinventing itself. Off = the seed's vibe stays put.</summary>
+	/// <summary>Shuffle mode: re-randomise every knob (incl. genre) as each new song begins, so the
+	/// sequence keeps reinventing itself. Volumes are left alone (a local mix preference). Off = the
+	/// seed's vibe stays put.</summary>
 	[Property, Group( "Music" )] public bool RandomEverySong { get; set; } = false;
 
 	// ── Seed ──
@@ -588,16 +589,16 @@ public sealed class SkafinityPlayer : Component
 			_curN++;
 			if ( PersistProgress ) SaveN( _curN );
 
-			// Shuffle mode: each new song gets a fresh set of vibe knobs (NOT volumes — those are
-			// a local mix preference, kept out of the seed — and NOT genre, matching the web toy).
-			// Re-voice WITHOUT a restart (restart: false) — a restart would throw away the song we
-			// just crossfaded into and replay _curN from scratch, stalling the n+1 progression.
-			// Instead drop the look-ahead so FillAhead (OnUpdate) regenerates upcoming songs with
-			// the new vibe, and absorb the Vibe change into the config hash so LiveReload doesn't
-			// fire its own restart either. The current crossfade keeps playing; n keeps advancing.
+			// Shuffle mode: each new song gets a fresh set of vibe knobs, genre included (so the band
+			// itself changes between songs), but NOT volumes — those are a local mix preference, kept
+			// out of the seed. Re-voice WITHOUT a restart (restart: false) — a restart would throw away
+			// the song we just crossfaded into and replay _curN from scratch, stalling the n+1
+			// progression. Instead drop the look-ahead so FillAhead (OnUpdate) regenerates upcoming
+			// songs with the new vibe, and absorb the Vibe change into the config hash so LiveReload
+			// doesn't fire its own restart either. The current crossfade keeps playing; n keeps advancing.
 			if ( RandomEverySong )
 			{
-				RerollVibe( restart: false );
+				RerollVibe( includeGenre: true, restart: false );
 				_ahead.Clear();
 				_lastConfigHash = ConfigHash();
 			}
