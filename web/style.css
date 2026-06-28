@@ -66,6 +66,10 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
 .transport { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
 .transport .now { color: var(--muted); font-size: 12px; margin-left: 8px; }
 .transport .now b { color: var(--text); font-family: var(--mono); font-weight: 600; }
+/* "Generating…" buffering state — hidden until a manual seek stalls on an uncached song */
+.bufstate { display: none; color: var(--accent); font-family: var(--mono); font-size: 12px; }
+.bufstate.show { display: inline; animation: bufpulse 1s ease-in-out infinite; }
+@keyframes bufpulse { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
 .vol { margin-left: auto; color: var(--muted); display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .vol input[type=range] { accent-color: var(--accent); }
 
@@ -128,11 +132,18 @@ button.big { font-size: 16px; width: 44px; height: 36px; line-height: 1; padding
 
 /* ── Playlist ── */
 .playlist { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.plrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 2px; }
+.plrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 2px; border-left: 2px solid transparent; }
 .plrow:hover { background: var(--panel); }
+.plrow.cached { border-left-color: rgba(47,148,80,0.45); }   /* resident — instant Prev/Next */
+.plrow.gen { border-left-color: rgba(47,148,80,0.9); }       /* currently rendering */
 .plrow.now { background: rgba(47,148,80,0.08); outline: 1px solid rgba(47,148,80,0.5); }
-.pllabel { flex: 1; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 12px; }
+.pllabel { cursor: pointer; white-space: nowrap; font-family: var(--mono); font-size: 12px; min-width: 42px; }
+.plgenre { flex: 1; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plstatus { color: var(--muted); font-size: 11px; min-width: 46px; text-align: right; }
+/* indeterminate generation bar (the one-shot worker render gives no sub-song progress) */
+.plbar { display: inline-block; width: 44px; height: 5px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; }
+.plbar > span { display: block; width: 40%; height: 100%; background: var(--accent); border-radius: 2px; animation: plslide 1.1s ease-in-out infinite; }
+@keyframes plslide { 0% { transform: translateX(-110%); } 100% { transform: translateX(280%); } }
 .pldl { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; font-size: 11px; }
 .pldl:hover { color: var(--accent); border-color: rgba(47,148,80,0.5); }
 
