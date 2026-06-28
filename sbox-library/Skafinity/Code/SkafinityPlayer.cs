@@ -9,7 +9,7 @@ namespace Skafinity;
 /// <see cref="MusicGen"/>) through Web Audio-style scheduling over a <see cref="SoundStream"/>.
 ///
 /// Drop this <see cref="Component"/> on any GameObject. It generates a ~80s loop from the
-/// seed <c>tag:n</c>, plays it <see cref="LoopsPerSong"/> times, then equal-power crossfades
+/// seed <c>tag:n</c>, plays it through once, then equal-power crossfades
 /// into the pre-generated next song (<c>tag:n+1</c>), forever. Every generator knob is an
 /// inspector <c>[Property]</c>; with <see cref="LiveReload"/> on, tweaking one regenerates
 /// after a short settle so you can dial in a vibe in play mode.
@@ -63,8 +63,6 @@ public sealed class SkafinityPlayer : Component
 	/// songs only both-audible for <see cref="CrossfadeOverlap"/> of this, centred.</summary>
 	[Property, Group( "Crossfade" ), Range( 0.5f, 8f )] public float Crossfade { get; set; } = 3.75f;
 	[Property, Group( "Crossfade" ), Range( 0f, 1f )] public float CrossfadeOverlap { get; set; } = 0.5f;
-	/// <summary>How many times each loop plays before crossfading on (2 = play through, loop once, switch).</summary>
-	[Property, Group( "Crossfade" ), Range( 1, 4 )] public int LoopsPerSong { get; set; } = 2;
 	/// <summary>How many upcoming songs to keep pre-generated (built one-per-tick so the fill never stalls a frame).</summary>
 	[Property, Group( "Crossfade" ), Range( 1, 8 )] public int AheadCount { get; set; } = 5;
 
@@ -456,35 +454,28 @@ public sealed class SkafinityPlayer : Component
 		finally { _fillingAhead = false; }
 	}
 
-	/// <summary>Write <see cref="LoopsPerSong"/> passes of interleaved-stereo <paramref name="raw"/>
-	/// to the stream, given the first <paramref name="headConsumed"/> frames of pass 0 were already
-	/// emitted, holding back the final <paramref name="reserve"/> frames for the next crossfade.
-	/// Optional fade-in over the first <paramref name="fadeIn"/> frames of pass 0. Returns frames
-	/// written.</summary>
+	/// <summary>Write one pass of interleaved-stereo <paramref name="raw"/> to the stream, given the
+	/// first <paramref name="headConsumed"/> frames were already emitted, holding back the final
+	/// <paramref name="reserve"/> frames for the next crossfade. Optional fade-in over the first
+	/// <paramref name="fadeIn"/> frames. Returns frames written.</summary>
 	int WriteSongBody( short[] raw, int headConsumed, int reserve, int fadeIn )
 	{
 		const int ch = MusicGen.Channels;
-		int loops = Math.Max( 1, LoopsPerSong );
 		int rawFrames = raw.Length / ch;
-		int total = 0;
-		for ( int loop = 0; loop < loops; loop++ )
+		int start = headConsumed;
+		int end = rawFrames - reserve;
+		if ( end <= start ) return 0;
+		int len = end - start;
+		var seg = new short[len * ch];
+		for ( int i = 0; i < len; i++ )
 		{
-			int start = loop == 0 ? headConsumed : 0;
-			int end = loop == loops - 1 ? rawFrames - reserve : rawFrames;
-			if ( end <= start ) continue;
-			int len = end - start;
-			var seg = new short[len * ch];
-			for ( int i = 0; i < len; i++ )
-			{
-				int frame = start + i;
-				float g = (loop == 0 && fadeIn > 0 && frame < fadeIn) ? (float)frame / fadeIn : 1f;
-				for ( int c = 0; c < ch; c++ )
-					seg[i * ch + c] = (short)(raw[frame * ch + c] * g);
-			}
-			_stream.WriteData( seg );
-			total += len;
+			int frame = start + i;
+			float g = (fadeIn > 0 && frame < fadeIn) ? (float)frame / fadeIn : 1f;
+			for ( int c = 0; c < ch; c++ )
+				seg[i * ch + c] = (short)(raw[frame * ch + c] * g);
 		}
-		return total;
+		_stream.WriteData( seg );
+		return len;
 	}
 
 	/// <summary>(Re)start the infinite sequence at the current tag/n. Bumps the sequence token
@@ -502,7 +493,7 @@ public sealed class SkafinityPlayer : Component
 		_ = StartSequenceAsync( seq );
 	}
 
-	// The first song fades in; thereafter songs play LoopsPerSong passes and crossfade into the
+	// The first song fades in; thereafter songs play through once and crossfade into the
 	// pre-generated next. Synthesis is offloaded; stream setup is on the main thread.
 	async Task StartSequenceAsync( int seq )
 	{
@@ -522,8 +513,8 @@ public sealed class SkafinityPlayer : Component
 
 			_stream = new SoundStream( _sr, MusicGen.Channels );
 
-			// First song: LoopsPerSong passes, fade-in over the first `fade`, last `fade` of the
-			// final pass held back for the crossfade into the next song.
+			// First song: one pass, fade-in over the first `fade`, last `fade` held back for the
+			// crossfade into the next song.
 			int written = WriteSongBody( _curRaw, 0, _curReserve, fade );
 			_pushedSeconds = written / (double)_sr;
 
@@ -578,8 +569,8 @@ public sealed class SkafinityPlayer : Component
 			}
 			_stream.WriteData( xf );
 
-			// next song: LoopsPerSong passes, first W of pass 0 already in the crossfade, last
-			// `nextReserve` of the final pass held back for the following crossfade.
+			// next song: one pass, first W already in the crossfade, last `nextReserve` held back
+			// for the following crossfade.
 			int nextReserve = Math.Min( FadeFrames, Frames( next ) / 3 );
 			int written = WriteSongBody( next, W, nextReserve, 0 );
 			_pushedSeconds += (W + written) / (double)_sr;

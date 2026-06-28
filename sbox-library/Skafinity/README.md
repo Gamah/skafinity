@@ -105,7 +105,7 @@ against the same `SkafinityPlayer` API.
 | **Music** | Master `Enabled` / `Volume`, `LiveReload` (regenerate on knob change), `MixerName`, `AutoPlay`, `RandomEverySong` (shuffle) |
 | **Seed** | `Tag`, `StartN`, `Vibe` override, `PersistProgress` + `SaveSlot` (resume across sessions) |
 | **Output** | `SampleRate`, `TargetSeconds`, `RenderThreads` (synthesis is split across worker threads) |
-| **Crossfade** | `Crossfade` window, `CrossfadeOverlap`, `LoopsPerSong`, `AheadCount` (look-ahead depth) |
+| **Crossfade** | `Crossfade` window, `CrossfadeOverlap`, `AheadCount` (look-ahead depth) |
 | Tempo / Mix / Tone / Feel / Stereo / Instrument / Horns | The full generator knob set — see `MusicGen.Config` |
 
 ## House-mix config
