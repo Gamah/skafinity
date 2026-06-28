@@ -91,6 +91,44 @@
 
 		<div class="divider"></div>
 
+		@if ( Player?.IsBuffering == true )
+		{
+			<div class="row">
+				<div class="label">STATUS — waiting on the song you skipped to</div>
+				<div class="buffering">
+					<div class="buffering-label">Generating…</div>
+					<div class="bar"><div class="bar-fill" style="width:@( Pct( BufferingProgress ) )"></div></div>
+				</div>
+			</div>
+		}
+
+		<div class="row">
+			<div class="label">QUEUE — past · now · up next (click to jump)</div>
+			<div class="queue">
+				@foreach ( var e in Queue() )
+				{
+					var ee = e;
+					<div class="qitem @( e.Current ? "current" : "" ) @( e.Cached ? "cached" : "" ) @( e.Progress >= 0 ? "gen" : "" )"
+						 onclick="@( () => Player?.SetN( ee.N ) )">
+						<div class="qn">@e.N</div>
+						<div class="qgenre">@GenreName( e.Genre )</div>
+						<div class="qstate">
+							@if ( e.Progress >= 0 )
+							{
+								<div class="bar"><div class="bar-fill" style="width:@( Pct( e.Progress ) )"></div></div>
+							}
+							else
+							{
+								@( e.Current ? "▶ now" : e.Cached ? "ready" : "—" )
+							}
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+
+		<div class="divider"></div>
+
 		<div class="row genre-row">
 			<div class="label">GENRE</div>
 			<div class="cells">
@@ -312,13 +350,47 @@
 	{
 		if ( Player == null ) return;
 		bool on = !Player.RandomEverySong;
-		Player.RandomEverySong = on;
-		if ( on ) Player.RerollVibe();
-		_msg = on ? "Shuffle: every new song re-rolls the vibe (keeps your volumes)" : "Shuffle off";
+		Player.SetRandomEverySong( on );
+		_msg = on ? "Shuffle: every new song freezes a fresh vibe + genre (keeps your volumes)" : "Shuffle off";
 	}
 
-	protected override int BuildHash() =>
-		HashCode.Combine(
-			IsOpen, Player?.CurrentSeed, Player?.CurrentVibe, Player?.Enabled ?? true,
-			Player?.Volume ?? 1f, Player?.RandomEverySong ?? false, _msg, _copyLabel );
+	// ── Queue view ──
+	// How many history / look-ahead entries to show either side of the current song.
+	static int QueueBack => 3;
+	static int QueueFwd => 5;
+	IEnumerable<SkafinityPlayer.QueueEntry> Queue() =>
+		Player?.Timeline( QueueBack, QueueFwd ) ?? Enumerable.Empty<SkafinityPlayer.QueueEntry>();
+
+	static string GenreName( int g ) =>
+		g >= 0 && g < VibeCodec.GenreCount ? VibeCodec.Genres[g] : "?";
+
+	static string Pct( float f ) => $"{(int)MathF.Round( Math.Clamp( f, 0f, 1f ) * 100 )}%";
+
+	// Progress of the song a foreground seek is buffering (the current index, mid-regenerate).
+	float BufferingProgress
+	{
+		get
+		{
+			var here = Player?.Timeline( 0, 0 );
+			return here != null && here.Count > 0 && here[0].Progress >= 0f ? here[0].Progress : 0f;
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		// Fold in the queue's cached/generating state so the view animates as songs render. The
+		// quantised progress keeps the bars moving without re-rendering on every sub-percent tick.
+		var q = new HashCode();
+		q.Add( IsOpen ); q.Add( Player?.CurrentSeed ); q.Add( Player?.CurrentVibe );
+		q.Add( Player?.Enabled ?? true ); q.Add( Player?.Volume ?? 1f );
+		q.Add( Player?.RandomEverySong ?? false ); q.Add( Player?.IsBuffering ?? false );
+		q.Add( _msg ); q.Add( _copyLabel );
+		if ( IsOpen )
+			foreach ( var e in Queue() )
+			{
+				q.Add( e.N ); q.Add( e.Cached ); q.Add( e.Current ); q.Add( e.Genre );
+				q.Add( e.Progress >= 0 ? (int)MathF.Round( e.Progress * 20 ) : -1 );
+			}
+		return q.ToHashCode();
+	}
 }

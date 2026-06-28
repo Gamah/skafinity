@@ -62,13 +62,35 @@ function applyStoredVolumes() {
 const SHUFFLE_KEY = 'skafinity.shuffle';
 let randomEverySong = (() => { try { return localStorage.getItem(SHUFFLE_KEY) === '1'; } catch (_) { return false; } })();
 function saveShuffle() { try { localStorage.setItem(SHUFFLE_KEY, randomEverySong ? '1' : '0'); } catch (_) {} }
-const shuffleCfgs = new Map();   // n -> re-rolled cfg (shuffle mode only)
-// The cfg to render song `nn` with: shared cfg normally; a per-index re-roll under shuffle.
+// ── Navigable timeline (mirrors SkafinityPlayer's seed ledger + PCM cache, issue #14) ──
+// `ledger`: n -> the cfg song n was/will be rendered with. Under shuffle a song's vibe is rolled
+// ONCE here and then frozen, so the random sequence is a fixed line you can walk both directions —
+// Prev replays the exact earlier song, Next rolls a fresh genre on demand. Kept for the whole
+// session (small Float32Arrays); cleared only on a base change (seed/genre/vibe edit), never on a
+// plain Prev/Next. Outside shuffle, songs aren't pinned (they track the live cfg).
+const ledger = new Map();        // n -> frozen cfg (shuffle line)
+// Radius of the rendered-PCM cache kept around the audible song so Prev/Next within the window is
+// instant; anything further is dropped and regenerated from the ledger on demand.
+const PCM_RADIUS = 5;
+let bufferingN = -1;             // song a manual seek is waiting on (playback stalled), or -1
+// The cfg to render song `nn` with: the shared live cfg normally; a per-index frozen roll under
+// shuffle (pinned in the ledger so the look-ahead AND a later revisit stay identical).
 function cfgForN(nn) {
+  if (ledger.has(nn)) return ledger.get(nn);
   if (!randomEverySong) return cfg;
-  let c = shuffleCfgs.get(nn);
-  if (!c) { c = randomizedCfg(cfg, true); shuffleCfgs.set(nn, c); }
+  const c = randomizedCfg(cfg, true);
+  ledger.set(nn, c);
   return c;
+}
+// The genre song nn resolves to, for the queue view (frozen roll if pinned, else the live genre).
+function genreForN(nn) {
+  const c = ledger.get(nn);
+  return c ? mod.getGenre(c) : genre;
+}
+// Drop rendered PCM outside the ±PCM_RADIUS window around `center` (the audible song by default;
+// the seek target while a jump is still buffering). The ledger of frozen vibes is kept regardless.
+function pruneCache(center = displayN) {
+  for (const k of rendered.keys()) if (Math.abs(k - center) > PCM_RADIUS) rendered.delete(k);
 }
 let seq = 0;                  // bumped on every restart; stale renders are dropped
 let playing = false;
@@ -204,19 +226,19 @@ function scheduleOneSong(buffer, songN, startTime) {
   setTimeout(() => {
     if (mySeq !== seq) return;
     displayN = songN;
-    // Shuffle: adopt the vibe this song was actually rendered with, so the editor / seed / hash
-    // reflect what's audible (and the link reproduces it). Falls back to the live cfg if the
-    // per-index re-roll has already been pruned.
-    if (randomEverySong) {
-      const c = shuffleCfgs.get(songN);
-      if (c) {
-        cfg = c;
-        genre = mod.getGenre(cfg);
-        if ($('genre')) $('genre').value = String(genre);
-        vibe = mod.encodeVibe(cfg);
-        buildVibeEditor();
-      }
+    if (bufferingN === songN) bufferingN = -1;   // the song we were waiting on is now audible
+    // Adopt the (frozen) vibe this song was rendered with, so the editor / seed / hash reflect
+    // what's audible and the link reproduces it. Pinned songs come from the ledger; an unpinned
+    // (non-shuffle) song keeps the live cfg.
+    const c = ledger.get(songN);
+    if (c) {
+      cfg = c;
+      genre = mod.getGenre(cfg);
+      if ($('genre')) $('genre').value = String(genre);
+      vibe = mod.encodeVibe(cfg);
+      buildVibeEditor();
     }
+    pruneCache();
     localStorage.setItem('skafinity.n', String(songN));
     setHash();
     updateTransport();
@@ -241,9 +263,9 @@ function pump() {
       nextStart = nextTime + buffer.duration * LOOPS_PER_SONG; // still advance, don't wedge
     }
     nextTime = nextStart;
-    // drop the buffer we just consumed (keep a small trailing cache for the playlist)
-    for (const k of rendered.keys()) if (k < nextN - 2) rendered.delete(k);
-    for (const k of shuffleCfgs.keys()) if (k < nextN - 2) shuffleCfgs.delete(k);
+    // Keep a ±PCM_RADIUS window of rendered songs around the audible one so Prev/Next stays
+    // instant within it (the ledger of frozen vibes is kept regardless — it's cheap).
+    pruneCache();
     firstScheduled = true;
     nextN++;
   }
@@ -251,6 +273,9 @@ function pump() {
   for (let k = nextN; k <= nextN + AHEAD_COUNT; k++) requestSong(k);
 }
 
+// HARD restart — for base changes (new seed/tag/genre/vibe edit) that invalidate the whole
+// timeline: aborts in-flight renders, drops the PCM cache AND the frozen-vibe ledger, rebuilds
+// from n. For a navigation that should PRESERVE the timeline (Prev/Next), use seekTo() instead.
 function startSequence() {
   seq++;
   // tear down current audio
@@ -258,7 +283,8 @@ function startSequence() {
   activeNodes = [];
   // abort in-flight renders (terminate busy workers) and clear the generation state
   abortAll();
-  shuffleCfgs.clear();   // re-roll fresh vibes for the new run (shuffle mode)
+  ledger.clear();        // re-roll fresh vibes for the new run (shuffle mode)
+  bufferingN = -1;
   nextN = n;
   firstScheduled = false;
   if (!ctx) return;
@@ -266,6 +292,32 @@ function startSequence() {
   // prime the look-ahead, then pump as renders arrive
   for (let k = n; k <= n + AHEAD_COUNT; k++) requestSong(k);
   pump();
+  updateBuffer();
+}
+
+// SOFT seek — navigate to song nn while PRESERVING the timeline (ledger + PCM cache). Plays a
+// cached song instantly; otherwise stalls in a "Generating…" buffering state while it regenerates
+// from nn's ledger seed. This is what Prev/Next/jump call: Prev replays the exact earlier songs,
+// Next rolls a fresh genre on demand under shuffle. Restarts the audio schedule (a manual jump
+// can't rewind committed Web Audio nodes) but does NOT discard the timeline.
+function seekTo(nn) {
+  nn = Math.max(0, nn | 0);
+  n = nn;
+  if (!playing || !ctx) { displayN = nn; setHash(); updateTransport(); renderPlaylist(); return; }
+  seq++;                 // invalidate the old audio schedule (stale setTimeouts/onended bail out)
+  for (const node of activeNodes) { try { node.stop && node.stop(); } catch (_) {} try { node.disconnect(); } catch (_) {} }
+  activeNodes = [];
+  pending.length = 0;    // drop queued work; the window around nn is re-requested below
+  nextN = nn;
+  firstScheduled = false;
+  bufferingN = rendered.has(nn) ? -1 : nn;   // stall indicator until the target is audible
+  nextTime = ctx.currentTime + 0.06;
+  pruneCache(nn);        // prune around the target (displayN still lags until nn starts)
+  for (let k = nn; k <= nn + AHEAD_COUNT; k++) requestSong(k);
+  pump();
+  updateTransport();
+  updateBuffer();
+  renderPlaylist();
 }
 
 // ── Transport ──
@@ -290,19 +342,23 @@ function pause() {
   if (ctx) ctx.suspend();
   updateTransport();
 }
-function stepN(d) {
-  n = Math.max(0, displayN + d);
-  if (playing) startSequence(); else { displayN = n; setHash(); updateTransport(); }
-}
-function jumpTo(nn) {
-  n = Math.max(0, nn | 0);
-  if (playing) startSequence(); else { displayN = n; setHash(); updateTransport(); }
-}
+function stepN(d) { seekTo(displayN + d); }
+function jumpTo(nn) { seekTo(nn); }
 
 function updateTransport() {
   $('playBtn').textContent = playing ? '⏸' : '▶';
   $('seed').value = currentSeedString();
   $('nNow').textContent = displayN;
+}
+
+// Surface the "Generating…" / buffering state — playback has stalled waiting on the song you
+// skipped to (vs. silent background look-ahead fill). Mirrors SkafinityPlayer.IsBuffering.
+function updateBuffer() {
+  const el = $('bufState');
+  if (!el) return;
+  const on = playing && bufferingN >= 0 && !rendered.has(bufferingN);
+  el.classList.toggle('show', on);
+  el.textContent = on ? `generating #${bufferingN}…` : '';
 }
 
 // ── Seed paste ──
@@ -326,7 +382,9 @@ function applySeedString(s) {
 
 // ── Export ──
 function exportWav(songN) {
-  const bytes = mod.songToWav(seedFor(songN), cfg);
+  // Export the song's frozen vibe (its ledger cfg under shuffle), so a downloaded #k matches what
+  // the timeline plays — not just whatever the live editor currently shows.
+  const bytes = mod.songToWav(seedFor(songN), cfgForN(songN).slice());
   const blob = new Blob([bytes], { type: 'audio/wav' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -339,31 +397,54 @@ function exportWav(songN) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-// ── Playlist panel ──
+// ── Playlist / navigable-timeline panel ──
+// Shows the window around the audible song — history (cached, replayable), the current song, and
+// the look-ahead — each with its index, genre, and cached/generating/buffering state, click to jump.
 function renderPlaylist() {
   const list = $('playlist');
   list.innerHTML = '';
-  const from = Math.max(0, displayN - 2);
+  const from = Math.max(0, displayN - PCM_RADIUS);
   const to = displayN + AHEAD_COUNT;
   for (let k = from; k <= to; k++) {
+    const isNow = k === displayN;
+    const cached = rendered.has(k);
+    const generating = requested.has(k) || (bufferingN === k && !cached);
     const row = document.createElement('div');
-    row.className = 'plrow' + (k === displayN ? ' now' : '');
-    const state = rendered.has(k) ? 'ready' : (requested.has(k) ? 'gen…' : '');
+    row.className = 'plrow'
+      + (isNow ? ' now' : '')
+      + (cached ? ' cached' : '')
+      + (generating ? ' gen' : '');
+
     const label = document.createElement('span');
     label.className = 'pllabel';
-    label.textContent = `${k === displayN ? '▶ ' : ''}#${k}  ${seedFor(k)}`;
+    label.textContent = `${isNow ? '▶ ' : ''}#${k}`;
     label.onclick = () => jumpTo(k);
+
+    const tagEl = document.createElement('span');
+    tagEl.className = 'plgenre';
+    tagEl.textContent = mod ? mod.genreName(genreForN(k)) : '';
+
     const status = document.createElement('span');
     status.className = 'plstatus';
-    status.textContent = k < displayN ? 'played' : state;
+    if (generating) {
+      // No sub-song progress from the one-shot worker render — show an honest indeterminate bar.
+      const bar = document.createElement('span');
+      bar.className = 'plbar';
+      bar.append(document.createElement('span'));
+      status.append(bar);
+    } else {
+      status.textContent = isNow ? 'now' : cached ? 'ready' : k < displayN ? 'gone' : '—';
+    }
+
     const dl = document.createElement('button');
     dl.className = 'pldl';
     dl.textContent = '⬇';
     dl.title = `Export #${k} to WAV`;
     dl.onclick = (ev) => { ev.stopPropagation(); exportWav(k); };
-    row.append(label, status, dl);
+    row.append(label, tagEl, status, dl);
     list.append(row);
   }
+  updateBuffer();
 }
 
 // ── Vibe editor — per-instrument mixer matrix + GLOBAL strip ──
@@ -560,14 +641,17 @@ function rerollVibe() {
   if (playing) startSequence();
 }
 
-// 🎲 Shuffle toggle ("random every song"): flip the mode, drop any cached re-rolls, and
-// restart so the look-ahead re-renders under the new mode.
+// 🎲 Shuffle toggle ("random every song"): flip the mode and re-resolve the timeline from the
+// current song forward under the new mode — ON freezes a fresh rolled vibe+genre per upcoming n,
+// OFF reverts upcoming songs to the live vibe. History (n < current) keeps its frozen line so Prev
+// still replays what you heard. Soft-reseeks the current song so the change takes immediately.
 function toggleShuffle() {
   randomEverySong = !randomEverySong;
   saveShuffle();
-  shuffleCfgs.clear();
+  for (const k of ledger.keys()) if (k >= displayN) ledger.delete(k);
+  for (const k of rendered.keys()) if (k >= displayN) rendered.delete(k);
   updateShuffleBtn();
-  if (playing) startSequence();
+  if (playing) seekTo(displayN); else renderPlaylist();
 }
 function updateShuffleBtn() {
   const b = $('shuffleBtn');

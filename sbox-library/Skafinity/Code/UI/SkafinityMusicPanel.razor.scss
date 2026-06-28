@@ -139,4 +139,31 @@ skafinitymusicpanel {
 
 	.hint { font-size: 14px; letter-spacing: 1px; color: rgba(255,255,255,0.4); white-space: nowrap; }
 	.hint.ok { color: $accent; }
+
+	// ── Progress bar (queue entries + buffering banner) ──
+	.bar {
+		width: 100%; height: 6px; background-color: rgba(255,255,255,0.08);
+		border-radius: 2px; overflow: hidden;
+	}
+	.bar-fill { height: 6px; background-color: $accent; border-radius: 2px; }
+
+	// ── Buffering banner ("Generating…" while playback waits on a seek) ──
+	.buffering { flex-direction: column; gap: 4px; }
+	.buffering-label { font-size: 14px; letter-spacing: 1px; color: $accent; white-space: nowrap; }
+
+	// ── Queue / timeline strip — history · current · look-ahead, click an entry to jump ──
+	.queue { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+	.qitem {
+		width: 88px; flex-direction: column; gap: 3px;
+		padding: 6px 8px; background-color: $btn;
+		border: 2px solid transparent; border-radius: 2px; cursor: pointer; pointer-events: all;
+
+		&:hover { background-color: $btn-hover; border: 2px solid $border; }
+		&.cached { background-color: rgba(24,92,44,0.25); }
+		&.gen { border: 2px solid rgba(47,148,80,0.5); }
+		&.current { background-color: $accent-bg; border: 2px solid rgba(255,255,255,0.85); }
+	}
+	.qn { font-size: 14px; font-weight: bold; color: white; }
+	.qgenre { font-size: 12px; letter-spacing: 1px; color: $text-dim; white-space: nowrap; }
+	.qstate { font-size: 11px; color: rgba(255,255,255,0.5); min-height: 6px; white-space: nowrap; }
 }
