@@ -14,24 +14,11 @@ $text-dim:  rgba(180,224,194,0.42);  // labels
 
 skafinitymusicpanel {
 	// Fill the ScreenPanel; flex-centre the board. pointer-events:none so a closed panel
-	// never blocks anything — only the board / button itself take pointer events.
+	// never blocks anything — only the board itself takes pointer events.
 	position: absolute; top: 0; left: 0; right: 0; bottom: 0;
 	justify-content: center; align-items: center;
 	pointer-events: none;
 	font-family: Consolas, 'Roboto Mono', monospace;
-
-	// Floating toggle button (shown when the board is closed), bottom-left.
-	.fab {
-		position: absolute; left: 24px; bottom: 24px;
-		width: 52px; height: 52px;
-		justify-content: center; align-items: center;
-		font-size: 28px; color: $text;
-		background-color: $btn;
-		border: 2px solid rgba(255,255,255,0.12); border-radius: 2px;
-		cursor: pointer; pointer-events: all;
-
-		&:hover { background-color: $btn-hover; border-color: $border; }
-	}
 
 	// The board — sized to its content (no scroll range to drag-pan). Keep it lean enough
 	// to fit a 1080-tall reference; it extends past the box rather than scrolling.

@@ -11,7 +11,10 @@
 
 	Add this PanelComponent to a GameObject under a ScreenPanel (or WorldPanel). It finds a
 	SkafinityPlayer in the scene (or set Player explicitly) and offers the whole knob surface
-	as UI — you don't have to wire anything. A floating ♪ button toggles the board open/closed.
+	as UI — you don't have to wire anything. The board's visibility is host-driven: set IsOpen
+	(or call Toggle()) from your game — e.g. bind it to a hotkey or your own pause/menu UI.
+	This component intentionally ships no launcher of its own, so it imposes nothing on the
+	host's HUD.
 
 	The engine needs nothing from this: SkafinityPlayer plays on its own. This panel is pure
 	convenience for players who want to tweak the vibe rather than tune it in the inspector.
@@ -28,11 +31,7 @@
 *@
 
 <root class="@( IsOpen ? "open" : "" )">
-	@if ( !IsOpen )
-	{
-		<div class="fab" onclick="@Toggle">♪</div>
-	}
-	else
+	@if ( IsOpen )
 	{
 	@{ var cfg = Player?.EffectiveConfig(); int genre = cfg?.Genre ?? 0; }
 	<div class="music">
@@ -202,8 +201,10 @@
 	// Volume control steps over the player's 0..2 range.
 	static readonly float[] VolumeSteps = { 0f, 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f };
 
-	/// <summary>Whether the settings board is showing (toggled by the ♪ button).</summary>
-	public bool IsOpen { get; private set; }
+	/// <summary>Whether the settings board is showing. Host-driven — set it from your game (or
+	/// call <see cref="Toggle"/>) to wire the board to a hotkey / pause menu / your own button.
+	/// This component ships no launcher of its own.</summary>
+	[Property] public bool IsOpen { get; set; }
 
 	TextEntry _tagEntry;
 	bool _tagInit;
@@ -226,7 +227,8 @@
 
 	string Seed() => Player?.CurrentSeed ?? "—";
 
-	/// <summary>Open/close the settings board.</summary>
+	/// <summary>Open/close the settings board. Convenience for hosts that want to bind a single
+	/// action; you can also set <see cref="IsOpen"/> directly.</summary>
 	public void Toggle()
 	{
 		IsOpen = !IsOpen;
