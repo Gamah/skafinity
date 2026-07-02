@@ -35,8 +35,8 @@ public sealed class SkafinityPlayer : Component
 	[Property, Group( "Music" )] public bool AutoPlay { get; set; } = true;
 	/// <summary>Shuffle mode: re-randomise every knob (incl. genre) as each new song begins, so the
 	/// sequence keeps reinventing itself. Volumes are left alone (a local mix preference). Off = the
-	/// seed's vibe stays put.</summary>
-	[Property, Group( "Music" )] public bool RandomEverySong { get; set; } = false;
+	/// seed's vibe stays put. ON by default — endless variety out of the box.</summary>
+	[Property, Group( "Music" )] public bool RandomEverySong { get; set; } = true;
 
 	// ── Seed ──
 	/// <summary>Seed tag — any string (a name, a word). Empty falls back to "skafinity".</summary>
@@ -46,8 +46,10 @@ public sealed class SkafinityPlayer : Component
 	/// <summary>Optional base-36 vibe override (see <see cref="VibeCodec"/>). When set it overrides
 	/// the matching inspector knobs, so a shared vibe reproduces the same voicing on any client.</summary>
 	[Property, Group( "Seed" )] public string Vibe { get; set; } = "";
-	/// <summary>Persist the current song index across sessions (FileSystem.Data, keyed by <see cref="SaveSlot"/>).</summary>
-	[Property, Group( "Seed" )] public bool PersistProgress { get; set; } = false;
+	/// <summary>Persist the player state across sessions (FileSystem.Data, keyed by <see cref="SaveSlot"/>):
+	/// the seed (tag + song index + vibe) and the listening settings not covered by the seed
+	/// (shuffle, mute, volume). ON by default so the player picks up where it left off.</summary>
+	[Property, Group( "Seed" )] public bool PersistProgress { get; set; } = true;
 	[Property, Group( "Seed" )] public string SaveSlot { get; set; } = "default";
 
 	// ── Output ──
@@ -274,8 +276,15 @@ public sealed class SkafinityPlayer : Component
 
 	protected override void OnStart()
 	{
+		_curN = Math.Max( 0, StartN );
+		if ( PersistProgress )
+		{
+			// Full JSON state first; fall back to the legacy .n progress file for old saves.
+			if ( !LoadState() )
+				_curN = Math.Max( 0, LoadN() ?? StartN );
+		}
 		_lastConfigHash = ConfigHash();
-		_curN = Math.Max( 0, PersistProgress ? LoadN() ?? StartN : StartN );
+		_lastStateHash = StateHash();
 		_vols = LoadVols();
 		_houseConfig = LoadHouseConfig();
 		if ( AutoPlay ) StartSequence();
@@ -322,6 +331,19 @@ public sealed class SkafinityPlayer : Component
 		{
 			_restartPending = false;
 			StartSequence();
+		}
+
+		// Debounced state persistence: any change to the tracked settings (tag/n/vibe/shuffle/mute/
+		// volume — e.g. from a UI panel toggling Enabled or dragging Volume) is written once settled.
+		if ( PersistProgress )
+		{
+			int sh = StateHash();
+			if ( sh != _lastStateHash && !_stateDirty ) { _stateDirty = true; _stateDirtySince = 0; }
+			if ( _stateDirty && _stateDirtySince > 1f )
+			{
+				_stateDirty = false;
+				if ( StateHash() != _lastStateHash ) SaveState();
+			}
 		}
 	}
 
@@ -985,14 +1007,76 @@ public sealed class SkafinityPlayer : Component
 		}
 	}
 
-	// ── Optional progress persistence (FileSystem.Data, see assets/file-system.md) ──
+	// ── Player-state persistence (FileSystem.Data, keyed by SaveSlot) ──
+	// One JSON with the seed (tag / n / vibe) AND the listening settings that aren't reproducible
+	// from the seed (shuffle, mute, volume). Per-voice mix levels stay in their own .vol file
+	// (SaveVols) since they're edited on a different cadence. Loaded in OnStart; saved whenever any
+	// of the tracked fields change (debounced in OnUpdate) and on every song advance/seek.
+	string StateFile => $"skafinity_{(string.IsNullOrEmpty( SaveSlot ) ? "default" : SaveSlot)}.json";
+	// Legacy pre-JSON progress file (just the song index) — still read as a fallback.
 	string ProgressFile => $"skafinity_{(string.IsNullOrEmpty( SaveSlot ) ? "default" : SaveSlot)}.n";
 
-	void SaveN( int n )
+	class SavedState
 	{
-		try { FileSystem.Data.WriteAllText( ProgressFile, n.ToString() ); }
-		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: save progress failed: {e.Message}" ); }
+		public string Tag { get; set; } = "";
+		public int N { get; set; }
+		public string Vibe { get; set; } = "";
+		public bool RandomEverySong { get; set; } = true;
+		public bool Enabled { get; set; } = true;
+		public float Volume { get; set; } = 0.7f;
 	}
+
+	int _lastStateHash;
+	TimeSince _stateDirtySince;
+	bool _stateDirty;
+
+	int StateHash()
+	{
+		var h = new HashCode();
+		h.Add( Tag ); h.Add( _curN ); h.Add( Vibe );
+		h.Add( RandomEverySong ); h.Add( Enabled ); h.Add( Volume );
+		return h.ToHashCode();
+	}
+
+	void SaveState()
+	{
+		try
+		{
+			FileSystem.Data.WriteAllText( StateFile, Json.Serialize( new SavedState
+			{
+				Tag = Tag ?? "",
+				N = _curN,
+				Vibe = Vibe ?? "",
+				RandomEverySong = RandomEverySong,
+				Enabled = Enabled,
+				Volume = Volume,
+			} ) );
+			_lastStateHash = StateHash();
+		}
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: save state failed: {e.Message}" ); }
+	}
+
+	// Apply the saved state over the inspector defaults. Returns true when a state file was loaded.
+	bool LoadState()
+	{
+		try
+		{
+			if ( !FileSystem.Data.FileExists( StateFile ) ) return false;
+			var s = Json.Deserialize<SavedState>( FileSystem.Data.ReadAllText( StateFile ) );
+			if ( s == null ) return false;
+			Tag = s.Tag ?? "";
+			_curN = Math.Max( 0, s.N );
+			Vibe = s.Vibe ?? "";
+			RandomEverySong = s.RandomEverySong;
+			Enabled = s.Enabled;
+			Volume = Math.Clamp( s.Volume, 0f, 2f );
+			return true;
+		}
+		catch ( Exception e ) { Log.Warning( $"SkafinityPlayer: load state failed: {e.Message}" ); }
+		return false;
+	}
+
+	void SaveN( int n ) => SaveState();
 
 	int? LoadN()
 	{
