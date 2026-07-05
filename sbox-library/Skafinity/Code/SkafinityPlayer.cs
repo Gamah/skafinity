@@ -21,7 +21,11 @@ namespace Skafinity;
 /// dependencies (no player data, networking, or UI). Persistence of the song index is opt-in
 /// via <see cref="PersistProgress"/>.
 /// </summary>
-public sealed class SkafinityPlayer : Component
+// DontExecuteOnServer: Skafinity is client-only (audio + UI). On a dedicated server the engine
+// skips this component's OnStart/OnEnabled/OnUpdate, so MusicGen/VibeCodec are never driven and
+// nothing tries to render or play audio on a headless host. Runtime marker (not #if SERVER) so the
+// type still exists in every build and consumers compile unchanged.
+public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 {
 	// ── Master ──
 	/// <summary>Music master switch. 'new' so it's distinct from <see cref="Component.Enabled"/>.</summary>
