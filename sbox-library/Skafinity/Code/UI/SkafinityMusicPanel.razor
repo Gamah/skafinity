@@ -5,6 +5,10 @@
 @using Sandbox.UI
 @namespace Skafinity
 @inherits PanelComponent
+@* DontExecuteOnServer: this panel is pure human-client UI (like SkafinityPlayer). A dedicated
+   server never renders it, so skip its lifecycle there. On a listen server the host is still a
+   player, so the host-client keeps the panel — this only sheds the headless case. *@
+@implements Component.DontExecuteOnServer
 
 @*
 	The optional drop-in settings panel for the Skafinity music engine.
