@@ -5,6 +5,10 @@
 @using Sandbox.UI
 @namespace Skafinity
 @inherits PanelComponent
+@* DontExecuteOnServer: this panel is pure human-client UI (like SkafinityPlayer). A dedicated
+   server never renders it, so skip its lifecycle there. On a listen server the host is still a
+   player, so the host-client keeps the panel — this only sheds the headless case. *@
+@implements Component.DontExecuteOnServer
 
 @*
 	The optional drop-in settings panel for the Skafinity music engine.
@@ -204,7 +208,13 @@
 	/// <summary>Whether the settings board is showing. Host-driven — set it from your game (or
 	/// call <see cref="Toggle"/>) to wire the board to a hotkey / pause menu / your own button.
 	/// This component ships no launcher of its own.</summary>
-	[Property] public bool IsOpen { get; set; }
+	/// <remarks>Deliberately NOT a <c>[Property]</c>: this is transient UI state. On a networked
+	/// (<c>NetworkMode: Snapshot</c>) GameObject a serialized <c>[Property]</c> rides the late-join
+	/// snapshot, so a client joining while the host has the board open would restore
+	/// <c>IsOpen = true</c> — leaking the host's UI state and rendering the board open (and unstyled,
+	/// since the panel is rebuilt mid-deserialize). Leaving it un-serialized keeps it host-driven
+	/// from code while starting <c>false</c> on every client.</remarks>
+	public bool IsOpen { get; set; }
 
 	TextEntry _tagEntry;
 	bool _tagInit;
