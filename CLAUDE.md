@@ -5,8 +5,6 @@ procedural ska / reggae-rock track** generated entirely in the browser from a sh
 shareable seed. No server, no audio assets — the music is synthesised from scratch in
 WebAssembly and scheduled through the Web Audio API.
 
-Read this file fully before making changes.
-
 ---
 
 ## Origin & the single source of truth
@@ -196,5 +194,3 @@ button.
 - The house-mix config has ONE canonical copy (`sbox-library/Skafinity/skafinity.config.json`);
   `make`'s `stage` step copies it to `web/config.json`. Edit the canonical and re-`make`, or edit
   `web/config.json` directly for quick web-only iteration (the next `make` overwrites it).
-- Commit messages end with the Co-Authored-By trailer (see global instructions).
-- Feature work goes on branches.
