@@ -9,7 +9,10 @@
 <body>
   <main>
     <header>
-      <h1>ska<span>finity</span></h1>
+      <div class="htop">
+        <h1>ska<span>finity</span></h1>
+        <a class="ghlink" href="https://github.com/Gamah/skafinity" target="_blank" rel="noopener">find it on GitHub!</a>
+      </div>
       <p class="tag">an endless, deterministic procedural ska track — the whole song is a URL.</p>
     </header>
 
@@ -33,7 +36,7 @@
         <h2>vibe
           <label class="genre">Genre: <select id="genre"></select></label>
           <button id="rerollBtn" class="reroll" title="Randomize every knob but the volumes">🎲 reroll vibe</button>
-          <button id="shuffleBtn" class="reroll toggle" title="Re-roll the vibe for every new song (keeps your volumes)">🎲 every song: OFF</button>
+          <button id="shuffleBtn" class="reroll toggle on" title="Re-roll genre + every knob for each new song (keeps your volumes)">🎲 every song: ON</button>
         </h2>
         <div id="vibe" class="vibe"></div>
       </section>

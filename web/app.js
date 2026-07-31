@@ -55,19 +55,23 @@ function applyStoredVolumes() {
       cfg = mod.setVibeField(cfg, f.i, vols[f.voice]);
   }
 }
-// 🎲 Shuffle ("random every song"): each new song renders with a freshly re-rolled vibe.
-// Matches the s&box panel — re-rolls the vibe knobs only, keeping the current genre and your
-// saved per-voice volumes (volume isn't part of the seed). Each upcoming index caches its own
-// re-rolled cfg so the look-ahead renders (and the audible song) stay consistent.
+// 🎲 Shuffle ("random every song"): each new song renders with a freshly re-rolled vibe — a fresh
+// genre AND every non-volume knob (per-voice volumes are a local mix preference and never ride in
+// the seed). Each upcoming index caches its own re-rolled cfg so the look-ahead renders and the
+// audible song stay consistent.
+//
+// ON by default, matching SkafinityPlayer.RandomEverySong — endless variety out of the box, which
+// is the point of an infinite station. An explicit OFF is remembered; an absent setting means the
+// visitor has never touched it and gets the default.
 const SHUFFLE_KEY = 'skafinity.shuffle';
-let randomEverySong = (() => { try { return localStorage.getItem(SHUFFLE_KEY) === '1'; } catch (_) { return false; } })();
+let randomEverySong = (() => { try { return localStorage.getItem(SHUFFLE_KEY) !== '0'; } catch (_) { return true; } })();
 function saveShuffle() { try { localStorage.setItem(SHUFFLE_KEY, randomEverySong ? '1' : '0'); } catch (_) {} }
 // ── Navigable timeline (mirrors SkafinityPlayer's seed ledger + PCM cache, issue #14) ──
-// `ledger`: n -> the cfg song n was/will be rendered with. Under shuffle a song's vibe is rolled
-// ONCE here and then frozen, so the random sequence is a fixed line you can walk both directions —
-// Prev replays the exact earlier song, Next rolls a fresh genre on demand. Kept for the whole
-// session (small Float32Arrays); cleared only on a base change (seed/genre/vibe edit), never on a
-// plain Prev/Next. Outside shuffle, songs aren't pinned (they track the live cfg).
+// `ledger`: n -> the cfg song n was/will be rendered with. Under shuffle that cfg is DERIVED from
+// the seed (mod.rollVibeFor over "{tag}:vibe:{n}"), so the ledger is a cache and nothing more —
+// dropping an entry re-derives the identical vibe. That is what makes the shuffled line walkable
+// in both directions, shareable, and stable across a reload: the sequence genuinely is the seed.
+// Outside shuffle, songs aren't pinned (they track the live cfg).
 const ledger = new Map();        // n -> frozen cfg (shuffle line)
 // Radius of the rendered-PCM cache kept around the audible song so Prev/Next within the window is
 // instant; anything further is dropped and regenerated from the ledger on demand.
@@ -78,13 +82,15 @@ let bufferingN = -1;             // song a manual seek is waiting on (playback s
 function cfgForN(nn) {
   if (ledger.has(nn)) return ledger.get(nn);
   if (!randomEverySong) return cfg;
-  const c = randomizedCfg(cfg, true);
+  const c = mod.rollVibeFor(cfg, tag, nn);
   ledger.set(nn, c);
   return c;
 }
-// The genre song nn resolves to, for the queue view (frozen roll if pinned, else the live genre).
+// The genre song nn resolves to, for the queue view. Under shuffle every upcoming genre is
+// knowable up front (the line is derived, not rolled on arrival), so the queue shows what is
+// actually coming rather than the live genre as a placeholder.
 function genreForN(nn) {
-  const c = ledger.get(nn);
+  const c = ledger.get(nn) || (mod && randomEverySong ? cfgForN(nn) : null);
   return c ? mod.getGenre(c) : genre;
 }
 // Drop rendered PCM outside the ±PCM_RADIUS window around `center` (the audible song by default;
@@ -591,29 +597,10 @@ function setGenre(g) {
   if (playing) startSequence();
 }
 
-// Return a copy of `base` with every knob of its genre randomized EXCEPT per-instrument volumes
-// (a local mix preference, kept out of the seed), then keep TEMPO MIN ≤ MAX (ranges are
-// identical so swapping the normalized values swaps the tempos). Pure — does not touch globals.
-function randomizedCfg(base, randomizeGenre = false) {
-  let c = base.slice();
-  // Optionally roll a fresh genre first (shuffle mode), then randomize THAT genre's knobs —
-  // field indices are genre-specific, so resolve them against c's genre, not the global one.
-  let g = mod.getGenre(c);
-  if (randomizeGenre) { g = Math.floor(Math.random() * mod.genreCount()); c = mod.setGenre(c, g); }
-  const count = mod.vibeFieldCount(g);
-  let lo = -1, hi = -1;
-  for (let i = 0; i < count; i++) {
-    const info = mod.vibeFieldInfo(g, i);
-    if (info.name === 'TEMPO MIN') lo = i; else if (info.name === 'TEMPO MAX') hi = i;
-    if (info.column === 0 && info.voice) continue; // skip per-instrument volumes
-    c = mod.setVibeField(c, i, Math.random());
-  }
-  if (lo >= 0 && hi >= 0) {
-    const a = mod.getVibeNorm(c, lo), b = mod.getVibeNorm(c, hi);
-    if (a > b) { c = mod.setVibeField(c, lo, b); c = mod.setVibeField(c, hi, a); }
-  }
-  return c;
-}
+// A throwaway roll (the manual 🎲): fresh genre + every non-volume knob. The rules — which
+// knobs are rollable, that per-instrument volumes stay out, that the tempo range gets put back
+// in order — live in the engine (VibeCodec.Roll), so this side never restates them.
+function randomizedCfg(base, randomizeGenre = true) { return mod.rollVibe(base, randomizeGenre); }
 // Randomize the live cfg in place (manual 🎲 reroll). Callers handle UI/hash/restart.
 function randomizeVibeCfg() { cfg = randomizedCfg(cfg); vibe = mod.encodeVibe(cfg); }
 

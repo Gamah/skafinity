@@ -1,0 +1,17 @@
+# Render digests — SHA-256 over the interleaved 16-bit PCM of each seed.
+#
+# NOT a cross-commit contract: audio is expected to change when the engine
+# changes. This file is a tripwire for refactors that are supposed to be PURE
+# (a file split, a type extraction) — bless before, run after, expect silence.
+# Re-bless in the same commit as any deliberate audible change:
+#   make test-engine-bless
+0:rotaliate:0 fa2282edd8c26eabf19e103354481a935458c9a48b38c741adfd049d8820ae2a
+0:skafinity:7 9f4e3c76e29a19cc5b92a24febf229d5e1b0ff2fb638ae5a4101aed5bba1bcc4
+1:rotaliate:0 ab862e64f549c300dd34512995ffdfd6af2e238cb6e0bc75e58f2c3d47c322c0
+1:gamah:3 096c90ce95753a9df382490b91c093bc9ad12f0c4f3b71321ae1bb5932abd00e
+2:rotaliate:0 8af7a334ee3677547692b9870c0151d6322ae2e410f90a410f7c50fd8ea1767a
+3:rotaliate:0 df2a353593159f89658a0296fcc98620712a3a36000912c3768dc48e9d080e22
+3:doom:11 e8d665f0944fe5f93a05add498a515849f7a6185ee5a1c95141d4c9d75947342
+4:rotaliate:0 a63bac6b40d644bad50ee6ec447b081407452627332473a140bd0697d775ed0e
+5:rotaliate:0 5850d53864ba8afe38b5ac9d1b2109cf5a36c27cff283739da78abcbcee81349
+5:bubblegum:23 80308ff073fcadc9499c5b10c09fc175ccb7be628989419ed001e17857d63efa

@@ -1,5 +1,5 @@
 # skafinity — C#-as-source ska engine compiled to WebAssembly with the .NET wasm-tools
-# workload (the same MusicGen.cs / VibeCodec.cs the s&box library ships, no port).
+# workload (the same Code/Engine/ the s&box library ships, no port).
 #
 # ── Docker (the deploy/serve path — no local .NET needed) ──
 #   make fast       → serve the COMMITTED web/ (incl. web/_framework) with stock nginx —
@@ -16,11 +16,16 @@
 # ── Local (.NET SDK on the host) ──
 #   make            → publish the engine, stage web/_framework for the web layer
 #   make build      → compile-only typecheck of the shared C# (no publish/stage) — the fast
-#                     synth-check after editing MusicGen.cs / VibeCodec.cs / Exports.cs
+#                     synth-check after editing Code/Engine/ or Exports.cs
 #   make dev        → same as all, but skip AOT (much faster to build; identical composition)
 #   make deploy     → clean, verified release build: wipes stale artifacts, full AOT
 #                     publish, then runs the smoke test (the cruft-free bundle to ship)
-#   make test       → node smoke test of the JS↔wasm boundary (needs web/_framework/)
+#   make test       → node tests of the JS↔wasm boundary AND the page's engine surface
+#                     (needs web/_framework/)
+#   make test-engine→ engine-only C# tests: compile Code/Engine/ alone and assert on
+#                     composition (PRNG, harmony, structure, vibe codec, WAV). Needs no
+#                     s&box, no wasm workload and no browser, so it is the check that
+#                     actually runs on a dev host — use it after any engine change.
 #   make serve      → static server rooted at web/ (quick no-Docker preview; `make up` is
 #                     the real, nginx-parity host)
 #   make dist       → (follow-up) single-file bundle; see note below
@@ -34,6 +39,7 @@ DOTNET   ?= dotnet
 # with). Override with `make test NODE=/path/to/node` if needed.
 NODE     ?= $(shell command -v node)
 PROJECT   = wasm/Skafinity.Wasm.csproj
+ENGINE_TESTS = test/engine/Skafinity.EngineTests.csproj
 PUBROOT   = wasm/bin/Release/net10.0/publish
 PUBDIR    = $(PUBROOT)/wwwroot/_framework
 PORT     ?= 8000
@@ -44,7 +50,7 @@ FASTCOMP  = docker compose -f docker/docker-compose.fast.yml
 # are opt-in via `make up`).
 .DEFAULT_GOAL := all
 
-.PHONY: all build dev deploy stage test serve dist release clean fast up rebuild down logs ps
+.PHONY: all build dev deploy stage test test-engine test-engine-bless serve dist release clean fast up rebuild down logs ps
 
 # ── Docker: serve the committed bundle as-is. web/_framework is in the repo, so there is
 # nothing to compile — stock nginx bind-mounts web/ and is up in a second. Same container,
@@ -86,7 +92,7 @@ all:
 	@$(MAKE) --no-print-directory stage
 
 # Synth check: compile-only (no AOT, no publish, no web/_framework staging). The fast path
-# after editing MusicGen.cs / VibeCodec.cs (or the Cfg boundary in Exports.cs) — it
+# after editing Code/Engine/ (or the Cfg boundary in Exports.cs) — it
 # typechecks the shared C# and catches every compile error without rebuilding the bundle.
 build:
 	$(DOTNET) build $(PROJECT) -c Release
@@ -116,8 +122,26 @@ stage:
 	cp sbox-library/Skafinity/skafinity.config.json web/config.json
 	@echo "staged web/_framework ($$(ls web/_framework | wc -l) files) + web/config.json"
 
+# Two halves: smoke.mjs checks the raw [JSExport] boundary; page.mjs checks the surface the
+# PAGE uses (the `mod` object engine.js returns, against every call app.js/worker.js make).
+# Both derive what they expect from the source, so a new export or a new mod.* call is covered
+# without editing a list here.
 test:
 	$(NODE) test/smoke.mjs
+	$(NODE) test/page.mjs
+
+# Engine-only tests: compile Code/Engine/ alone (no s&box, no wasm workload, no browser) and
+# assert on composition — PRNG determinism, harmony maths, song structure, the vibe codec,
+# the WAV container. This is the safety net for engine work and the one test that runs on a
+# bare dev host, so reach for it before `make test`.
+test-engine:
+	$(DOTNET) run --project $(ENGINE_TESTS) -c Release
+
+# Re-record the render digests. They are a tripwire for refactors that are meant to be PURE
+# (bless before the change, `make test-engine` after, expect silence) — NOT a promise that
+# audio is stable across commits. Re-bless in the same commit as any deliberate audible change.
+test-engine-bless:
+	$(DOTNET) run --project $(ENGINE_TESTS) -c Release -- --bless
 
 serve:
 	@echo "serving on http://localhost:$(PORT)/  (docroot web/; Ctrl-C to stop)"

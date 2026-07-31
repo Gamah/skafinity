@@ -16,17 +16,21 @@ the single source of truth for both the game and this web toy**. The web build c
 
 | File | Role |
 |---|---|
-| `sbox-library/Skafinity/Code/MusicGen.cs` | The composer + subtractive synthesiser. Portable PRNG → every musical choice → interleaved stereo PCM. **The spec.** |
-| `sbox-library/Skafinity/Code/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. Also holds the `AdvancedFields` registry — the baseline-mix knobs that are config-only (NOT in the seed or the sliders). |
+| `sbox-library/Skafinity/Code/Engine/` | **The engine — the spec.** The composer + subtractive synthesiser, split one file per concern (see the tree below). `MusicGen` is a `partial class` across the folder. **This folder is the unit both targets compile**: `wasm/Skafinity.Wasm.csproj` globs `Engine/**/*.cs` and s&box globs it implicitly, so the folder boundary is the thing that keeps the s&box-only driver and UI out of the web build. |
+| `sbox-library/Skafinity/Code/Engine/MusicGen.cs` | Engine core — per-song state, constructor, public entry points (whole-song + chunked). Start here. |
+| `sbox-library/Skafinity/Code/Engine/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. Also holds the `AdvancedFields` registry — the baseline-mix knobs that are config-only (NOT in the seed or the sliders). |
+| `test/engine/` | Engine-only test harness (`make test-engine`) — compiles `Engine/**` alone into the same assembly as the tests, so it runs on a plain dev host where s&box cannot. The safety net for engine work. |
 | `sbox-library/Skafinity/skafinity.config.json` | The single shared **house-mix config** (peak balances / kit presence). Canonical here; the s&box plugin reads it at runtime and `make` copies it to `web/config.json`. Edit it to retune the baseline mix without a rebuild. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
 | `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. Re-themeable via the `.scss` variable block. |
 | `reference/*.cs` | The original Rotaliate-client copies, kept for context. **Read-only.** The `sbox-library` copies are what actually compile. |
 
-These two `.cs` are framework-free (only `System` / `System.Collections.Generic` /
-`System.Text`) — that's *why* they compile to wasm unchanged. Keep them that way: **no
-s&box (`Sandbox.*`) types and no web/Emscripten-isms in `MusicGen.cs` / `VibeCodec.cs`.**
-Anything web-specific belongs in `wasm/Exports.cs`.
+Everything under `Code/Engine/` is framework-free (only `System` / `System.Collections.Generic`
+/ `System.Text`) — that's *why* it compiles to wasm unchanged. Keep it that way: **no s&box
+(`Sandbox.*`) types and no web/Emscripten-isms anywhere in `Engine/`.** Anything web-specific
+belongs in `wasm/Exports.cs`; anything s&box-specific belongs in `Code/SkafinityPlayer.cs` or
+`Code/UI/`, which are outside the glob. Adding a file to `Engine/` is all it takes to ship it
+to both targets — there is no file list to update.
 
 If you change the engine, edit the `sbox-library` copy (both targets pick it up). When in
 doubt the C# is right.
@@ -65,8 +69,27 @@ C# is the choice because it *is* the source — same code, two targets, zero por
 skafinity/
   CLAUDE.md
   reference/              # read-only original C# (context only)
-  sbox-library/Skafinity/ # the s&box library — Code/MusicGen.cs + VibeCodec.cs are THE source
+  sbox-library/Skafinity/ # the s&box library — Code/Engine/ is THE source
     skafinity.config.json # canonical shared house-mix config (make copies it to web/)
+    Code/
+      Engine/             # ← the framework-free engine; BOTH targets compile exactly this
+        MusicGen.cs       #   core: per-song state, ctor, public entry points
+        MusicGen.Config.cs#   every knob the composer + synth read
+        Rng.cs            #   xmur3 → mulberry32, the root of every musical choice
+        Harmony.cs        #   per-genre scale/progression/bass tables + degree→pitch
+        Structure.cs      #   Section, Part, the arrangement
+        GenreProfile.cs   #   per-genre character that is NOT a knob (swing band)
+        Timing.cs         #   THE TIME BASE: ticks -> samples, tempo accumulator, swing
+        Compose.cs        #   the composition pass (plan song → render sections)
+        Expression.cs     #   per-note pitch shaping (vibrato/bend/glide/scoop)
+        Master.cs         #   reverb, soft-clip, normalize
+        Wav.cs            #   float mix → PCM, WAV container
+        VibeCodec.cs      #   seed encoding + the AdvancedFields registry
+        Voices/           #   Bass, Skank, Lead, Keys, Guitar, Horns
+        Drums/            #   Groove (patterns) + Kit (voices)
+        Synth/            #   Patch, Notes (queue), Render, Osc
+      SkafinityPlayer.cs  # s&box-only playback driver — outside the glob
+      UI/                 # s&box-only Razor panel — outside the glob
   docker/                 # Dockerfile + compose (nginx on loopback 6970; external Caddy fronts it)
   wasm/
     Skafinity.Wasm.csproj # browser-wasm project; <Compile Include>s the shared .cs
@@ -80,21 +103,32 @@ skafinity/
     style.css
     config.json           # house-mix overlay fetched at startup (make-copied from sbox-library)
     _framework/           # published runtime bundle (committed; rebuilt by `make`)
-  test/smoke.mjs          # node smoke test of the JS↔wasm boundary
+  test/
+    smoke.mjs             # node smoke test of the JS↔wasm boundary
+    engine/               # engine-only C# harness (make test-engine) — runs without s&box
   Makefile
 ```
 
 ---
 
-## Parity — now structural, not a reimplementation
+## Parity — one build, two targets
 
-Same seed ⇒ same song. Because the web compiles the *same* `MusicGen.cs`/`VibeCodec.cs` as
-the game, composition parity is **automatic** — there is no second implementation to drift.
-The old "mirror the PRNG / draw order / Config defaults in C++" rules are obsolete; don't
-reintroduce a hand-port. The only places parity can break:
+**The scope of "same seed ⇒ same song" is a single build.** Within one build the web and the
+game must agree, because they compile the *same* `MusicGen.cs`/`VibeCodec.cs` — there is no
+second implementation to drift. That is the whole parity guarantee, and it is structural: the
+old "mirror the PRNG / draw order / Config defaults in C++" rules are obsolete; don't
+reintroduce a hand-port.
 
-- **Don't fork the engine.** Edit `sbox-library/.../MusicGen.cs` once; never copy it into
-  `wasm/`. The csproj references it by relative path.
+**Audio is NOT stable across commits, and nothing should be written as if it were.** Engine
+work is expected to change what a seed sounds like — that is the point of most of `PLAN.md`.
+There is no golden-audio contract, no back-compat shim for old seeds, and a changed render is
+not a regression. Don't add reproducibility machinery beyond what a refactor needs to prove
+itself, and don't let it creep into the docs as a promise.
+
+The places parity *within a build* can break:
+
+- **Don't fork the engine.** Edit `sbox-library/Skafinity/Code/Engine/` once; never copy a
+  file into `wasm/`. Both csprojs glob that folder.
 - **The config round-trip.** The live `Config` crosses into JS as an opaque flat `double[]`
   (see `Cfg.To`/`Cfg.From` in `Exports.cs`). If you add a `Config` field that the vibe or a
   song depends on, add it to *both* `Cfg.To` and `Cfg.From` (and bump `Cfg.Size`), or edits
@@ -102,8 +136,55 @@ reintroduce a hand-port. The only places parity can break:
 - **`float` vs `double`.** Keep `MusicGen`'s `float`/`double` exactly as-is; the wasm runtime
   matches .NET semantics, so leave them be.
 
-`make test` boots the published runtime under node and asserts generation, vibe round-trip,
-determinism, and WAV output — run it after engine or boundary changes.
+## Testing
+
+**`make test-engine` is the one that runs here.** It compiles `Code/Engine/` alone into a
+plain `net10.0` console app — no s&box, no `wasm-tools` workload, no browser — and asserts on
+composition: PRNG determinism, `ScaleMidi` across the octave wrap, every progression degree
+resolving, song structure, the vibe codec round-trip (including junk and truncated input), and
+the WAV container. Because the tests compile into the SAME assembly as the engine, `internal`
+types are directly reachable; that is why the engine's types are namespace-level `internal`
+rather than nested private, and why a new one should stay that way.
+
+It also carries a **render digest** over a 10-seed matrix (`test/engine/digests.txt`). That is
+a tripwire for refactors that are *meant* to be pure, not a golden-audio contract: run
+`make test-engine-bless` before a mechanical change, `make test-engine` after, and expect
+silence. **Any deliberate audible change re-blesses in the same commit** — a digest diff is
+information, never a failure to be argued with.
+
+`make test` is the other half: it boots the *published wasm* runtime under node and checks the
+JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
+only runs where the bundle has been built.
+
+**A commit that changes `wasm/Exports.cs` or `web/engine.js` MUST re-publish and re-stage
+`web/_framework` in that same commit.** `web/_framework` is committed so a checkout is runnable
+without the SDK — which makes every commit a claim that the glue and the bundle agree. Add a
+`[JSExport]`, commit the glue that calls it, and defer the rebuild "until later", and anyone who
+pulls in between gets a page that dies at boot with `E.Foo is not a function`. `make test` now
+cross-checks every export `engine.js` calls against the bundle, so this fails there rather than
+in a browser — but the discipline is what keeps intermediate commits runnable at all.
+
+Note that `make test` passing is NOT evidence that a NEW export shipped unless something
+actually calls it; the cross-check above exists precisely because the hand-written assertions
+only cover exports someone remembered to test.
+
+**What can and cannot be built on a dev host.** The web side is fully buildable — install the
+workload once with `dotnet workload install wasm-tools` and `make` does a full AOT publish and
+stages `web/_framework`, after which `make test` exercises the real JS↔wasm boundary. `make
+test` needs a modern node (the one bundled in the emscripten pack is v18 and is too old for the
+ESM `dotnet.js`); pass `make test NODE=/path/to/node` if the system node is old.
+
+**The s&box side cannot.** There is no engine install here, so `Code/SkafinityPlayer.cs` and
+`Code/UI/` are verified by review and grep only. When changing engine internals, check what
+they actually reference — today that is just `MusicGen.{Config, Channels, GenerateSamples,
+BeginPlan, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
+uncompilable target stays safe.
+
+**Be sparing with `using static` in `Engine/`.** The s&box build adds a project-wide
+`GlobalGameNamespace` static using, so importing a collision-prone bare name (`Rest`,
+`Approach`, …) risks an ambiguity that only shows up in a build we cannot run here. `Osc` is
+imported that way because `Midi`/`StereoGains` are distinctive; `Harmony` is qualified
+explicitly because its members are not.
 
 ---
 
@@ -139,6 +220,23 @@ the matrix generically, so there's no second field table to keep in lockstep —
 
 ---
 
+## Genre character vs. knobs (`Engine/GenreProfile.cs`)
+
+Not everything per-genre is a *preference*. Some things a genre simply **is**, and exposing them
+as knobs makes a reroll able to produce nonsense — swing was the example: a global 0–0.4 slider
+meant shuffle could hand metal a 40% shuffle. `GenreProfile` holds that kind of value and draws
+it per song from the seed, the way tempo already works.
+
+Swing lives there now (ska 0.10–0.22 … metal 0.00–0.02) and is **not** a vibe knob. When adding
+per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a genre grid) or
+the genre's identity (`GenreProfile`). Getting it wrong is only obvious once shuffle is on.
+
+Retiring a knob leaves a **reserved slot** in the wire rather than shifting positions — see the
+`VibeCodec` header. That is why the encoded vibe can be longer than the live knob count, so never
+assert "vibe length == field count + 1".
+
+---
+
 ## House-mix config (runtime, NOT in the seed)
 
 The peak-balance / kit-presence values that shape the *baseline mix* (`KickBalance`, `TomBalance`,
@@ -159,6 +257,32 @@ One JSON file tunes them for **both** targets without a rebuild:
 To add a baseline-mix knob: add the `Config` field, add a row to `VibeCodec.AdvancedFields`, add
 it to `Cfg.To`/`From` (+ bump `Cfg.Size`), and add a key to the JSON. To make something a *vibe*
 knob instead, put it in a genre grid / `GlobalFields` (see above), not here.
+
+---
+
+## The time base (`Engine/Timing.cs`)
+
+Musical positions are **integer ticks**, absolute from the song's first downbeat, at
+`TicksPerBeat = 48`. Voices take a `barTick` and ask `Timing` for samples; they never compute
+sample offsets themselves. Three rules keep it honest:
+
+- **Ticks are metrical, samples are physical.** `TickToSample(tick)` is the only bridge. 48
+  renders every subdivision in use exactly (8ths, 16ths, 8th- and 16th-note triplets) — do not
+  "simplify" to a 16th grid, that silently deletes every triplet.
+- **Grid positions shuffle; tuplets are even.** `TickToSample` applies the swing warp, for
+  notes the band lands on together. A tuplet divides its *own span* into equal parts and uses
+  `EvenSpan(startTick, spanTicks, frac)`, which warps only the endpoints. A shuffle is itself
+  a triplet feel, so a triplet must not be warped a second time on top of it.
+- **Tempo is an accumulator, not a multiply.** `Timing` walks a per-tick sample delta across
+  the song. With one tempo that equals a multiply; the point is that a per-section tempo or an
+  ending ritard is a matter of varying the delta, not a rewrite. Keep it that way.
+
+Durations are spans, not positions: `SamplesForTicks`/`SecondsForTicks` carry no swing.
+`DrumPush` (the kit's push/lay-back) stays in continuous sample space — it is a feel, not a
+grid position.
+
+`EighthsPerBar` is derived from the meter, not a constant. Pattern tables are still authored
+one cell per eighth; that mapping is explicit rather than assumed.
 
 ---
 
@@ -226,7 +350,8 @@ no `.env`, and no secrets.
 
 - No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`
   skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (a quick
-  no-Docker preview — `make up` is the real nginx-parity host). `make test` → node smoke
+  no-Docker preview — `make up` is the real nginx-parity host). `make test-engine` → the
+  engine-only C# tests (the check that runs on a bare dev host). `make test` → node smoke
   test. `make fast`/`up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` is a
   deferred single-file follow-up.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched

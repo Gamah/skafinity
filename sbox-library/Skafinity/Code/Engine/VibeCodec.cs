@@ -22,11 +22,16 @@ namespace Skafinity;
 /// <see cref="Apply"/> ignores trailing chars a shorter string lacks, so a vibe from a
 /// client with fewer slots still parses (the missing knobs keep their config defaults).
 ///
+/// RETIRING a knob does not remove its position: the entry becomes a reserved (null) slot that
+/// encodes as filler and decodes to nothing. That keeps every later knob at the wire position it
+/// has always had, so vibes shared before the retirement still decode correctly, and a future
+/// global knob can claim the slot.
+///
 /// Lossy by design (16 levels/knob) but stable: Encode(Decode(s)) == s.
 /// </summary>
 public static class VibeCodec
 {
-	const string Alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
+	internal const string Alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
 	public const int Levels = 16;   // one hex digit per knob
 	public const int Columns = 4;       // volume, tone, character, extra
 	public const int MaxInstruments = 8; // reserved instrument slots in the wire grid
@@ -103,7 +108,10 @@ public static class VibeCodec
 		F( "TEMPO MIN", 60, 200, true, c => c.BpmMin, ( c, v ) => c.BpmMin = (int)v ),
 		F( "TEMPO MAX", 60, 200, true, c => c.BpmMax, ( c, v ) => c.BpmMax = (int)v ),
 		F( "TEMPO BIAS", 0f, 1f, false, c => c.FastChance, ( c, v ) => c.FastChance = v ),
-		F( "SWING", 0f, 0.4f, false, c => c.Swing, ( c, v ) => c.Swing = v ),
+		// RESERVED — was SWING, now per-genre character (GenreProfile). Kept as an empty slot so
+		// every later global and the whole instrument grid stay at their existing wire positions
+		// and previously shared vibes still decode. A future global knob can claim it.
+		null,
 		F( "RESONANCE", 0.2f, 2f, false, c => c.Resonance, ( c, v ) => c.Resonance = v ),
 		F( "STEREO WIDTH", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
 		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
@@ -392,7 +400,8 @@ public static class VibeCodec
 	/// matrix without a second table.</summary>
 	public static IReadOnlyList<Field> Fields( int genre )
 	{
-		var list = new List<Field>( GlobalFields );
+		var list = new List<Field>();
+		foreach ( var f in GlobalFields ) if ( f != null ) list.Add( f );
 		foreach ( var row in Def( genre ).Grid )
 			foreach ( var f in row )
 				if ( f != null ) list.Add( f );
@@ -436,7 +445,7 @@ public static class VibeCodec
 		int genre = Math.Clamp( c.Genre, 0, GenreDefs.Length - 1 );
 		var sb = new StringBuilder();
 		sb.Append( Alphabet[genre] );
-		foreach ( var f in GlobalFields ) sb.Append( Quant( f, c ) );
+		foreach ( var f in GlobalFields ) sb.Append( f != null && f.InSeed ? Quant( f, c ) : Alphabet[0] );
 		foreach ( var row in Def( genre ).Grid )
 			for ( int col = 0; col < Columns; col++ )
 				sb.Append( row[col] != null && row[col].InSeed ? Quant( row[col], c ) : Alphabet[0] );
@@ -482,16 +491,77 @@ public static class VibeCodec
 		f.SetNorm( c, q / (float)(Levels - 1) );
 	}
 
-	/// <summary>Largest possible well-formed vibe length: genre + globals + the full reserved
-	/// instrument grid.</summary>
-	public static int MaxLength => 1 + GlobalFields.Length + MaxInstruments * Columns;
+	/// <summary>
+	/// Randomise the vibe knobs of <paramref name="c"/> in place.
+	///
+	/// This is the one definition of what "reroll" means, shared by every player, so the two
+	/// drivers cannot answer the question differently: a fresh genre, every knob of that genre,
+	/// and a tempo range put back in order if the two ends land crossed. Per-instrument volumes
+	/// are excluded by default — they are a local mix preference and never ride in the seed.
+	///
+	/// Randomness is the CALLER's: <paramref name="rnd"/> returns values in [0,1). A driver that
+	/// wants a throwaway roll passes a session RNG; one that wants a reproducible roll passes a
+	/// seeded stream (see <see cref="RollFrom"/>). The engine stays free of any ambient RNG.
+	/// </summary>
+	public static void Roll( MusicGen.Config c, Func<float> rnd,
+		bool includeGenre = true, bool includeVolumes = false )
+	{
+		if ( c == null || rnd == null ) return;
 
-	/// <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and within
-	/// the vibe length band. The floor stays well above an 8-char player tag (and the 9-char
-	/// default "rotaliate") so the two never collide in <c>vibe:tag:n</c>.</summary>
+		if ( includeGenre )
+		{
+			// Guard the top of the range: a generator returning exactly 1.0 must not index off
+			// the end of the genre table.
+			int g = (int)(rnd() * GenreCount);
+			c.Genre = Math.Clamp( g, 0, GenreCount - 1 );
+		}
+
+		foreach ( var f in Fields( c.Genre ) )
+		{
+			if ( !includeVolumes && IsVolume( f ) ) continue;
+			f.SetNorm( c, rnd() );
+		}
+
+		// The tempo band is two independent knobs, so a roll can land the low end above the high
+		// end. Put them back in order rather than leaving a band that means nothing.
+		if ( c.BpmMin > c.BpmMax ) (c.BpmMin, c.BpmMax) = (c.BpmMax, c.BpmMin);
+		if ( c.FastBpmMin > c.FastBpmMax ) (c.FastBpmMin, c.FastBpmMax) = (c.FastBpmMax, c.FastBpmMin);
+	}
+
+	/// <summary>
+	/// <see cref="Roll"/> driven by a stream seeded on <paramref name="seed"/> — the same string
+	/// always produces the same vibe, on any machine and in any player.
+	///
+	/// This is what lets an endless shuffled sequence still BE its seed: a player derives song
+	/// n's vibe from <c>"{tag}:vibe:{n}"</c> rather than from session randomness, so the whole
+	/// line is reproducible, shareable and survives a reload — and stepping back to an earlier
+	/// song replays exactly what was heard without anything having to be remembered.
+	/// </summary>
+	public static void RollFrom( MusicGen.Config c, string seed,
+		bool includeGenre = true, bool includeVolumes = false )
+	{
+		var rng = new Rng( seed ?? "" );
+		Roll( c, rng.Next, includeGenre, includeVolumes );
+	}
+
+	/// <summary>The stream name song <paramref name="n"/>'s vibe is rolled from. One definition
+	/// so every player walks the same line for a given tag.</summary>
+	public static string VibeSeed( string tag, int n )
+	{
+		// Lower-cased to match how MusicGen seeds the song itself, so "Gamah" and "gamah" are one
+		// station rather than two.
+		var t = string.IsNullOrWhiteSpace( tag ) ? "rotaliate" : tag.Trim().ToLowerInvariant();
+		return $"{t}:vibe:{n}";
+	}
+
+	/// <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and long enough
+	/// that it cannot be a tag. The floor is the whole test — it sits well above an 8-char player
+	/// tag (and the 9-char default "rotaliate") so the two never collide in <c>vibe:tag:n</c>.
+	/// There is deliberately no ceiling: the wire grows as genres and instruments are appended,
+	/// and a bound would silently start rejecting valid seeds.</summary>
 	public static bool LooksLikeVibe( string s )
 	{
-		if ( string.IsNullOrEmpty( s ) || s.Length < 16 || s.Length > MaxLength ) return false;
+		if ( string.IsNullOrEmpty( s ) || s.Length < 16 ) return false;
 		foreach ( var ch in s.ToLowerInvariant() )
 			if ( Alphabet.IndexOf( ch ) < 0 ) return false;
 		return true;

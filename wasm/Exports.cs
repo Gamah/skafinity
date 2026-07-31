@@ -113,6 +113,37 @@ public partial class Engine
 		return Cfg.To( c );
 	}
 
+	// ── Reroll ────────────────────────────────────────────────────────────────────────────
+	// What "reroll" means lives in VibeCodec.Roll, so the web and the s&box player cannot
+	// answer it differently. JS supplies neither the field walk nor the volume/tempo rules.
+
+	/// <summary>Roll a throwaway vibe (the 🎲 button): fresh genre + every non-volume knob,
+	/// off the runtime's own RNG. Not reproducible, and not meant to be.</summary>
+	[JSExport]
+	[return: JSMarshalAs<JSType.Array<JSType.Number>>]
+	internal static double[] RollVibe( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg,
+		bool includeGenre )
+	{
+		var c = Cfg.From( cfg );
+		var rng = new Random();
+		VibeCodec.Roll( c, () => (float)rng.NextDouble(), includeGenre );
+		return Cfg.To( c );
+	}
+
+	/// <summary>Roll song <paramref name="n"/>'s vibe from <paramref name="tag"/> — the shuffle
+	/// line. Deterministic, so the whole sequence is reproducible from the seed alone: it
+	/// survives a reload, matches on every machine, and stepping back replays exactly what was
+	/// heard without the page having to remember it.</summary>
+	[JSExport]
+	[return: JSMarshalAs<JSType.Array<JSType.Number>>]
+	internal static double[] RollVibeFor( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg,
+		string tag, int n )
+	{
+		var c = Cfg.From( cfg );
+		VibeCodec.RollFrom( c, VibeCodec.VibeSeed( tag, n ) );
+		return Cfg.To( c );
+	}
+
 	// ── Vibe fields (per genre) ───────────────────────────────────────────────────────────
 	[JSExport]
 	internal static int VibeFieldCount( int genre ) => Fields( genre ).Count;
@@ -121,6 +152,7 @@ public partial class Engine
 	/// uses this to snap range sliders to the same grid the seed encodes.</summary>
 	[JSExport]
 	internal static int VibeLevels() => VibeCodec.Levels;
+
 
 	[JSExport]
 	internal static string VibeFieldName( int genre, int i ) => Fields( genre )[i].Name;
@@ -204,12 +236,12 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 94;
+	public const int Size = 92;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
 		c.SampleRate, c.TargetSeconds, c.Bars, c.BpmMin, c.BpmMax, c.FastChance,
-		c.FastBpmMin, c.FastBpmMax, c.Swing, c.FastSwing,
+		c.FastBpmMin, c.FastBpmMax,
 		c.BassVol, c.SkankVol, c.OrganVol, c.MelodyVol, c.HornVol,
 		c.KickVol, c.SnareVol, c.TomVol, c.HatVol, c.CrashVol, c.DrumVol,
 		c.Detune, c.BassCutoff, c.SkankCutoff, c.SkankHighpass, c.SkankChop,
@@ -243,7 +275,7 @@ static class Cfg
 		int i = 0;
 		c.SampleRate = (int)a[i++]; c.TargetSeconds = (float)a[i++]; c.Bars = (int)a[i++];
 		c.BpmMin = (int)a[i++]; c.BpmMax = (int)a[i++]; c.FastChance = (float)a[i++];
-		c.FastBpmMin = (int)a[i++]; c.FastBpmMax = (int)a[i++]; c.Swing = (float)a[i++]; c.FastSwing = (float)a[i++];
+		c.FastBpmMin = (int)a[i++]; c.FastBpmMax = (int)a[i++];
 		c.BassVol = (float)a[i++]; c.SkankVol = (float)a[i++]; c.OrganVol = (float)a[i++]; c.MelodyVol = (float)a[i++]; c.HornVol = (float)a[i++];
 		c.KickVol = (float)a[i++]; c.SnareVol = (float)a[i++]; c.TomVol = (float)a[i++]; c.HatVol = (float)a[i++]; c.CrashVol = (float)a[i++]; c.DrumVol = (float)a[i++];
 		c.Detune = (float)a[i++]; c.BassCutoff = (float)a[i++]; c.SkankCutoff = (float)a[i++]; c.SkankHighpass = (float)a[i++]; c.SkankChop = (float)a[i++];
