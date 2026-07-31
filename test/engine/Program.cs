@@ -222,6 +222,41 @@ static class Program
 		Check( "SecondsForTicks agrees with SamplesForTicks",
 			Math.Abs( straight.SecondsForTicks( ticks ) * 44100 - straight.SamplesForTicks( ticks ) ) <= 1 );
 
+		// TUPLETS ARE EVEN. A tuplet divides its own span into equal parts, in a straight song
+		// and a swung one alike — a shuffle is itself a triplet feel, so a triplet sits evenly
+		// against the beat rather than being shuffled a second time.
+		foreach ( var t in new[] { straight, swung } )
+			foreach ( var n in new[] { 3, 4, 6 } )
+			{
+				int start = Timing.TicksPerEighth * 6;              // the last beat of a 4/4 bar
+				double span = 2.0 * Timing.TicksPerEighth;
+				var at = new int[n + 1];
+				for ( int i = 0; i <= n; i++ ) at[i] = t.EvenSpan( start, span, i / (double)n );
+
+				int first = at[1] - at[0];
+				bool even = true;
+				for ( int i = 1; i < n; i++ ) even &= Math.Abs( (at[i + 1] - at[i]) - first ) <= 1;
+				Check( $"a {n}-tuplet is evenly spaced ({(t == swung ? "swung" : "straight")} song)", even );
+			}
+
+		// …but the tuplet's endpoints still land where the groove puts them, so it starts and
+		// finishes with the band rather than drifting off the beat.
+		int beat = Timing.TicksPerEighth * 6;
+		Check( "a tuplet starts on the groove's own position",
+			swung.EvenSpan( beat, 2.0 * Timing.TicksPerEighth, 0 ) == swung.TickToSample( beat ) );
+		Check( "a tuplet ends on the groove's own position",
+			swung.EvenSpan( beat, 2.0 * Timing.TicksPerEighth, 1 )
+				== swung.TickToSample( beat + 2 * Timing.TicksPerEighth ) );
+
+		// Even spacing is a real property of EvenSpan, not something swing would give anyway:
+		// the same three points taken off the warped grid are audibly unequal. Without this,
+		// the checks above would pass whether or not tuplets were handled specially.
+		int a0 = swung.TickToSample( beat );
+		int a1 = swung.TickToSample( beat + (int)(2.0 * Timing.TicksPerEighth / 3) );
+		int a2 = swung.TickToSample( beat + (int)(4.0 * Timing.TicksPerEighth / 3) );
+		Check( "the grid itself is uneven across a beat, so even spacing is a real constraint",
+			Math.Abs( (a2 - a1) - (a1 - a0) ) > 1 );
+
 		// Reading past the end must clamp rather than throw — the ending renders into the tail.
 		bool threw = false;
 		try { straight.TickToSample( ticks * 100 ); } catch { threw = true; }

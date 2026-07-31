@@ -129,6 +129,28 @@ sealed class Timing
 		return (int)Math.Round( _tickSample[i] + frac * (_tickSample[i + 1] - _tickSample[i]) );
 	}
 
+	/// <summary>
+	/// Position of the <paramref name="frac"/> point of a TUPLET spanning
+	/// <paramref name="spanTicks"/> from <paramref name="startTick"/> — evenly spaced, not
+	/// warped.
+	///
+	/// This is the explicit even-vs-shuffled choice, and the rule is: GRID positions shuffle,
+	/// TUPLETS are even. <see cref="TickToSample(int)"/> is for the grid — an eighth or a
+	/// sixteenth the whole band lands on together. A tuplet is a different thing: it divides
+	/// its own span into equal parts. A shuffle is itself a triplet feel, so a triplet belongs
+	/// evenly against the beat rather than warped a second time on top of it.
+	///
+	/// The span's ENDPOINTS still go through the warp, so the tuplet starts and ends exactly
+	/// where the groove puts them; only the notes inside are evenly spaced between those two
+	/// points.
+	/// </summary>
+	public int EvenSpan( double startTick, double spanTicks, double frac )
+	{
+		int a = TickToSample( startTick );
+		int b = TickToSample( startTick + spanTicks );
+		return (int)Math.Round( a + frac * (b - a) );
+	}
+
 	/// <summary>Length in samples of a span of <paramref name="ticks"/> ticks. A duration, not a
 	/// position — it carries no swing.</summary>
 	public int SamplesForTicks( double ticks ) => (int)Math.Round( ticks * SamplesPerTick );

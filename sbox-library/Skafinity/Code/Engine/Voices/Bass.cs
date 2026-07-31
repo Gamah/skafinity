@@ -58,7 +58,8 @@ public sealed partial class MusicGen
 				for ( int k = 0; k < n; k++ )
 				{
 					int bm = midi + (k == 0 ? 0 : moves[bassOrn.Int( moves.Length )]);
-					EmitBass( _time.TickToSample( barTick + (e + (double)k / n) * Timing.TicksPerEighth ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
+					EmitBass( _time.EvenSpan( barTick + e * Timing.TicksPerEighth,
+						Timing.TicksPerEighth, k / (double)n ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
 				}
 				continue;
 			}

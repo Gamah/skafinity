@@ -142,7 +142,8 @@ public sealed partial class MusicGen
 		// DrumTone — toms when the tone leans low, cymbals (ride hits) when it leans high.
 		for ( int i = 0; i < n; i++ )
 		{
-			int t = _time.TickToSample( barTick + (baseE + i * 2.0 / n) * Timing.TicksPerEighth );
+			int t = _time.EvenSpan( barTick + baseE * Timing.TicksPerEighth,
+				2.0 * Timing.TicksPerEighth, i / (double)n );
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
 			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
 			else RenderTom( t, toms[i], noise );  // pan derived from pitch inside RenderTom

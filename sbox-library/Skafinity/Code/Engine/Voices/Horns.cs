@@ -67,7 +67,8 @@ public sealed partial class MusicGen
 					// rolling arpeggio: chord tones climb across a 16th-triplet
 					int step = spe / 3;
 					for ( int k = 0; k < degs.Length; k++ )
-						Note( _time.TickToSample( barTick + (e + (double)k / 3) * Timing.TicksPerEighth ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
+						Note( _time.EvenSpan( barTick + e * Timing.TicksPerEighth,
+						Timing.TicksPerEighth, k / 3.0 ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
 					continue;
 				}
 				if ( r < 0.75f )

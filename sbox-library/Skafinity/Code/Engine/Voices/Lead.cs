@@ -65,7 +65,8 @@ public sealed partial class MusicGen
 				{
 					int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
 					int m2 = ScaleMidi( melBase, d2 );
-					RenderLeadNote( _time.TickToSample( barTick + (e + (double)k * spanE / n) * Timing.TicksPerEighth ), (int)(step * 0.9f),
+					RenderLeadNote( _time.EvenSpan( barTick + e * Timing.TicksPerEighth,
+						spanE * Timing.TicksPerEighth, k / (double)n ), (int)(step * 0.9f),
 						m2, amp, secPerEighth * spanE / (double)n * 0.85, drive, runVc );
 					prevMidi = m2;
 				}
