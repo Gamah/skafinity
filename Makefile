@@ -20,7 +20,8 @@
 #   make dev        → same as all, but skip AOT (much faster to build; identical composition)
 #   make deploy     → clean, verified release build: wipes stale artifacts, full AOT
 #                     publish, then runs the smoke test (the cruft-free bundle to ship)
-#   make test       → node smoke test of the JS↔wasm boundary (needs web/_framework/)
+#   make test       → node tests of the JS↔wasm boundary AND the page's engine surface
+#                     (needs web/_framework/)
 #   make test-engine→ engine-only C# tests: compile Code/Engine/ alone and assert on
 #                     composition (PRNG, harmony, structure, vibe codec, WAV). Needs no
 #                     s&box, no wasm workload and no browser, so it is the check that
@@ -121,8 +122,13 @@ stage:
 	cp sbox-library/Skafinity/skafinity.config.json web/config.json
 	@echo "staged web/_framework ($$(ls web/_framework | wc -l) files) + web/config.json"
 
+# Two halves: smoke.mjs checks the raw [JSExport] boundary; page.mjs checks the surface the
+# PAGE uses (the `mod` object engine.js returns, against every call app.js/worker.js make).
+# Both derive what they expect from the source, so a new export or a new mod.* call is covered
+# without editing a list here.
 test:
 	$(NODE) test/smoke.mjs
+	$(NODE) test/page.mjs
 
 # Engine-only tests: compile Code/Engine/ alone (no s&box, no wasm workload, no browser) and
 # assert on composition — PRNG determinism, harmony maths, song structure, the vibe codec,
