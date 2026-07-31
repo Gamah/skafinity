@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // The lead line: phrase generation (chord-tone locked, so it stays consonant), the lead
 // instrument voices, and the genre dispatch that picks between them.
 //
 // Part of the MusicGen engine — see MusicGen.cs.
+
+// ── Lead instrument voices ──
+enum Instrument { Trumpet, Sax, Organ, Trombone }
 
 public sealed partial class MusicGen
 {
@@ -58,7 +63,7 @@ public sealed partial class MusicGen
 				{
 					int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
 					int m2 = ScaleMidi( melBase, d2 );
-					RenderLeadNote( Swung( barStart, spe, e + (double)k * spanE / n ), (int)(step * 0.9f),
+					RenderLeadNote( _time.Swung( barStart, e + (double)k * spanE / n ), (int)(step * 0.9f),
 						m2, amp, secPerEighth * spanE / (double)n * 0.85, drive, runVc );
 					prevMidi = m2;
 				}
@@ -93,7 +98,7 @@ public sealed partial class MusicGen
 
 			int midi = ScaleMidi( melBase, degree );
 			var vc = Roll( ex, midi, prevMidi, exprRng );
-			RenderLeadNote( Swung( barStart, spe, e ), (int)(spe * len * 0.9f), midi,
+			RenderLeadNote( _time.Swung( barStart, e ), (int)(spe * len * 0.9f), midi,
 				amp, secPerEighth * len * 0.7f, drive, vc );
 			prevMidi = midi;
 			e += len;
@@ -139,9 +144,6 @@ public sealed partial class MusicGen
 		}
 		RenderLead( at, dur, midi, amp, decaySec, drive, vc );
 	}
-
-	// ── Lead instrument voices ──
-	enum Instrument { Trumpet, Sax, Organ, Trombone }
 
 	Instrument PickInstrument( Rng rng )
 	{

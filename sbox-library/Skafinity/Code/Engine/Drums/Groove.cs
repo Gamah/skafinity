@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // The kit's patterns: which drum lands where. The per-song groove, the backbeat kick
@@ -27,7 +29,7 @@ public sealed partial class MusicGen
 		// the open hat still punctuating the "and of 4".
 		for ( int e = 0; e < hatEnd; e++ )
 		{
-			int at = Swung( barStart, spe, e );
+			int at = _time.Swung( barStart, e );
 			// Pop pumps an open hat on every offbeat (the classic four-on-the-floor "ts-ts-ts");
 			// every other style opens only on the "and of 4".
 			bool open = e == 7 || (_drumStyle == 4 && e % 2 == 1);
@@ -38,7 +40,7 @@ public sealed partial class MusicGen
 				RenderHat( at, open, amp, noise );
 			if ( !open && six > 0 && noise.Chance( busy ) )
 			{
-				int sixAt = Swung( barStart, spe, e + 0.5 );
+				int sixAt = _time.Swung( barStart, e + 0.5 );
 				if ( _ride ) RenderRide( sixAt, false, _c.HatVol * 0.4f, noise );
 				else RenderHat( sixAt, false, _c.HatVol * 0.4f, noise );
 			}
@@ -74,8 +76,8 @@ public sealed partial class MusicGen
 		int six = spe / 2;
 		for ( int e = from; e < to; e++ )
 		{
-			int at = Swung( barStart, spe, e );
-			int sixAt = six > 0 ? Swung( barStart, spe, e + 0.5 ) : at;
+			int at = _time.Swung( barStart, e );
+			int sixAt = six > 0 ? _time.Swung( barStart, e + 0.5 ) : at;
 			switch ( _drumStyle )
 			{
 				case 0: // one-drop: kick + snare together on beat 3
@@ -137,7 +139,7 @@ public sealed partial class MusicGen
 		// DrumTone — toms when the tone leans low, cymbals (ride hits) when it leans high.
 		for ( int i = 0; i < n; i++ )
 		{
-			int t = Swung( barStart, spe, baseE + i * 2.0 / n );
+			int t = _time.Swung( barStart, baseE + i * 2.0 / n );
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
 			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
 			else RenderTom( t, toms[i], noise );  // pan derived from pitch inside RenderTom
@@ -145,6 +147,6 @@ public sealed partial class MusicGen
 		// crash into the downbeat (lands on the bar line, an on-beat anchor → dead straight) — a
 		// bright crash or a darker, washier crash, picked off the fill stream so the cymbal colour
 		// varies section to section.
-		RenderCrash( Swung( barStart, spe, baseE + 2.0 ), noise, rng.Chance( 0.4f ) );
+		RenderCrash( _time.Swung( barStart, baseE + 2.0 ), noise, rng.Chance( 0.4f ) );
 	}
 }

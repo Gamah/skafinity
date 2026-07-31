@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // Pitched synthesis — turn queued note events into samples.

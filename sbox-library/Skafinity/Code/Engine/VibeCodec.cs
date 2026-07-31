@@ -26,7 +26,7 @@ namespace Skafinity;
 /// </summary>
 public static class VibeCodec
 {
-	const string Alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
+	internal const string Alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
 	public const int Levels = 16;   // one hex digit per knob
 	public const int Columns = 4;       // volume, tone, character, extra
 	public const int MaxInstruments = 8; // reserved instrument slots in the wire grid

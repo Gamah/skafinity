@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using static Skafinity.Osc;
 
 namespace Skafinity;
 
@@ -95,8 +96,7 @@ public sealed partial class MusicGen
 	bool _fast;
 	int _genre;              // 0 ska, 1 rock, 2 country, 3 metal, 4 punk, 5 pop
 	string _tag;             // the per-song seed string, reused to seed per-section streams
-	int _drumPush;           // per-song-constant kit timing bias in samples (− ahead / + back)
-	float _swing;            // per-song shuffle: offbeat eighths pushed late by this fraction of an eighth (whole band, via Swung)
+	Timing _time;            // the song's time base: eighth length, swing, kit push (see Timing.cs)
 	float _drumTone = 0.5f;  // DrumTone 0..1 → toms↔cymbals CONTENT bias in fills/groove decoration
 	float _drumLowMul = 1f;  // DrumTone → kick/tom gain lean (gentle, on top of the content bias)
 	float _drumHighMul = 1f; // DrumTone → hat/cymbal gain lean (gentle, on top of the content bias)

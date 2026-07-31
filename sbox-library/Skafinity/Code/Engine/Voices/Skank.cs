@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // The ska skank guitar (the signature offbeat chop) and the reggae organ bubble.
@@ -22,7 +24,7 @@ public sealed partial class MusicGen
 
 		for ( int e = 1; e < EighthsPerBar; e += 2 ) // offbeats
 		{
-			int at = Swung( barStart, spe, e );   // odd e = offbeat → Swung pushes it late by _swing
+			int at = _time.Swung( barStart, e );   // odd e = offbeat → Swung pushes it late by the swing
 
 			// bright, thin, short guitar chop
 			foreach ( var d in degs )

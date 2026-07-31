@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // The kit's voices: synthesised kick, snare, tom, hat, crash and ride.
@@ -11,7 +13,7 @@ public sealed partial class MusicGen
 {
 	void RenderKick( int start, Rng noise )
 	{
-		start = Math.Max( 0, start + _drumPush );
+		start = Math.Max( 0, start + _time.DrumPush );
 		int dur = (int)(_sr * 0.17f);          // a little longer tail for thump (was 0.13)
 		double decay = dur * 0.31;             // slightly slower decay = a touch more boom
 		double subDecay = dur * 0.55;          // sub layer rings longer for weight
@@ -40,7 +42,7 @@ public sealed partial class MusicGen
 
 	void RenderSnare( int start, Rng noise, bool ghost )
 	{
-		start = Math.Max( 0, start + _drumPush );
+		start = Math.Max( 0, start + _time.DrumPush );
 		// dur and the single noise.Next()/sample are kept exactly so the drum RNG stream
 		// is unchanged — only the timbre (more shell body) is rerolled.
 		int dur = (int)(_sr * (ghost ? 0.06f : 0.15f));
@@ -68,7 +70,7 @@ public sealed partial class MusicGen
 
 	void RenderTom( int start, float baseFreq, Rng noise )
 	{
-		start = Math.Max( 0, start + _drumPush );
+		start = Math.Max( 0, start + _time.DrumPush );
 		// Pan by PITCH so a given tom always sits in the same spot (rack/high left → floor/low
 		// right). Mapped across the commonly-played fill range (~145 Hz floor .. 260 Hz rack) so a
 		// normal fill sweeps the full field and the low toms read clearly to the right; anything
@@ -107,7 +109,7 @@ public sealed partial class MusicGen
 
 	void RenderHat( int start, bool open, float amp, Rng noise )
 	{
-		start = Math.Max( 0, start + _drumPush );
+		start = Math.Max( 0, start + _time.DrumPush );
 		// Closed/open hats live on the left of the kit (the hi-hat stand); ride sits opposite.
 		StereoGains( -_drumPan, out float gL, out float gR );
 		int dur = (int)(_sr * (open ? 0.16f : 0.035f));
@@ -131,7 +133,7 @@ public sealed partial class MusicGen
 	// cymbal, and _crashBrightLeft (per song) decides which side that is.
 	void RenderCrash( int start, Rng noise, bool dark = false )
 	{
-		start = Math.Max( 0, start + _drumPush );
+		start = Math.Max( 0, start + _time.DrumPush );
 		StereoGains( (dark == _crashBrightLeft ? _drumPan : -_drumPan), out float gL, out float gR );
 		int dur = (int)(_sr * (dark ? 0.9f : 0.6f));
 		double decay = dur * (dark ? 0.5 : 0.45);
@@ -157,7 +159,7 @@ public sealed partial class MusicGen
 	// HatVol via the caller's amp so the existing DRUMS knobs still balance it.
 	void RenderRide( int start, bool bell, float amp, Rng noise )
 	{
-		start = Math.Max( 0, start + _drumPush );
+		start = Math.Max( 0, start + _time.DrumPush );
 		// Ride sits opposite the hats, on the right of the kit.
 		StereoGains( _drumPan, out float gL, out float gR );
 		int dur = (int)(_sr * (bell ? 0.34f : 0.22f));

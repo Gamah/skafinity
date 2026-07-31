@@ -1,22 +1,24 @@
 using System;
-using System.Collections.Generic;
 
 namespace Skafinity;
 
-// Oscillator and pitch primitives: the band-limited (PolyBLEP) saw/square, MIDI→Hz, and
-// the constant-power stereo panner.
-//
-// Part of the MusicGen engine — see MusicGen.cs.
-
-public sealed partial class MusicGen
+/// <summary>
+/// Oscillator and pitch primitives — the stateless maths every voice is built out of.
+/// Files that use these pull them in with <c>using static Skafinity.Osc;</c>.
+/// </summary>
+static class Osc
 {
-	// Band-limited oscillator. Naive saw/square step instantaneously at the phase wrap,
-	// and those discontinuities alias into harsh inharmonic tones — the core of the
-	// "8-/16-bit" buzz. PolyBLEP rounds each discontinuity over one sample so the harmonics
-	// fold back cleanly, for a warm analog edge instead. Sine is already band-limited;
-	// triangle's corners roll off as 1/n² so its aliasing is inaudible.
-	// p = phase in [0,1), dt = phase increment per sample (cycles/sample).
-	static float BlepOsc( int t, double p, double dt )
+	/// <summary>
+	/// Band-limited oscillator. Naive saw/square step instantaneously at the phase wrap, and
+	/// those discontinuities alias into harsh inharmonic tones — the core of the "8-/16-bit"
+	/// buzz. PolyBLEP rounds each discontinuity over one sample so the harmonics fold back
+	/// cleanly, for a warm analog edge instead. Sine is already band-limited; triangle's
+	/// corners roll off as 1/n² so its aliasing is inaudible.
+	/// </summary>
+	/// <param name="t">Waveform: 0 sine, 1 saw, 2 square, 3 triangle.</param>
+	/// <param name="p">Phase in [0,1).</param>
+	/// <param name="dt">Phase increment per sample (cycles/sample).</param>
+	public static float BlepOsc( int t, double p, double dt )
 	{
 		switch ( t )
 		{
@@ -36,8 +38,8 @@ public sealed partial class MusicGen
 		}
 	}
 
-	// PolyBLEP residual: the correction applied around a step discontinuity.
-	static float PolyBlep( double t, double dt )
+	/// <summary>PolyBLEP residual: the correction applied around a step discontinuity.</summary>
+	public static float PolyBlep( double t, double dt )
 	{
 		if ( dt <= 0 ) return 0f;
 		if ( t < dt ) { t /= dt; return (float)(t + t - t * t - 1.0); }
@@ -45,12 +47,18 @@ public sealed partial class MusicGen
 		return 0f;
 	}
 
-	static float Midi( int m ) => 440f * MathF.Pow( 2f, (m - 69) / 12f );
+	/// <summary>MIDI note number → frequency in Hz (69 = A440).</summary>
+	public static float Midi( int m ) => 440f * MathF.Pow( 2f, (m - 69) / 12f );
 
 	const float Sqrt2 = 1.41421356f;
-	// Fixed (not randomized) stereo spread for the kit's off-centre voices: 25% each way.
-	const float DrumPan = 0.25f;
-	static void StereoGains( float pan, out float gL, out float gR )
+
+	/// <summary>Fixed (not randomized) stereo spread for the kit's off-centre voices:
+	/// 25% each way.</summary>
+	public const float DrumPan = 0.25f;
+
+	/// <summary>Constant-power pan: −1 hard left, 0 centre, +1 hard right. Gains are scaled by
+	/// √2 so a centred source keeps unity gain per channel.</summary>
+	public static void StereoGains( float pan, out float gL, out float gR )
 	{
 		pan = Math.Clamp( pan, -1f, 1f );
 		double ang = (pan + 1) * 0.5 * (Math.PI / 2);

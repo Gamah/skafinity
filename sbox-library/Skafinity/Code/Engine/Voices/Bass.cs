@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Harmony;
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // Bass.
@@ -54,12 +57,12 @@ public sealed partial class MusicGen
 				for ( int k = 0; k < n; k++ )
 				{
 					int bm = midi + (k == 0 ? 0 : moves[bassOrn.Int( moves.Length )]);
-					EmitBass( Swung( barStart, spe, e + (double)k / n ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
+					EmitBass( _time.Swung( barStart, e + (double)k / n ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
 				}
 				continue;
 			}
 
-			EmitBass( Swung( barStart, spe, e ), (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
+			EmitBass( _time.Swung( barStart, e ), (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
 		}
 	}
 

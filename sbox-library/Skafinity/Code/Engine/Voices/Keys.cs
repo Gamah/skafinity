@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // Rock keys — their own syncopated comp, not a double of the guitar.
@@ -45,7 +47,7 @@ public sealed partial class MusicGen
 					Drive = keysDrive, Pan = 0f,
 				};
 				ApplyVoicing( ref keys, keysVc );
-				RenderPatch( Swung( barStart, spe, e ), dur, Midi( ScaleMidi( kBase, d ) ), keys );
+				RenderPatch( _time.Swung( barStart, e ), dur, Midi( ScaleMidi( kBase, d ) ), keys );
 			}
 		}
 	}

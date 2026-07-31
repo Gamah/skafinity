@@ -3,11 +3,21 @@ using System.Collections.Generic;
 
 namespace Skafinity;
 
-// Song form: the section enum, a Part, and the fixed arrangement every genre currently
-// shares. Buffer sizing sums per-part, so a per-section length is already tractable.
-//
-// Part of the MusicGen engine — see MusicGen.cs.
+/// <summary>A section of the arrangement.</summary>
+enum Section { Intro, Chorus, Verse, Ending }
 
+/// <summary>One section instance in a song's form: its type, its length in bars, and — for a
+/// verse — which verse it is.</summary>
+readonly struct Part
+{
+	public readonly Section Type;
+	public readonly int Bars;
+	public readonly int VerseIndex;
+
+	public Part( Section t, int bars, int verse ) { Type = t; Bars = bars; VerseIndex = verse; }
+}
+
+// Song form. Part of the MusicGen engine — see MusicGen.cs.
 public sealed partial class MusicGen
 {
 	// ── Song structure ──
@@ -17,19 +27,16 @@ public sealed partial class MusicGen
 	// (and both verses) play identical backing; the lead is seeded by type + verse index so
 	// it evolves across the Nth verse; the section-end fill is seeded by absolute index so
 	// every section closes with a different fill.
-	enum Section { Intro, Chorus, Verse, Ending }
+	//
+	// This one list serves every genre — a metal song and a pop song currently have identical
+	// form, which is the next thing to fix here. Buffer sizing already sums per-part, so a
+	// per-genre section map and per-section lengths are both tractable. See PLAN.md.
 
 	// Extra seconds appended after the last bar so the ending's final tonic chord (and the
 	// master reverb) can ring out naturally instead of being clipped at the buffer edge.
 	const float RingOutTail = 2.4f;
 
-	readonly struct Part
-	{
-		public readonly Section Type; public readonly int Bars; public readonly int VerseIndex;
-		public Part( Section t, int bars, int verse ) { Type = t; Bars = bars; VerseIndex = verse; }
-	}
-
-	static List<Part> BuildStructure() => new()
+	internal static List<Part> BuildStructure() => new()
 	{
 		new Part( Section.Intro,  4, 0 ),
 		new Part( Section.Chorus, 8, 0 ),
@@ -40,7 +47,8 @@ public sealed partial class MusicGen
 		new Part( Section.Ending, 2, 0 ),
 	};
 
-	static string SectionKey( Section s ) => s switch
+	/// <summary>The section's RNG key — what makes every chorus play the same backing.</summary>
+	internal static string SectionKey( Section s ) => s switch
 	{
 		Section.Intro => "intro",
 		Section.Chorus => "chorus",

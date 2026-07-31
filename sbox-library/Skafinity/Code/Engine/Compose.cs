@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Harmony;
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // The composition pass. Plans the whole song (RNG draws + drum synthesis written straight
@@ -29,7 +32,7 @@ public sealed partial class MusicGen
 		_events.Clear();
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
 		_genre = Math.Clamp( _c.Genre, 0, 5 );
-		var rng = new Rng( Xmur3( _tag.ToLowerInvariant() ) );
+		var rng = new Rng( _tag.ToLowerInvariant() );
 
 		// TEMPO BIAS — punk always runs hot (it's the fast genre); the roll still consumes one
 		// draw so every other genre's later picks stay byte-identical.
@@ -74,8 +77,8 @@ public sealed partial class MusicGen
 		// ska) reads it; drawn last so it shifts no earlier choice.
 		_kickAccents = rng.Pick( BackbeatKickAccents );
 
-		_swing = _fast ? _c.FastSwing : _c.Swing;
-		if ( _genre == 5 ) _swing *= 0.25f;               // pop sits on a tight, straight dance grid
+		float swing = _fast ? _c.FastSwing : _c.Swing;
+		if ( _genre == 5 ) swing *= 0.25f;                // pop sits on a tight, straight dance grid
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 
@@ -87,7 +90,10 @@ public sealed partial class MusicGen
 		// bulk of the toms↔cymbals bias now comes from what the part actually plays.
 		_drumLowMul = 1.2f - 0.4f * dt;
 		_drumHighMul = 0.7f + 0.6f * dt;
-		_drumPush = (int)Math.Round( (0.5f - Math.Clamp( _c.DrumDrive, 0f, 1f )) * 2f * 0.13f * spe );
+		int drumPush = (int)Math.Round( (0.5f - Math.Clamp( _c.DrumDrive, 0f, 1f )) * 2f * 0.13f * spe );
+
+		// The time base the whole band shares from here on.
+		_time = new Timing( spe, swing, drumPush );
 
 		// Lay out the structure and size the buffers to its total length.
 		var structure = BuildStructure();
@@ -117,22 +123,22 @@ public sealed partial class MusicGen
 	{
 		string bk = SectionKey( part.Type );
 		string lk = part.Type == Section.Verse ? $"verse:{part.VerseIndex}" : bk;
-		var bassRng = new Rng( Xmur3( $"{_tag}:bass:{bk}" ) );
-		var bassOrn = new Rng( Xmur3( $"{_tag}:bassorn:{bk}" ) );
-		var rhythmRng = new Rng( Xmur3( $"{_tag}:rhythm:{bk}" ) );
-		var keysRng = new Rng( Xmur3( $"{_tag}:keys:{bk}" ) );
-		var hornRng = new Rng( Xmur3( $"{_tag}:horn:{bk}" ) );
-		var leadRng = new Rng( Xmur3( $"{_tag}:lead:{lk}" ) );
+		var bassRng = new Rng( $"{_tag}:bass:{bk}" );
+		var bassOrn = new Rng( $"{_tag}:bassorn:{bk}" );
+		var rhythmRng = new Rng( $"{_tag}:rhythm:{bk}" );
+		var keysRng = new Rng( $"{_tag}:keys:{bk}" );
+		var hornRng = new Rng( $"{_tag}:horn:{bk}" );
+		var leadRng = new Rng( $"{_tag}:lead:{lk}" );
 		// Expression (vibrato/bend/glide/scoop) rolls off their own stream so adding them
 		// leaves every voice's existing note CHOICES untouched — only pitch-shaping is layered on.
-		var exprRng = new Rng( Xmur3( $"{_tag}:expr:{lk}" ) );
-		var noise = new Rng( Xmur3( $"{_tag}:drums:{bk}" ) );
+		var exprRng = new Rng( $"{_tag}:expr:{lk}" );
+		var noise = new Rng( $"{_tag}:drums:{bk}" );
 		// Hats vs ride is decided per section off its own stream (keyed by section TYPE, so every
 		// chorus rides-or-hats the same, but a verse can differ). Rolled against the song's
 		// _ridePref — independent stream, so it disturbs no other voice's draws.
-		_ride = new Rng( Xmur3( $"{_tag}:ride:{bk}" ) ).Chance( _ridePref );
-		var fillRng = new Rng( Xmur3( $"{_tag}:fill:{absIndex}" ) );
-		var fillNoise = new Rng( Xmur3( $"{_tag}:fillnoise:{absIndex}" ) );
+		_ride = new Rng( $"{_tag}:ride:{bk}" ).Chance( _ridePref );
+		var fillRng = new Rng( $"{_tag}:fill:{absIndex}" );
+		var fillNoise = new Rng( $"{_tag}:fillnoise:{absIndex}" );
 
 		bool isIntro = part.Type == Section.Intro;
 		bool isEnding = part.Type == Section.Ending;
@@ -202,23 +208,6 @@ public sealed partial class MusicGen
 	// lets the chord ring out into the tail RingOutTail reserved — a landing, not a turnaround.
 	// The previous bar's fill (see RenderSection) leads in and its terminal crash lands right
 	// here, so the ending itself only adds the kick + the sustained, decaying chord.
-	// ── Swing: warp the eighth-note grid so the whole band shuffles together ──
-	// On-beat (even) eighths are anchors that stay put; off-beat (odd) eighths are pushed late
-	// by _swing of an eighth, and positions between anchors interpolate. So a sixteenth (e+0.5)
-	// or a triplet subdivision lands on the SAME warped grid as the eighths — every voice swings
-	// in lockstep instead of the skank chop alone. `eighths` is a within-bar position measured in
-	// eighth-notes (0.5 = a sixteenth); returns the absolute sample index.
-	int Swung( int barStart, int spe, double eighths )
-	{
-		double baseE = Math.Floor( eighths );
-		double frac = eighths - baseE;
-		long slot = (long)baseE;
-		double startShift = (slot & 1) == 1 ? _swing : 0.0;          // this eighth's onset shift
-		double endShift   = ((slot + 1) & 1) == 1 ? _swing : 0.0;    // the next eighth's onset shift
-		double pos = baseE + startShift + frac * (1.0 + endShift - startShift);
-		return barStart + (int)Math.Round( pos * spe );
-	}
-
 	void RenderEnding( int barStart, int spe, Rng noise )
 	{
 		int at = Math.Max( 0, barStart );

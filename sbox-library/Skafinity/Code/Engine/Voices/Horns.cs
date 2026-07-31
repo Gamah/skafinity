@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // The backing horn section, panned across the stereo field.
@@ -52,7 +54,7 @@ public sealed partial class MusicGen
 		for ( int e = 0; e < EighthsPerBar; e++ )
 		{
 			if ( !_hornMask[e] ) continue;
-			int at = Swung( barStart, spe, e );
+			int at = _time.Swung( barStart, e );
 			hornVc = Roll( ex, baseMidi, NoPrev, exprRng );
 
 			if ( six > 0 && orn.Chance( ornChance ) )
@@ -63,18 +65,18 @@ public sealed partial class MusicGen
 					// rolling arpeggio: chord tones climb across a 16th-triplet
 					int step = spe / 3;
 					for ( int k = 0; k < degs.Length; k++ )
-						Note( Swung( barStart, spe, e + (double)k / 3 ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
+						Note( _time.Swung( barStart, e + (double)k / 3 ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
 					continue;
 				}
 				if ( r < 0.75f )
 				{
 					// 16th pair: stab on the beat, softer echo on the "e"
 					Stab( at, (int)(six * 0.85f), secPerEighth * 0.5 * 0.8, 1f );
-					Stab( Swung( barStart, spe, e + 0.5 ), (int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
+					Stab( _time.Swung( barStart, e + 0.5 ), (int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
 					continue;
 				}
 				// grace pickup: a soft single tone just before the block stab
-				Note( Swung( barStart, spe, e - 0.5 ), (int)(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f );
+				Note( _time.Swung( barStart, e - 0.5 ), (int)(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f );
 				Stab( at, (int)(spe * 0.6f), 0.22, 1f );
 				continue;
 			}

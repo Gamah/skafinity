@@ -8,23 +8,29 @@ namespace Skafinity;
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
+// ── Instrument expression ──
+// Four expressive PROPERTIES every pitched voice can lean on (drums are excluded). Each
+// instrument gets a genre-specific PROPENSITY for each, "based on what it is" — a brass
+// lead sings and scoops, a bass slides, a power-chord guitar stays dead straight. The
+// realization is the per-note pitch shaping in RenderEvent (vibrato depth + bend envelope).
+//   Vib    — #1 vibrato depth (a constant lean, no per-note roll)
+//   BendIn — #2 bend up INTO the note from a step below (per-note chance)
+//   Glide  — #3 portamento from the previous note's pitch (per-note chance)
+//   Scoop  — #4 bend up-and-back within the note (per-note chance)
+readonly struct Expression
+{
+	public readonly float Vib, BendIn, Glide, Scoop;
+	public Expression( float vib, float bendIn, float glide, float scoop )
+	{ Vib = vib; BendIn = bendIn; Glide = glide; Scoop = scoop; }
+}
+
+// A rolled-per-note voicing: the concrete pitch-shaping a note will get. Vibrato is a
+// constant depth (no draw); bend-in/glide/scoop are rolled against their propensities, so
+// only voices that lean on them ever pull from the expression stream.
+struct Voicing { public float VibDepth, BendSemis, BendTime, ScoopSemis; }
+
 public sealed partial class MusicGen
 {
-	// ── Instrument expression ──
-	// Four expressive PROPERTIES every pitched voice can lean on (drums are excluded). Each
-	// instrument gets a genre-specific PROPENSITY for each, "based on what it is" — a brass
-	// lead sings and scoops, a bass slides, a power-chord guitar stays dead straight. The
-	// realization is the per-note pitch shaping in RenderEvent (vibrato depth + bend envelope).
-	//   Vib    — #1 vibrato depth (a constant lean, no per-note roll)
-	//   BendIn — #2 bend up INTO the note from a step below (per-note chance)
-	//   Glide  — #3 portamento from the previous note's pitch (per-note chance)
-	//   Scoop  — #4 bend up-and-back within the note (per-note chance)
-	readonly struct Expression
-	{
-		public readonly float Vib, BendIn, Glide, Scoop;
-		public Expression( float vib, float bendIn, float glide, float scoop )
-		{ Vib = vib; BendIn = bendIn; Glide = glide; Scoop = scoop; }
-	}
 
 	const int NoPrev = int.MinValue; // "no previous note" sentinel for glide
 
@@ -59,11 +65,6 @@ public sealed partial class MusicGen
 			default:           return default;
 		}
 	}
-
-	// A rolled-per-note voicing: the concrete pitch-shaping a note will get. Vibrato is a
-	// constant depth (no draw); bend-in/glide/scoop are rolled against their propensities, so
-	// only voices that lean on them ever pull from the expression stream.
-	struct Voicing { public float VibDepth, BendSemis, BendTime, ScoopSemis; }
 
 	Voicing Roll( in Expression ex, int midi, int prevMidi, Rng rng )
 	{

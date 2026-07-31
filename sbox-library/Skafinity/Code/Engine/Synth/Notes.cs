@@ -8,11 +8,12 @@ namespace Skafinity;
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
+// Pitched note events collected during ComposePlan, then synthesized by
+// RenderPitchedRange. Synthesis pulls no RNG, so windows parallelize across threads.
+struct NoteEvent { public int Start, Dur; public float Freq; public Patch P; }
+
 public sealed partial class MusicGen
 {
-	// Pitched note events collected during ComposePlan, then synthesized by
-	// RenderPitchedRange. Synthesis pulls no RNG, so windows parallelize across threads.
-	struct NoteEvent { public int Start, Dur; public float Freq; public Patch P; }
 	readonly List<NoteEvent> _events = new();
 
 	// During ComposePlan this only enqueues; the synthesis happens in RenderPitchedRange.

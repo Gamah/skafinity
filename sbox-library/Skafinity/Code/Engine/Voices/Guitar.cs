@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using static Skafinity.Osc;
+
 namespace Skafinity;
 
 // Rhythm guitar: the rock/country/punk power-chord comp and the metal palm-muted gallop.
@@ -39,7 +41,7 @@ public sealed partial class MusicGen
 			int dur = (int)(spe * Math.Max( 0.12f, lenFrac ));
 			double dec = secPerEighth * (accent ? 0.8 : 0.3);
 			foreach ( var m in notes )
-				RenderPatch( Swung( barStart, spe, e ), dur, Midi( m ), new Patch
+				RenderPatch( _time.Swung( barStart, e ), dur, Midi( m ), new Patch
 				{
 					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 					Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance / notes.Length * (accent ? 1f : 0.7f),
@@ -64,7 +66,7 @@ public sealed partial class MusicGen
 		float driveAmt = 4f + MathF.Max( 1f, _c.RhythmGtrDrive ); // heavy
 		for ( int s = 0; s < EighthsPerBar * 2; s++ )     // 16 sixteenths
 		{
-			int at = Swung( barStart, spe, s * 0.5 );   // 16 sixteenths on the swung grid
+			int at = _time.Swung( barStart, s * 0.5 );   // 16 sixteenths on the swung grid
 			bool beat = s % 4 == 0;                        // quarter-note downbeats → ring a chord
 			bool ring = beat || (s % 2 == 0 && rng.Chance( 0.3f )); // some offbeat eighths ring too
 			int[] offs = ring ? power : new[] { 0 };       // accents = power chord, chugs = root only
