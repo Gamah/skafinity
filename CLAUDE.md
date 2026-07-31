@@ -155,12 +155,17 @@ information, never a failure to be argued with.
 JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
 only runs where the bundle has been built.
 
-Neither the s&box library nor the wasm project can be compiled on the dev host (no engine
-install, no `wasm-tools` workload). So `Code/SkafinityPlayer.cs`, `Code/UI/` and
-`wasm/Exports.cs` are verified by review and grep only — when changing engine internals, check
-what those three actually reference. Today that is just `MusicGen.{Config, Channels,
-GenerateSamples, BeginPlan, WavFromSamples}` plus all of `VibeCodec`; keep that surface stable
-and the untestable targets stay safe.
+**What can and cannot be built on a dev host.** The web side is fully buildable — install the
+workload once with `dotnet workload install wasm-tools` and `make` does a full AOT publish and
+stages `web/_framework`, after which `make test` exercises the real JS↔wasm boundary. `make
+test` needs a modern node (the one bundled in the emscripten pack is v18 and is too old for the
+ESM `dotnet.js`); pass `make test NODE=/path/to/node` if the system node is old.
+
+**The s&box side cannot.** There is no engine install here, so `Code/SkafinityPlayer.cs` and
+`Code/UI/` are verified by review and grep only. When changing engine internals, check what
+they actually reference — today that is just `MusicGen.{Config, Channels, GenerateSamples,
+BeginPlan, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
+uncompilable target stays safe.
 
 **Be sparing with `using static` in `Engine/`.** The s&box build adds a project-wide
 `GlobalGameNamespace` static using, so importing a collision-prone bare name (`Rest`,

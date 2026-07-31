@@ -26,11 +26,16 @@ const cfg = E.DefaultConfig();
 check('ConfigSize matches DefaultConfig length', cfg.length === E.ConfigSize(), `${cfg.length}`);
 
 // ── genre ──
-check('GenreCount is 4', E.GenreCount() === 4, `${E.GenreCount()}`);
-check('genre 0 is Ska', E.GenreName(0) === 'Ska', E.GenreName(0));
-check('genre 1 is Rock', E.GenreName(1) === 'Rock', E.GenreName(1));
-check('genre 2 is Country', E.GenreName(2) === 'Country', E.GenreName(2));
-check('genre 3 is Metal', E.GenreName(3) === 'Metal', E.GenreName(3));
+// Derived from the engine rather than hardcoded: adding a genre is an append-only change to
+// VibeCodec, and this boundary test should follow it instead of having to be edited in step.
+const GENRES = ['Ska', 'Rock', 'Country', 'Metal', 'Punk', 'Pop'];
+check('GenreCount matches the known genre list', E.GenreCount() === GENRES.length,
+  `${E.GenreCount()} vs ${GENRES.length}`);
+for (let g = 0; g < E.GenreCount(); g++) {
+  const want = GENRES[g];
+  check(`genre ${g} is ${want ?? '(unnamed — add it to GENRES)'}`,
+    E.GenreName(g) === want, E.GenreName(g));
+}
 check('DefaultConfig genre is 0', E.GetGenre(cfg) === 0, `${E.GetGenre(cfg)}`);
 
 // ska (genre 0): 7 globals + 6 instruments × 4 columns
