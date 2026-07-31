@@ -16,8 +16,10 @@ enum Instrument { Trumpet, Sax, Organ, Trombone }
 public sealed partial class MusicGen
 {
 	// ── Lead melody (chord-tone locked → consonant) ──
-	void RenderLeadPhrase( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
+	void RenderLeadPhrase( int barTick, int chord, Rng rng, Rng exprRng )
 	{
+		int spe = _time.Spe;
+		double secPerEighth = _time.SecPerEighth;
 		int slots = EighthsPerBar * 2;
 		int melBase = _rootMidi + 24;
 		int[] tones = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 6 }; // chord tones
@@ -63,7 +65,7 @@ public sealed partial class MusicGen
 				{
 					int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
 					int m2 = ScaleMidi( melBase, d2 );
-					RenderLeadNote( _time.Swung( barStart, e + (double)k * spanE / n ), (int)(step * 0.9f),
+					RenderLeadNote( _time.TickToSample( barTick + (e + (double)k * spanE / n) * Timing.TicksPerEighth ), (int)(step * 0.9f),
 						m2, amp, secPerEighth * spanE / (double)n * 0.85, drive, runVc );
 					prevMidi = m2;
 				}
@@ -98,7 +100,7 @@ public sealed partial class MusicGen
 
 			int midi = ScaleMidi( melBase, degree );
 			var vc = Roll( ex, midi, prevMidi, exprRng );
-			RenderLeadNote( _time.Swung( barStart, e ), (int)(spe * len * 0.9f), midi,
+			RenderLeadNote( _time.TickToSample( barTick + (e) * Timing.TicksPerEighth ), (int)(spe * len * 0.9f), midi,
 				amp, secPerEighth * len * 0.7f, drive, vc );
 			prevMidi = midi;
 			e += len;

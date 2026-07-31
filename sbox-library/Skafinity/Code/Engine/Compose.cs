@@ -29,6 +29,7 @@ public sealed partial class MusicGen
 	void ComposePlan( string tag )
 	{
 		_events.Clear();
+		int beatsPerBar = 4;   // 4/4 today; Timing carries it so voices never assume
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
 		_genre = Math.Clamp( _c.Genre, 0, 5 );
 		var rng = new Rng( _tag.ToLowerInvariant() );
@@ -58,9 +59,12 @@ public sealed partial class MusicGen
 		};
 		_organBubble = true;
 		_hasHorns = true;
-		_hornMask = new bool[EighthsPerBar];
+		// Meter is fixed up front — the time base is built further down (it needs the song's
+		// length), so anything sized in eighths before then counts them from the meter.
+		int eighthsPerBar = beatsPerBar * Timing.TicksPerBeat / Timing.TicksPerEighth;
+		_hornMask = new bool[eighthsPerBar];
 		_hornMask[0] = true;
-		for ( int e = 1; e < EighthsPerBar; e++ )
+		for ( int e = 1; e < eighthsPerBar; e++ )
 			_hornMask[e] = rng.Chance( _c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f) );
 		// How much this song leans on the ride cymbal vs the closed hats for the main pulse.
 		// Every song can do both — each SECTION rolls its own choice against this preference
@@ -91,16 +95,21 @@ public sealed partial class MusicGen
 		_drumHighMul = 0.7f + 0.6f * dt;
 		int drumPush = (int)Math.Round( (0.5f - Math.Clamp( _c.DrumDrive, 0f, 1f )) * 2f * 0.13f * spe );
 
-		// The time base the whole band shares from here on.
-		_time = new Timing( spe, swing, drumPush );
-
-		// Lay out the structure and size the buffers to its total length.
+		// Lay out the structure first — the time base is built over the song's full tick span,
+		// so it has to know how long the song is.
 		var structure = BuildStructure();
 		int totalBars = 0;
 		foreach ( var p in structure ) totalBars += p.Bars;
+
+		// The time base the whole band shares from here on. Ticks are the grid; the swing is a
+		// warp applied on the way out to samples, not a quantisation.
+		int totalTicks = totalBars * beatsPerBar * Timing.TicksPerBeat;
+		_time = new Timing( beatsPerBar, totalTicks, spe / (double)Timing.TicksPerEighth,
+			swing, drumPush, _sr );
+
 		// Size to the structure plus a ring-out tail, so the ending's final chord and the
 		// reverb decay into real silence past the last bar rather than being cut off.
-		int structured = spe * EighthsPerBar * totalBars;
+		int structured = _time.SamplesForTicks( totalTicks );
 		int total = structured + (int)(_sr * RingOutTail);
 		_bufL = new float[total];
 		_bufR = new float[total];
@@ -109,7 +118,7 @@ public sealed partial class MusicGen
 		for ( int si = 0; si < structure.Count; si++ )
 		{
 			var part = structure[si];
-			RenderSection( part, si, barCursor * EighthsPerBar * spe, spe, secPerEighth );
+			RenderSection( part, si, barCursor * _time.BarTicks );
 			barCursor += part.Bars;
 		}
 	}
@@ -118,7 +127,7 @@ public sealed partial class MusicGen
 	// of a section type reproduce identical backing, while the lead key folds in the verse
 	// index (so the Nth verse's lead differs) and the fill key folds in the absolute section
 	// index (so every section closes with a unique fill).
-	void RenderSection( Part part, int absIndex, int sectionStart, int spe, double secPerEighth )
+	void RenderSection( Part part, int absIndex, int sectionTick )
 	{
 		string bk = SectionKey( part.Type );
 		string lk = part.Type == Section.Verse ? $"verse:{part.VerseIndex}" : bk;
@@ -146,13 +155,13 @@ public sealed partial class MusicGen
 		{
 			int chord = (bar / 2) % _prog.Length;
 			int nextChord = ((bar / 2) + 1) % _prog.Length;
-			int barStart = sectionStart + bar * EighthsPerBar * spe;
+			int barTick = sectionTick + bar * _time.BarTicks;
 
 			// The ending lands on a held tonic chord that rings out — the band stops on the
 			// "one", it doesn't roll forward as if looping. The bar before it fills to lead in.
 			if ( isEnding && bar == part.Bars - 1 )
 			{
-				RenderEnding( barStart, spe, noise );
+				RenderEnding( barTick, noise );
 				continue;
 			}
 			// Every section's last bar fills; for the ending that fill moves one bar earlier so
@@ -168,38 +177,38 @@ public sealed partial class MusicGen
 			bool playChord = !isIntro || bar >= part.Bars / 4;
 			bool playTop = !isIntro || bar >= part.Bars / 2;
 
-			RenderBassBar( barStart, spe, secPerEighth, chord, nextChord, bassRng, bassOrn, exprRng );
+			RenderBassBar( barTick, chord, nextChord, bassRng, bassOrn, exprRng );
 			if ( playChord )
 				switch ( _genre )
 				{
 					case 1: // rock: keys comp + power-chord guitar
 					case 2: // country: honky-tonk piano comp + strummed twang guitar
-						RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
-						RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						RenderKeysBar( barTick, chord, keysRng, exprRng );
+						RenderRhythmGuitarBar( barTick, chord, rhythmRng, exprRng );
 						break;
 					case 3: // metal: palm-muted gallop riff carries the bar
-						RenderMetalRiffBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						RenderMetalRiffBar( barTick, chord, rhythmRng, exprRng );
 						break;
 					case 4: // punk: lean — power-chord guitar carries it, no keys
-						RenderRhythmGuitarBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						RenderRhythmGuitarBar( barTick, chord, rhythmRng, exprRng );
 						break;
 					case 5: // pop: synth comp (the keys voice, run clean + bright)
-						RenderKeysBar( barStart, spe, secPerEighth, chord, keysRng, exprRng );
+						RenderKeysBar( barTick, chord, keysRng, exprRng );
 						break;
 					default: // ska: skank chop + horn stabs
-						RenderRhythmBar( barStart, spe, secPerEighth, chord, rhythmRng, exprRng );
+						RenderRhythmBar( barTick, chord, rhythmRng, exprRng );
 						if ( _hasHorns && playTop )
-							RenderHornStabs( barStart, spe, secPerEighth, chord, hornRng, exprRng );
+							RenderHornStabs( barTick, chord, hornRng, exprRng );
 						break;
 				}
-			RenderDrumBar( barStart, spe, lastBar, noise, fillRng, fillNoise );
+			RenderDrumBar( barTick, lastBar, noise, fillRng, fillNoise );
 
 			// No lead in the ending: a lead phrase starts every two bars and runs ~two bars, so in
 			// the short outro it spilled melody notes across the held final chord — the band has
 			// already resolved and stopped, so the lead must too (it read as "random notes after
 			// the hold"). The ending is just the fill bar → the ringing tonic.
 			if ( playTop && bar % 2 == 0 && !isEnding )
-				RenderLeadPhrase( barStart, spe, secPerEighth, chord, leadRng, exprRng );
+				RenderLeadPhrase( barTick, chord, leadRng, exprRng );
 		}
 	}
 
@@ -207,9 +216,9 @@ public sealed partial class MusicGen
 	// lets the chord ring out into the tail RingOutTail reserved — a landing, not a turnaround.
 	// The previous bar's fill (see RenderSection) leads in and its terminal crash lands right
 	// here, so the ending itself only adds the kick + the sustained, decaying chord.
-	void RenderEnding( int barStart, int spe, Rng noise )
+	void RenderEnding( int barTick, Rng noise )
 	{
-		int at = Math.Max( 0, barStart );
+		int at = _time.TickToSample( barTick );
 		RenderKick( at, noise );
 
 		// Resolve to the progression's tonic (slot 0) wherever the chord cycle happened to

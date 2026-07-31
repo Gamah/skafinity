@@ -74,7 +74,9 @@ public sealed partial class MusicGen
 	/// <see cref="RenderPitchedRange"/> window has finished.</summary>
 	public short[] FinishStereo() => ToShorts( Master() );
 
-	const int EighthsPerBar = 8;
+	// Eighth-note cells in a bar, derived from the time base rather than assumed. Pattern
+	// tables are still authored as one cell per eighth; positions are ticks (see Timing).
+	int EighthsPerBar => _time.EighthsPerBar;
 
 	int[] _scale, _prog;
 	int _rootMidi;

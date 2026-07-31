@@ -16,8 +16,9 @@ public sealed partial class MusicGen
 	// Render a bar of kit. On a section's last bar (fillEnd) the closing beat is replaced by a
 	// fill — driven by its own RNG streams so every section's fill is different even when the
 	// groove before it is identical.
-	void RenderDrumBar( int barStart, int spe, bool fillEnd, Rng noise, Rng fillRng, Rng fillNoise )
+	void RenderDrumBar( int barTick, bool fillEnd, Rng noise, Rng fillRng, Rng fillNoise )
 	{
+		int spe = _time.Spe;
 		// Knob ceiling was too frantic: scale so DRUM BUSY 100% reads as the old 75%.
 		float busy = Math.Clamp( _c.DrumBusy, 0f, 1f ) * 0.75f;
 		int six = spe / 2;
@@ -29,7 +30,7 @@ public sealed partial class MusicGen
 		// the open hat still punctuating the "and of 4".
 		for ( int e = 0; e < hatEnd; e++ )
 		{
-			int at = _time.Swung( barStart, e );
+			int at = _time.TickToSample( barTick + (e) * Timing.TicksPerEighth );
 			// Pop pumps an open hat on every offbeat (the classic four-on-the-floor "ts-ts-ts");
 			// every other style opens only on the "and of 4".
 			bool open = e == 7 || (_drumStyle == 4 && e % 2 == 1);
@@ -40,7 +41,7 @@ public sealed partial class MusicGen
 				RenderHat( at, open, amp, noise );
 			if ( !open && six > 0 && noise.Chance( busy ) )
 			{
-				int sixAt = _time.Swung( barStart, e + 0.5 );
+				int sixAt = _time.TickToSample( barTick + (e + 0.5) * Timing.TicksPerEighth );
 				if ( _ride ) RenderRide( sixAt, false, _c.HatVol * 0.4f, noise );
 				else RenderHat( sixAt, false, _c.HatVol * 0.4f, noise );
 			}
@@ -48,11 +49,11 @@ public sealed partial class MusicGen
 
 		if ( fillEnd )
 		{
-			RenderKickSnareGroove( barStart, spe, 0, 6, busy, noise );   // first 3 beats normal
-			RenderFill( barStart, spe, 6, fillNoise, fillRng );
+			RenderKickSnareGroove( barTick, 0, 6, busy, noise );   // first 3 beats normal
+			RenderFill( barTick, 6, fillNoise, fillRng );
 			return;
 		}
-		RenderKickSnareGroove( barStart, spe, 0, EighthsPerBar, busy, noise );
+		RenderKickSnareGroove( barTick, 0, EighthsPerBar, busy, noise );
 	}
 
 	// Per-song kick accents for the straight backbeat: eighths (beyond the beat-1 & 3 anchors)
@@ -71,13 +72,14 @@ public sealed partial class MusicGen
 		new[] { 3, 6 },      // push into 3 + beat-4 drive
 	};
 
-	void RenderKickSnareGroove( int barStart, int spe, int from, int to, float busy, Rng noise )
+	void RenderKickSnareGroove( int barTick, int from, int to, float busy, Rng noise )
 	{
+		int spe = _time.Spe;
 		int six = spe / 2;
 		for ( int e = from; e < to; e++ )
 		{
-			int at = _time.Swung( barStart, e );
-			int sixAt = six > 0 ? _time.Swung( barStart, e + 0.5 ) : at;
+			int at = _time.TickToSample( barTick + (e) * Timing.TicksPerEighth );
+			int sixAt = six > 0 ? _time.TickToSample( barTick + (e + 0.5) * Timing.TicksPerEighth ) : at;
 			switch ( _drumStyle )
 			{
 				case 0: // one-drop: kick + snare together on beat 3
@@ -128,8 +130,9 @@ public sealed partial class MusicGen
 	// triplet (TripletChance) = six even subdivisions for a rolling shuffle feel.
 	// The fill rolls across the last beat — the two eighths starting at baseE (6) up to the bar
 	// line — on the same swung grid as the rest of the band.
-	void RenderFill( int barStart, int spe, int baseE, Rng noise, Rng rng )
+	void RenderFill( int barTick, int baseE, Rng noise, Rng rng )
 	{
+		int spe = _time.Spe;
 		// straight = four 16ths; triplet = either an eighth-note triplet (3) or a
 		// faster 16th-note triplet (6) across the beat.
 		int n = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6) : 4;
@@ -139,7 +142,7 @@ public sealed partial class MusicGen
 		// DrumTone — toms when the tone leans low, cymbals (ride hits) when it leans high.
 		for ( int i = 0; i < n; i++ )
 		{
-			int t = _time.Swung( barStart, baseE + i * 2.0 / n );
+			int t = _time.TickToSample( barTick + (baseE + i * 2.0 / n) * Timing.TicksPerEighth );
 			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
 			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
 			else RenderTom( t, toms[i], noise );  // pan derived from pitch inside RenderTom
@@ -147,6 +150,6 @@ public sealed partial class MusicGen
 		// crash into the downbeat (lands on the bar line, an on-beat anchor → dead straight) — a
 		// bright crash or a darker, washier crash, picked off the fill stream so the cymbal colour
 		// varies section to section.
-		RenderCrash( _time.Swung( barStart, baseE + 2.0 ), noise, rng.Chance( 0.4f ) );
+		RenderCrash( _time.TickToSample( barTick + (baseE + 2.0) * Timing.TicksPerEighth ), noise, rng.Chance( 0.4f ) );
 	}
 }

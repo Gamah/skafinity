@@ -16,8 +16,10 @@ public sealed partial class MusicGen
 	// stream (horn:tag, so the main composition order is unchanged) breaks them up
 	// with rolling arpeggios, 16th pairs, grace pickups and varied length. Kept
 	// modest — the bass got over-busy when its ornament rate ran high.
-	void RenderHornStabs( int barStart, int spe, double secPerEighth, int chord, Rng orn, Rng exprRng )
+	void RenderHornStabs( int barTick, int chord, Rng orn, Rng exprRng )
 	{
+		int spe = _time.Spe;
+		double secPerEighth = _time.SecPerEighth;
 		int baseMidi = _rootMidi + 19;
 		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };
 		float spread = _c.PanAmount * 0.7f;
@@ -54,7 +56,7 @@ public sealed partial class MusicGen
 		for ( int e = 0; e < EighthsPerBar; e++ )
 		{
 			if ( !_hornMask[e] ) continue;
-			int at = _time.Swung( barStart, e );
+			int at = _time.TickToSample( barTick + (e) * Timing.TicksPerEighth );
 			hornVc = Roll( ex, baseMidi, NoPrev, exprRng );
 
 			if ( six > 0 && orn.Chance( ornChance ) )
@@ -65,18 +67,18 @@ public sealed partial class MusicGen
 					// rolling arpeggio: chord tones climb across a 16th-triplet
 					int step = spe / 3;
 					for ( int k = 0; k < degs.Length; k++ )
-						Note( _time.Swung( barStart, e + (double)k / 3 ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
+						Note( _time.TickToSample( barTick + (e + (double)k / 3) * Timing.TicksPerEighth ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
 					continue;
 				}
 				if ( r < 0.75f )
 				{
 					// 16th pair: stab on the beat, softer echo on the "e"
 					Stab( at, (int)(six * 0.85f), secPerEighth * 0.5 * 0.8, 1f );
-					Stab( _time.Swung( barStart, e + 0.5 ), (int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
+					Stab( _time.TickToSample( barTick + (e + 0.5) * Timing.TicksPerEighth ), (int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
 					continue;
 				}
 				// grace pickup: a soft single tone just before the block stab
-				Note( _time.Swung( barStart, e - 0.5 ), (int)(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f );
+				Note( _time.TickToSample( barTick + (e - 0.5) * Timing.TicksPerEighth ), (int)(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f );
 				Stab( at, (int)(spe * 0.6f), 0.22, 1f );
 				continue;
 			}

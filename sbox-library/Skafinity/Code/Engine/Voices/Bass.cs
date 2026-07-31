@@ -12,8 +12,10 @@ namespace Skafinity;
 public sealed partial class MusicGen
 {
 	// ── Bass ──
-	void RenderBassBar( int barStart, int spe, double secPerEighth, int chord, int nextChord, Rng rng, Rng bassOrn, Rng exprRng )
+	void RenderBassBar( int barTick, int chord, int nextChord, Rng rng, Rng bassOrn, Rng exprRng )
 	{
+		int spe = _time.Spe;
+		double secPerEighth = _time.SecPerEighth;
 		int root = ChordRoot( chord );
 		var ex = Expr( "BASS" );
 		int prevMidi = NoPrev;
@@ -56,12 +58,12 @@ public sealed partial class MusicGen
 				for ( int k = 0; k < n; k++ )
 				{
 					int bm = midi + (k == 0 ? 0 : moves[bassOrn.Int( moves.Length )]);
-					EmitBass( _time.Swung( barStart, e + (double)k / n ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
+					EmitBass( _time.TickToSample( barTick + (e + (double)k / n) * Timing.TicksPerEighth ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
 				}
 				continue;
 			}
 
-			EmitBass( _time.Swung( barStart, e ), (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
+			EmitBass( _time.TickToSample( barTick + (e) * Timing.TicksPerEighth ), (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
 		}
 	}
 

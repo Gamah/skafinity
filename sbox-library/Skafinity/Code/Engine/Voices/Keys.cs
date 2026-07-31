@@ -18,8 +18,10 @@ public sealed partial class MusicGen
 	// interlock instead of playing in lockstep. KeysChug rings the chords (0) or tightens them
 	// toward short stabs (1).
 	static readonly int[] KeysOnsets = { 0, 3, 4, 7 };    // eighth positions of the comp's hits
-	void RenderKeysBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
+	void RenderKeysBar( int barTick, int chord, Rng rng, Rng exprRng )
 	{
+		int spe = _time.Spe;
+		double secPerEighth = _time.SecPerEighth;
 		int kBase = _rootMidi + 24;                        // keyboard register, an octave over the rhythm guitar
 		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };  // diatonic triad
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
@@ -47,7 +49,7 @@ public sealed partial class MusicGen
 					Drive = keysDrive, Pan = 0f,
 				};
 				ApplyVoicing( ref keys, keysVc );
-				RenderPatch( _time.Swung( barStart, e ), dur, Midi( ScaleMidi( kBase, d ) ), keys );
+				RenderPatch( _time.TickToSample( barTick + (e) * Timing.TicksPerEighth ), dur, Midi( ScaleMidi( kBase, d ) ), keys );
 			}
 		}
 	}

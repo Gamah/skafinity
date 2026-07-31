@@ -12,8 +12,9 @@ namespace Skafinity;
 public sealed partial class MusicGen
 {
 	// ── Skank guitar (the signature) + reggae organ bubble — offbeats, centered ──
-	void RenderRhythmBar( int barStart, int spe, double secPerEighth, int chord, Rng rng, Rng exprRng )
+	void RenderRhythmBar( int barTick, int chord, Rng rng, Rng exprRng )
 	{
+		int spe = _time.Spe;
 		// +24: skank/organ sit an octave above the old register — at +12 (E2..B2) the
 		// chop was too low/muddy to cut through and read as missing. Organ stays a
 		// further octave down via the -12 below.
@@ -24,7 +25,7 @@ public sealed partial class MusicGen
 
 		for ( int e = 1; e < EighthsPerBar; e += 2 ) // offbeats
 		{
-			int at = _time.Swung( barStart, e );   // odd e = offbeat → Swung pushes it late by the swing
+			int at = _time.TickToSample( barTick + (e) * Timing.TicksPerEighth );   // odd e = offbeat → Swung pushes it late by the swing
 
 			// bright, thin, short guitar chop
 			foreach ( var d in degs )

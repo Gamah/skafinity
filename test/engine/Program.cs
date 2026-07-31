@@ -36,6 +36,9 @@ static class Program
 		Banner( "harmony" );
 		HarmonyTests();
 
+		Banner( "time base" );
+		TimingTests();
+
 		Banner( "structure" );
 		StructureTests();
 
@@ -165,6 +168,71 @@ static class Program
 		Check( "Midi(69) is A440", Math.Abs( Osc.Midi( 69 ) - 440f ) < 0.001f );
 		Check( "Midi(81) is an octave above Midi(69)",
 			Math.Abs( Osc.Midi( 81 ) - 2f * Osc.Midi( 69 ) ) < 0.01f );
+	}
+
+	static void TimingTests()
+	{
+		// A bar of 4/4 at 48 ticks/beat, one second long, so the arithmetic is checkable by eye.
+		const int spb = 4, ticks = 4 * Timing.TicksPerBeat;
+		var straight = new Timing( spb, ticks * 8, 44100.0 / Timing.TicksPerBeat, 0f, 0, 44100 );
+
+		Check( "an eighth is a whole number of ticks", Timing.TicksPerEighth * 2 == Timing.TicksPerBeat );
+		Check( "a bar is BeatsPerBar beats", straight.BarTicks == spb * Timing.TicksPerBeat );
+		Check( "the eighth grid divides the bar", straight.BarTicks % Timing.TicksPerEighth == 0 );
+		Check( "beat grouping covers the bar", straight.BeatGrouping.Length == spb );
+
+		// The tick grid must render every subdivision the engine actually uses — 8ths, 16ths,
+		// and both 8th- and 16th-note triplets — as exact integers. This is the whole reason
+		// TicksPerBeat is 48 and not a 16th-note grid.
+		foreach ( var div in new[] { 2, 3, 4, 6, 8, 12, 16 } )
+			Check( $"a 1/{div} of a beat is an exact tick count", Timing.TicksPerBeat % div == 0 );
+
+		// Straight time: the accumulator must be linear, monotonic and anchored at 0.
+		Check( "tick 0 is sample 0", straight.TickToSample( 0 ) == 0 );
+		bool monotonic = true, linear = true;
+		int prev = -1;
+		for ( int t = 0; t <= ticks * 4; t++ )
+		{
+			int s = straight.TickToSample( t );
+			monotonic &= s >= prev; prev = s;
+			linear &= Math.Abs( s - t * (44100.0 / Timing.TicksPerBeat) ) <= 1.0;
+		}
+		Check( "sample positions never go backwards", monotonic );
+		Check( "straight time is linear in ticks", linear );
+		Check( "one beat is one second at this tempo",
+			Math.Abs( straight.TickToSample( Timing.TicksPerBeat ) - 44100 ) <= 1 );
+
+		// Swing warps the grid WITHOUT moving the anchors: on-beat eighths stay put, offbeats
+		// are pushed late. A shuffle that moved the downbeat would drag the whole band.
+		var swung = new Timing( spb, ticks * 8, 44100.0 / Timing.TicksPerBeat, 0.2f, 0, 44100 );
+		bool anchored = true, pushed = true;
+		for ( int e = 0; e < 8; e++ )
+		{
+			int t = e * Timing.TicksPerEighth;
+			if ( e % 2 == 0 ) anchored &= swung.TickToSample( t ) == straight.TickToSample( t );
+			else pushed &= swung.TickToSample( t ) > straight.TickToSample( t );
+		}
+		Check( "swing leaves on-beat eighths anchored", anchored );
+		Check( "swing pushes offbeat eighths late", pushed );
+		Check( "swing keeps positions monotonic", Monotonic( swung, ticks * 4 ) );
+
+		// Durations are spans, not positions — they must not pick up the swing.
+		Check( "a span of ticks carries no swing",
+			swung.SamplesForTicks( Timing.TicksPerEighth ) == straight.SamplesForTicks( Timing.TicksPerEighth ) );
+		Check( "SecondsForTicks agrees with SamplesForTicks",
+			Math.Abs( straight.SecondsForTicks( ticks ) * 44100 - straight.SamplesForTicks( ticks ) ) <= 1 );
+
+		// Reading past the end must clamp rather than throw — the ending renders into the tail.
+		bool threw = false;
+		try { straight.TickToSample( ticks * 100 ); } catch { threw = true; }
+		Check( "reading past the song's last tick clamps", !threw );
+	}
+
+	static bool Monotonic( Timing t, int ticks )
+	{
+		int prev = -1;
+		for ( int i = 0; i <= ticks; i++ ) { int s = t.TickToSample( i ); if ( s < prev ) return false; prev = s; }
+		return true;
 	}
 
 	static void StructureTests()
