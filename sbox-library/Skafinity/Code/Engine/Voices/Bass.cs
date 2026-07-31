@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 
-using static Skafinity.Harmony;
 using static Skafinity.Osc;
 
 namespace Skafinity;
@@ -24,10 +23,10 @@ public sealed partial class MusicGen
 		for ( int e = 0; e < EighthsPerBar; e++ )
 		{
 			int off = _bassPat[e];
-			if ( off == Rest ) continue;
+			if ( off == Harmony.Rest ) continue;
 
 			int midi;
-			if ( off == Approach )
+			if ( off == Harmony.Approach )
 			{
 				int target = ChordRoot( nextChord );
 				midi = target - (rng.Chance( 0.5f ) ? 1 : 2); // chromatic/step lead-in
@@ -40,7 +39,7 @@ public sealed partial class MusicGen
 
 			// note runs until the next onset (legato reggae feel)
 			int len = 1;
-			while ( e + len < EighthsPerBar && _bassPat[e + len] == Rest ) len++;
+			while ( e + len < EighthsPerBar && _bassPat[e + len] == Harmony.Rest ) len++;
 
 			// Chop a standalone (non-sustaining) note into a 16th pair or 16th-note
 			// triplet so the line reads "long long short short" / "long short long long"
@@ -49,7 +48,7 @@ public sealed partial class MusicGen
 			var vc = Roll( ex, midi, prevMidi, exprRng );
 			prevMidi = midi;
 
-			if ( off != Approach && len == 1 && bassOrn.Chance( ornChance ) )
+			if ( off != Harmony.Approach && len == 1 && bassOrn.Chance( ornChance ) )
 			{
 				int n = bassOrn.Chance( 0.65f ) ? 2 : 3;        // 16th pair / 16th triplet
 				int step = spe / n;

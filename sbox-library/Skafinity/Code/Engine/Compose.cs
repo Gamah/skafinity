@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 
-using static Skafinity.Harmony;
 using static Skafinity.Osc;
 
 namespace Skafinity;
@@ -40,14 +39,14 @@ public sealed partial class MusicGen
 		int bpm = _fast
 			? _c.FastBpmMin + rng.Int( Math.Max( 1, _c.FastBpmMax - _c.FastBpmMin + 1 ) )
 			: _c.BpmMin + rng.Int( Math.Max( 1, _c.BpmMax - _c.BpmMin + 1 ) );
-		_scale = rng.Pick( ScalesFor( _genre ) );
-		_prog = rng.Pick( ProgressionsFor( _genre ) );
+		_scale = rng.Pick( Harmony.ScalesFor( _genre ) );
+		_prog = rng.Pick( Harmony.ProgressionsFor( _genre ) );
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
 		_lead = Instrument.Trumpet;                       // ska lead is fixed; other genres use guitar
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
 		_widthScale = Math.Clamp( _c.PanAmount, 0f, 1f );
 		_drumPan = DrumPan * _widthScale;
-		_bassPat = rng.Pick( BassPatternsFor( _genre ) );
+		_bassPat = rng.Pick( Harmony.BassPatternsFor( _genre ) );
 		_drumStyle = _genre switch                        // 0 ska rolls a style; the rest are fixed
 		{
 			1 => 2,                                       // rock: straight backbeat

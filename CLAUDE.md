@@ -125,8 +125,8 @@ itself, and don't let it creep into the docs as a promise.
 
 The places parity *within a build* can break:
 
-- **Don't fork the engine.** Edit `sbox-library/.../MusicGen.cs` once; never copy it into
-  `wasm/`. The csproj references it by relative path.
+- **Don't fork the engine.** Edit `sbox-library/Skafinity/Code/Engine/` once; never copy a
+  file into `wasm/`. Both csprojs glob that folder.
 - **The config round-trip.** The live `Config` crosses into JS as an opaque flat `double[]`
   (see `Cfg.To`/`Cfg.From` in `Exports.cs`). If you add a `Config` field that the vibe or a
   song depends on, add it to *both* `Cfg.To` and `Cfg.From` (and bump `Cfg.Size`), or edits
@@ -134,8 +134,38 @@ The places parity *within a build* can break:
 - **`float` vs `double`.** Keep `MusicGen`'s `float`/`double` exactly as-is; the wasm runtime
   matches .NET semantics, so leave them be.
 
-`make test` boots the published runtime under node and asserts generation, vibe round-trip,
-determinism, and WAV output — run it after engine or boundary changes.
+## Testing
+
+**`make test-engine` is the one that runs here.** It compiles `Code/Engine/` alone into a
+plain `net10.0` console app — no s&box, no `wasm-tools` workload, no browser — and asserts on
+composition: PRNG determinism, `ScaleMidi` across the octave wrap, every progression degree
+resolving, song structure, the vibe codec round-trip (including junk and truncated input), and
+the WAV container. Because the tests compile into the SAME assembly as the engine, `internal`
+types are directly reachable; that is why the engine's types are namespace-level `internal`
+rather than nested private, and why a new one should stay that way.
+
+It also carries a **render digest** over a 10-seed matrix (`test/engine/digests.txt`). That is
+a tripwire for refactors that are *meant* to be pure, not a golden-audio contract: run
+`make test-engine-bless` before a mechanical change, `make test-engine` after, and expect
+silence. **Any deliberate audible change re-blesses in the same commit** — a digest diff is
+information, never a failure to be argued with.
+
+`make test` is the other half: it boots the *published wasm* runtime under node and checks the
+JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
+only runs where the bundle has been built.
+
+Neither the s&box library nor the wasm project can be compiled on the dev host (no engine
+install, no `wasm-tools` workload). So `Code/SkafinityPlayer.cs`, `Code/UI/` and
+`wasm/Exports.cs` are verified by review and grep only — when changing engine internals, check
+what those three actually reference. Today that is just `MusicGen.{Config, Channels,
+GenerateSamples, BeginPlan, WavFromSamples}` plus all of `VibeCodec`; keep that surface stable
+and the untestable targets stay safe.
+
+**Be sparing with `using static` in `Engine/`.** The s&box build adds a project-wide
+`GlobalGameNamespace` static using, so importing a collision-prone bare name (`Rest`,
+`Approach`, …) risks an ambiguity that only shows up in a build we cannot run here. `Osc` is
+imported that way because `Midi`/`StereoGains` are distinctive; `Harmony` is qualified
+explicitly because its members are not.
 
 ---
 
@@ -258,7 +288,8 @@ no `.env`, and no secrets.
 
 - No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`
   skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (a quick
-  no-Docker preview — `make up` is the real nginx-parity host). `make test` → node smoke
+  no-Docker preview — `make up` is the real nginx-parity host). `make test-engine` → the
+  engine-only C# tests (the check that runs on a bare dev host). `make test` → node smoke
   test. `make fast`/`up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` is a
   deferred single-file follow-up.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched
