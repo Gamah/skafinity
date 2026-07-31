@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Engine-only test harness. Compiles sbox-library/Skafinity/Code/Engine/** ALONE — no
+    Sandbox.*, no wasm workload, no browser — so it runs on a plain dev host where s&box
+    cannot. This is the safety net for engine work: it asserts on composition (pattern
+    onsets, determinism, chord placement, structure) and on rendered-audio hashes.
+
+    Run with `make test-engine`.
+
+    The Engine/** glob is the same one wasm/Skafinity.Wasm.csproj uses, and it is what
+    stops either build ever pulling in the s&box-only SkafinityPlayer.cs / Code/UI/.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>Skafinity.EngineTests</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AssemblyName>Skafinity.EngineTests</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../sbox-library/Skafinity/Code/Engine/**/*.cs" />
+    <Compile Include="*.cs" />
+  </ItemGroup>
+
+</Project>

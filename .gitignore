@@ -1,6 +1,8 @@
 # .NET build trees
 wasm/bin/
 wasm/obj/
+test/engine/bin/
+test/engine/obj/
 
 # The published runtime bundle (web/_framework) IS committed so the branch is testable
 # without the toolchain — but the brotli/gzip duplicates the dev server doesn't use are not.
