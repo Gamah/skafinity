@@ -84,8 +84,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	[Property, Group( "Tempo" ), Range( 0f, 1f )] public float FastChance { get; set; } = 0.30f;
 	[Property, Group( "Tempo" ), Range( 100, 220 )] public int FastBpmMin { get; set; } = 150;
 	[Property, Group( "Tempo" ), Range( 100, 220 )] public int FastBpmMax { get; set; } = 168;
-	[Property, Group( "Tempo" ), Range( 0f, 0.4f )] public float Swing { get; set; } = 0.14f;
-	[Property, Group( "Tempo" ), Range( 0f, 0.4f )] public float FastSwing { get; set; } = 0.05f;
 
 	// ── Mix ──
 	[Property, Group( "Mix" ), Range( 0f, 1.5f )] public float BassVol { get; set; } = 1.00f;
@@ -469,8 +467,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		FastChance = FastChance,
 		FastBpmMin = FastBpmMin,
 		FastBpmMax = FastBpmMax,
-		Swing = Swing,
-		FastSwing = FastSwing,
 		BassVol = BassVol,
 		SkankVol = SkankVol,
 		OrganVol = OrganVol,
@@ -539,7 +535,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		var h = new HashCode();
 		h.Add( SampleRate ); h.Add( TargetSeconds );
 		h.Add( BpmMin ); h.Add( BpmMax ); h.Add( FastChance );
-		h.Add( FastBpmMin ); h.Add( FastBpmMax ); h.Add( Swing ); h.Add( FastSwing );
+		h.Add( FastBpmMin ); h.Add( FastBpmMax );
 		h.Add( BassVol ); h.Add( SkankVol ); h.Add( OrganVol ); h.Add( MelodyVol ); h.Add( HornVol );
 		h.Add( KickVol ); h.Add( SnareVol ); h.Add( TomVol ); h.Add( HatVol ); h.Add( CrashVol ); h.Add( DrumVol );
 		h.Add( Detune ); h.Add( BassCutoff ); h.Add( SkankCutoff ); h.Add( SkankHighpass ); h.Add( SkankChop );

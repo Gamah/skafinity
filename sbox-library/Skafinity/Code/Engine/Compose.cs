@@ -80,8 +80,9 @@ public sealed partial class MusicGen
 		// ska) reads it; drawn last so it shifts no earlier choice.
 		_kickAccents = rng.Pick( BackbeatKickAccents );
 
-		float swing = _fast ? _c.FastSwing : _c.Swing;
-		if ( _genre == 5 ) swing *= 0.25f;                // pop sits on a tight, straight dance grid
+		// Swing is the genre's own feel, drawn per song from its band exactly the way tempo is —
+		// not a knob, so a reroll can never hand metal a shuffle.
+		float swing = GenreProfile.For( _genre ).DrawSwing( rng, _fast );
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 

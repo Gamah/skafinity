@@ -78,6 +78,7 @@ skafinity/
         Rng.cs            #   xmur3 → mulberry32, the root of every musical choice
         Harmony.cs        #   per-genre scale/progression/bass tables + degree→pitch
         Structure.cs      #   Section, Part, the arrangement
+        GenreProfile.cs   #   per-genre character that is NOT a knob (swing band)
         Timing.cs         #   THE TIME BASE: ticks -> samples, tempo accumulator, swing
         Compose.cs        #   the composition pass (plan song → render sections)
         Expression.cs     #   per-note pitch shaping (vibrato/bend/glide/scoop)
@@ -204,6 +205,23 @@ list — including each field's `voice`/`column` — straight from the wasm expo
 (`VibeFieldName/Min/Max/IsInt/Voice/Column/Choices`, all genre-parameterized) and lays out
 the matrix generically, so there's no second field table to keep in lockstep — just edit
 `VibeCodec.cs`.
+
+---
+
+## Genre character vs. knobs (`Engine/GenreProfile.cs`)
+
+Not everything per-genre is a *preference*. Some things a genre simply **is**, and exposing them
+as knobs makes a reroll able to produce nonsense — swing was the example: a global 0–0.4 slider
+meant shuffle could hand metal a 40% shuffle. `GenreProfile` holds that kind of value and draws
+it per song from the seed, the way tempo already works.
+
+Swing lives there now (ska 0.10–0.22 … metal 0.00–0.02) and is **not** a vibe knob. When adding
+per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a genre grid) or
+the genre's identity (`GenreProfile`). Getting it wrong is only obvious once shuffle is on.
+
+Retiring a knob leaves a **reserved slot** in the wire rather than shifting positions — see the
+`VibeCodec` header. That is why the encoded vibe can be longer than the live knob count, so never
+assert "vibe length == field count + 1".
 
 ---
 

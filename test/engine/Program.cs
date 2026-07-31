@@ -39,6 +39,9 @@ static class Program
 		Banner( "time base" );
 		TimingTests();
 
+		Banner( "genre feel" );
+		GenreProfileTests();
+
 		Banner( "structure" );
 		StructureTests();
 
@@ -270,6 +273,59 @@ static class Program
 		return true;
 	}
 
+	static void GenreProfileTests()
+	{
+		// Swing is genre character rather than a knob, so every genre must declare a usable band
+		// and a draw must stay inside it.
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			Check( $"genre {g} swing band is ordered", p.SwingMin <= p.SwingMax );
+			Check( $"genre {g} swing band is in range", p.SwingMin >= 0f && p.SwingMax <= 0.4f );
+
+			bool inBand = true, fastTighter = true;
+			for ( int i = 0; i < 300; i++ )
+			{
+				var rng = new Rng( $"swing:{g}:{i}" );
+				float s = p.DrawSwing( rng, false );
+				inBand &= s >= p.SwingMin - 0.0001f && s <= p.SwingMax + 0.0001f;
+
+				float fast = GenreProfile.For( g ).DrawSwing( new Rng( $"swing:{g}:{i}" ), true );
+				fastTighter &= fast <= s + 0.0001f;
+			}
+			Check( $"genre {g} draws inside its band", inBand );
+			Check( $"genre {g} tightens toward straight when fast", fastTighter );
+		}
+
+		// The point of the row: metal and punk are machine-straight, ska is pushed. Without this
+		// the bands could all quietly collapse to the same values and nothing would notice.
+		var metal = GenreProfile.For( 3 );
+		var punk = GenreProfile.For( 4 );
+		var ska = GenreProfile.For( 0 );
+		Check( "metal is effectively straight", metal.SwingMax <= 0.05f );
+		Check( "punk is effectively straight", punk.SwingMax <= 0.05f );
+		Check( "ska always has a pushed offbeat", ska.SwingMin >= 0.08f );
+		Check( "ska swings harder than metal", ska.SwingMin > metal.SwingMax );
+
+		// Swing varies song to song rather than being one constant per genre.
+		var seen = new HashSet<int>();
+		for ( int i = 0; i < 100; i++ )
+			seen.Add( (int)Math.Round( ska.DrawSwing( new Rng( $"ska:{i}" ), false ) * 1000 ) );
+		Check( "swing varies between songs of the same genre", seen.Count > 10, $"{seen.Count} distinct values" );
+
+		// A song's swing must follow only from its seed, or the shuffle line would not be
+		// reproducible.
+		Check( "a song's swing is reproducible from its seed",
+			ska.DrawSwing( new Rng( "ska:7" ), false ) == ska.DrawSwing( new Rng( "ska:7" ), false ) );
+
+		// SWING must be gone from the seed grid — that is what "not a knob" means on the wire.
+		bool noSwingKnob = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			foreach ( var f in VibeCodec.Fields( g ) )
+				noSwingKnob &= !f.Name.Equals( "SWING", StringComparison.OrdinalIgnoreCase );
+		Check( "SWING is not a vibe knob in any genre", noSwingKnob );
+	}
+
 	static void StructureTests()
 	{
 		var parts = MusicGen.BuildStructure();
@@ -309,7 +365,6 @@ static class Program
 
 			Check( $"genre {g} encodes to its own first char",
 				enc.Length > 0 && VibeCodec.Alphabet.IndexOf( enc[0] ) == g );
-			Check( $"genre {g} vibe fits the wire budget", enc.Length <= VibeCodec.MaxLength );
 
 			// Round-trip: decode onto a fresh Config, re-encode, expect the same string. This
 			// is the property that actually matters — a shared URL must reproduce the knobs.

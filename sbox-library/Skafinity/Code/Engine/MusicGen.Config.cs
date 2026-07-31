@@ -28,7 +28,7 @@ public sealed partial class MusicGen
 		public int BpmMin = 130, BpmMax = 185;
 		public float FastChance = 0.30f;
 		public int FastBpmMin = 150, FastBpmMax = 168;
-		public float Swing = 0.14f, FastSwing = 0.05f;
+		// Swing is not a Config value: it is per-genre character drawn per song (GenreProfile).
 
 		// Mix (per-voice gain pre-master) — the six "volume" sliders are normalized:
 		// same 0..1.5 range and the same 1.0 default (flat mix), tune from there.

@@ -22,6 +22,11 @@ namespace Skafinity;
 /// <see cref="Apply"/> ignores trailing chars a shorter string lacks, so a vibe from a
 /// client with fewer slots still parses (the missing knobs keep their config defaults).
 ///
+/// RETIRING a knob does not remove its position: the entry becomes a reserved (null) slot that
+/// encodes as filler and decodes to nothing. That keeps every later knob at the wire position it
+/// has always had, so vibes shared before the retirement still decode correctly, and a future
+/// global knob can claim the slot.
+///
 /// Lossy by design (16 levels/knob) but stable: Encode(Decode(s)) == s.
 /// </summary>
 public static class VibeCodec
@@ -103,7 +108,10 @@ public static class VibeCodec
 		F( "TEMPO MIN", 60, 200, true, c => c.BpmMin, ( c, v ) => c.BpmMin = (int)v ),
 		F( "TEMPO MAX", 60, 200, true, c => c.BpmMax, ( c, v ) => c.BpmMax = (int)v ),
 		F( "TEMPO BIAS", 0f, 1f, false, c => c.FastChance, ( c, v ) => c.FastChance = v ),
-		F( "SWING", 0f, 0.4f, false, c => c.Swing, ( c, v ) => c.Swing = v ),
+		// RESERVED — was SWING, now per-genre character (GenreProfile). Kept as an empty slot so
+		// every later global and the whole instrument grid stay at their existing wire positions
+		// and previously shared vibes still decode. A future global knob can claim it.
+		null,
 		F( "RESONANCE", 0.2f, 2f, false, c => c.Resonance, ( c, v ) => c.Resonance = v ),
 		F( "STEREO WIDTH", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
 		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
@@ -392,7 +400,8 @@ public static class VibeCodec
 	/// matrix without a second table.</summary>
 	public static IReadOnlyList<Field> Fields( int genre )
 	{
-		var list = new List<Field>( GlobalFields );
+		var list = new List<Field>();
+		foreach ( var f in GlobalFields ) if ( f != null ) list.Add( f );
 		foreach ( var row in Def( genre ).Grid )
 			foreach ( var f in row )
 				if ( f != null ) list.Add( f );
@@ -436,7 +445,7 @@ public static class VibeCodec
 		int genre = Math.Clamp( c.Genre, 0, GenreDefs.Length - 1 );
 		var sb = new StringBuilder();
 		sb.Append( Alphabet[genre] );
-		foreach ( var f in GlobalFields ) sb.Append( Quant( f, c ) );
+		foreach ( var f in GlobalFields ) sb.Append( f != null && f.InSeed ? Quant( f, c ) : Alphabet[0] );
 		foreach ( var row in Def( genre ).Grid )
 			for ( int col = 0; col < Columns; col++ )
 				sb.Append( row[col] != null && row[col].InSeed ? Quant( row[col], c ) : Alphabet[0] );
@@ -545,16 +554,14 @@ public static class VibeCodec
 		return $"{t}:vibe:{n}";
 	}
 
-	/// <summary>Largest possible well-formed vibe length: genre + globals + the full reserved
-	/// instrument grid.</summary>
-	public static int MaxLength => 1 + GlobalFields.Length + MaxInstruments * Columns;
-
-	/// <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and within
-	/// the vibe length band. The floor stays well above an 8-char player tag (and the 9-char
-	/// default "rotaliate") so the two never collide in <c>vibe:tag:n</c>.</summary>
+	/// <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and long enough
+	/// that it cannot be a tag. The floor is the whole test — it sits well above an 8-char player
+	/// tag (and the 9-char default "rotaliate") so the two never collide in <c>vibe:tag:n</c>.
+	/// There is deliberately no ceiling: the wire grows as genres and instruments are appended,
+	/// and a bound would silently start rejecting valid seeds.</summary>
 	public static bool LooksLikeVibe( string s )
 	{
-		if ( string.IsNullOrEmpty( s ) || s.Length < 16 || s.Length > MaxLength ) return false;
+		if ( string.IsNullOrEmpty( s ) || s.Length < 16 ) return false;
 		foreach ( var ch in s.ToLowerInvariant() )
 			if ( Alphabet.IndexOf( ch ) < 0 ) return false;
 		return true;
