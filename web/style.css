@@ -33,6 +33,16 @@ header h1 {
   user-select: none;
 }
 header h1 span { color: var(--accent); }
+.htop { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; }
+.ghlink {
+  color: var(--muted);
+  font-size: 11px;
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.ghlink:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .tag { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
 
 /* ── Buttons ── */
