@@ -11,6 +11,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 
 WORKDIR /src
 
+# Emscripten drives its bitcode->wasm step through python, which the SDK image does not
+# ship: without this the AOT publish dies late with "unable to find python in $PATH". Some
+# of the toolchain spells it `python3` and some plain `python`, so provide both.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 \
+ && ln -sf /usr/bin/python3 /usr/bin/python \
+ && rm -rf /var/lib/apt/lists/*
+
 # wasm-tools (Emscripten + AOT) is the slow, source-independent layer — install it before
 # copying any code so it caches across rebuilds.
 RUN dotnet workload install wasm-tools
