@@ -5,36 +5,58 @@ using static Skafinity.Osc;
 
 namespace Skafinity;
 
-// Bass.
+// Bass — the genre's own line, from the genre's own library, through the genre's own voice.
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
 public sealed partial class MusicGen
 {
-	// ── Bass ──
-	void RenderBassBar( int barTick, int chord, int nextChord, Rng rng, Rng bassOrn, Rng exprRng )
+	// The bass VOICE per genre. Register, oscillator, sustain and filter are the sound of the
+	// instrument, so they live next to it rather than in GenreProfile: a reggae bass is a round
+	// triangle an octave down with a long sustain, a metal bass is a driven square that tracks
+	// the riff, a pop bass is a tight synth with no ring at all.
+	(int Octave, int Osc, float Sustain, float Cutoff, float Drive) BassTone() => _genre switch
 	{
-		int spe = _time.Spe;
-		double secPerEighth = _time.SecPerEighth;
+		0 => (0, 3, 0.60f, 1.0f, 1.0f),    // ska: round, deep, legato
+		1 => (0, 3, 0.50f, 1.15f, 1.15f),  // rock: fingered, a touch brighter
+		2 => (0, 3, 0.35f, 0.95f, 0.9f),   // country: short, plummy, out of the way
+		3 => (0, 1, 0.45f, 1.45f, 1.6f),   // metal: a saw with bite, so it cuts under the riff
+		4 => (0, 1, 0.40f, 1.35f, 1.4f),   // punk: picked and clanky
+		_ => (0, 2, 0.30f, 1.25f, 1.05f),  // pop: a tight square synth sub
+	};
+
+	// ── Bass ──
+	void RenderBassBar( int barTick, int barTicks, int chord, int nextChord, Rng rng, Rng bassOrn,
+		Rng exprRng )
+	{
+		int to = barTick + barTicks;
+
+		// Metal's bass is either a low pedal point or a double of the riff, and punk takes the
+		// same unison when it draws it. Both are RELATIONAL — no table can express "whatever the
+		// guitar just played" — so this reads the riff's onsets instead of a pattern.
+		if ( _riffBass && _riffOnsets.Count > 0 )
+		{
+			RenderBassFromRiff( chord, exprRng );
+			return;
+		}
+
 		int root = ChordRoot( chord );
 		var ex = Expr( "BASS" );
 		int prevMidi = NoPrev;
 		// Bass has its own ornament knob (BASS TRIPLETS), nudged up a touch by overall
 		// kit busyness so a busy vibe gets a busier bass.
 		float ornChance = _c.BassTriplets * 0.5f + _c.DrumBusy * 0.05f;
-		for ( int e = 0; e < EighthsPerBar; e++ )
-		{
-			int off = _bassPat[e];
-			if ( off == Harmony.Rest ) continue;
 
+		foreach ( var h in _bassPat.Slice( barTick, to, _sectionTick, _feel ) )
+		{
 			int midi;
-			if ( off == Harmony.Approach )
+			if ( h.Value == Harmony.Approach )
 			{
-				// Walk only where the harmony actually moves. The approach cell fires every bar,
-				// but with 2 bars to a chord half of those bars end on the same chord they began
-				// on — leading into a chord that isn't arriving just reads as a wrong note, so
-				// the bar sits on its root instead. The draw is consumed either way so the
-				// ornament stream downstream stays aligned.
+				// Walk only where the harmony actually moves. The approach cell fires at the end
+				// of the pattern, but with 2 bars to a chord half of those ends land on the same
+				// chord they began on — leading into a chord that isn't arriving just reads as a
+				// wrong note, so the bar sits on its root instead. The draw is consumed either
+				// way so the ornament stream downstream stays aligned.
 				bool chordMoves = nextChord != chord;
 				int target = ChordRoot( nextChord );
 				int lead = target - (rng.Chance( 0.5f ) ? 1 : 2); // chromatic/step lead-in
@@ -42,63 +64,85 @@ public sealed partial class MusicGen
 			}
 			else
 			{
-				midi = root + off;
-				if ( off == 0 && e > 0 && rng.Chance( _c.OctavePopChance ) ) midi += 12;
+				midi = root + h.Value;
+				if ( h.Value == 0 && h.Tick > barTick && rng.Chance( _c.OctavePopChance ) ) midi += 12;
 			}
 
-			// note runs until the next onset (legato reggae feel)
-			int len = 1;
-			while ( e + len < EighthsPerBar && _bassPat[e + len] == Harmony.Rest ) len++;
-
-			// Chop a standalone (non-sustaining) note into a 16th pair or 16th-note
-			// triplet so the line reads "long long short short" / "long short long long"
-			// instead of even eighths. Driven by a dedicated stream, so the main
-			// composition RNG order — and every existing song — is left unchanged.
 			var vc = Roll( ex, midi, prevMidi, exprRng );
 			prevMidi = midi;
 
-			if ( off != Harmony.Approach && len == 1 && bassOrn.Chance( ornChance ) )
+			// Chop a standalone note into a 16th pair or triplet so the line reads "long long
+			// short short" instead of even eighths. Its own stream, so the composition order is
+			// untouched.
+			if ( h.Value != Harmony.Approach && h.SpanTicks <= Timing.TicksPerEighth
+				&& bassOrn.Chance( ornChance ) )
 			{
 				int n = bassOrn.Chance( 0.65f ) ? 2 : 3;        // 16th pair / 16th triplet
-				int step = spe / n;
 				int[] moves = { 0, 7, 12 };                     // root / fifth / octave
 				for ( int k = 0; k < n; k++ )
 				{
 					int bm = midi + (k == 0 ? 0 : moves[bassOrn.Int( moves.Length )]);
-					EmitBass( _time.EvenSpan( barTick + e * Timing.TicksPerEighth,
-						Timing.TicksPerEighth, k / (double)n ), (int)(step * 0.9f), bm, secPerEighth / n * 0.8, vc );
+					EmitBass( _time.EvenSpan( h.Tick, h.SpanTicks, k / (double)n ),
+						_time.SpanSamples( h.Tick, h.SpanTicks / (double)n * 0.9 ), bm,
+						_time.SpanSeconds( h.Tick, h.SpanTicks ) / n * 0.8,
+						NoteGain( h.Tick, h.Vel ), vc );
 				}
 				continue;
 			}
 
-			EmitBass( _time.TickToSample( barTick + (e) * Timing.TicksPerEighth ), (int)(spe * len * 0.95f), midi, secPerEighth * len * 0.8, vc );
+			EmitBass( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.95 ),
+				midi, _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.8, NoteGain( h.Tick, h.Vel ), vc );
 		}
 	}
 
-	void EmitBass( int at, int dur, int midi, double decaySec, in Voicing vc )
+	// The riff-following mode. Wikipedia's Heavy metal bass puts it plainly: the bass is either
+	// "a low pedal point as a foundation" or "doubling complex riffs and licks along with the
+	// lead guitar". This is the second of those, and the pedal is what the fallback tables do.
+	//
+	// The bass plays the riff's onsets on the chord root — an octave below the guitar, ignoring
+	// the guitar's chord tones, which is what makes it read as a doubling rather than a second
+	// guitar. Muted chug cells are kept: they ARE the riff's rhythm.
+	void RenderBassFromRiff( int chord, Rng exprRng )
 	{
-		// Triangle body for a round, deep reggae/dub bass (saw alone read as too
-		// buzzy) — but triangle alone was too subtle, so layer a quieter square
-		// underneath for presence/definition. The square's odd harmonics give the
-		// bass its bite; both share the bass low-pass so the tone stays warm.
+		int root = ChordRoot( chord );
+		var ex = Expr( "BASS" );
+		int prev = NoPrev;
+		foreach ( var h in _riffOnsets )
+		{
+			var vc = Roll( ex, root, prev, exprRng );
+			prev = root;
+			EmitBass( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.95 ),
+				root, _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.8,
+				NoteGain( h.Tick, h.Vel ) * (h.Value == CompFigure.Mute ? 0.85f : 1f), vc );
+		}
+	}
+
+	void EmitBass( int at, int dur, int midi, double decaySec, float gain, in Voicing vc )
+	{
+		var (oct, osc, sustain, cutoff, drive) = BassTone();
+		// Triangle body for a round, deep reggae/dub bass (saw alone read as too buzzy) — but
+		// triangle alone was too subtle, so layer a quieter square underneath for presence. The
+		// genre's own oscillator replaces the body where the genre wants bite; both layers share
+		// the bass low-pass so the tone stays warm.
+		float amp = _c.BassVol * _c.BassBalance * MixTrim( _prof.Mix.Low ) * gain;
 		var body = new Patch
 		{
-			Osc = 3, Voices = 2, Detune = _c.Detune * 0.4f,
-			Amp = _c.BassVol * _c.BassBalance, Attack = 0.004f, Decay = decaySec,
-			Sustain = 0.55f, Sustained = true,
-			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
-			Drive = _c.BassDrive, Pan = 0f,
+			Osc = osc, Voices = 2, Detune = _c.Detune * 0.4f,
+			Amp = amp, Attack = 0.004f, Decay = decaySec,
+			Sustain = sustain, Sustained = true,
+			Cutoff = _c.BassCutoff * cutoff, CutEnv = 350f, Reso = 0.9f,
+			Drive = _c.BassDrive * drive, Pan = 0f,
 		};
 		var sub = new Patch
 		{
 			Osc = 2, Voices = 1, Detune = 0f,
-			Amp = _c.BassVol * 0.4f * _c.BassBalance, Attack = 0.004f, Decay = decaySec,
-			Sustain = 0.55f, Sustained = true,
-			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
-			Drive = _c.BassDrive, Pan = 0f,
+			Amp = amp * 0.4f, Attack = 0.004f, Decay = decaySec,
+			Sustain = sustain, Sustained = true,
+			Cutoff = _c.BassCutoff * cutoff, CutEnv = 350f, Reso = 0.9f,
+			Drive = _c.BassDrive * drive, Pan = 0f,
 		};
 		ApplyVoicing( ref body, vc ); ApplyVoicing( ref sub, vc );
-		RenderPatch( at, dur, Midi( midi ), body, mono: true );
-		RenderPatch( at, dur, Midi( midi ), sub, mono: true );
+		RenderPatch( at, dur, Midi( midi + 12 * oct ), body, mono: true );
+		RenderPatch( at, dur, Midi( midi + 12 * oct ), sub, mono: true );
 	}
 }

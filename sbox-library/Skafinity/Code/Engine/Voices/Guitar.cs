@@ -5,88 +5,123 @@ using static Skafinity.Osc;
 
 namespace Skafinity;
 
-// Rhythm guitar: the rock/country/punk power-chord comp and the metal palm-muted gallop.
+// The guitar comps: the rock riff, the country strum, the punk downstroke and the metal gallop.
+// Each plays its genre's own figure (see CompFigure) — what they share is the voice, not the
+// rhythm.
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
 public sealed partial class MusicGen
 {
-	// ── Rock rhythm guitar — twangy distorted power chords. Shares the lead guitar's voice (the
-	// bright cutoff-envelope "twang" through a resonant SVF) but strums root+fifth+octave and
-	// runs a LOWER base distortion than the lead so the two layer instead of mush. Downbeats
-	// ring; offbeats tighten toward a palm-muted chug as RhythmGtrChug rises.
-	// exprRng is unused: power chords stay dead straight (Expr("RHYTHM GTR") is default), but the
-	// param keeps every instrument's call site uniform.
-	void RenderRhythmGuitarBar( int barTick, int chord, Rng rng, Rng exprRng )
+	// The rhythm guitar's timbre, per genre. This is the part that belongs NEXT TO THE VOICE
+	// rather than in GenreProfile: it is the sound of one instrument, not the identity of the
+	// genre. Country is a clean bright strum, rock an overdriven chunk, punk brighter and
+	// snottier, metal heavy and tight.
+	(float Drive, float CutEnv, float Reso) RhythmGtrTone() => _genre switch
 	{
-		int spe = _time.Spe;
-		double secPerEighth = _time.SecPerEighth;
-		bool country = _genre == 2;
-		int root = ChordRoot( chord ) + 12;               // chunky register, an octave up
-		// Country strums a full DIATONIC triad (root/3rd/5th + octave) clean and bright — built in
-		// degree space (ScaleMidi) so the 3rd follows the mode, matching the keys/lead. A hardcoded
-		// major 3rd clashed on the minor chords of a progression (e.g. the vi in {0,4,5,3}). Rock
-		// chunks a bare, mode-neutral power chord (root/5th/octave) with more base distortion.
-		int triBase = _rootMidi + 12;                     // same register as `root`, in degree space
-		int[] notes = country
-			? new[] { ScaleMidi( triBase, _prog[chord] ),     ScaleMidi( triBase, _prog[chord] + 2 ),
-			          ScaleMidi( triBase, _prog[chord] + 4 ), ScaleMidi( triBase, _prog[chord] + 7 ) }
-			: new[] { root, root + 7, root + 12 };
-		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
-		float cutEnv = country ? 2600f : 1400f;            // brighter twang for the clean strum
-		float driveAmt = country ? 0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive )
-		                         : 1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ); // less base than lead
-		for ( int e = 0; e < EighthsPerBar; e++ )
+		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 2600f, 0.8f),
+		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1100f, 0.7f),
+		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2000f, 0.75f),
+		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1400f, 0.8f),
+	};
+
+	/// <summary>One guitar note. Everything above funnels through here so the accent/energy
+	/// scaling (and the genre's mix trim) is applied in exactly one place.</summary>
+	void EmitGuitar( int tick, int durTicks, int midi, float vel, bool ring, int voices )
+	{
+		var (drive, cutEnv, reso) = RhythmGtrTone();
+		int dur = _time.SpanSamples( tick, durTicks );
+		double dec = _time.SpanSeconds( tick, durTicks ) * (ring ? 0.8 : 0.3);
+		RenderPatch( _time.TickToSample( tick ), dur, Midi( midi ), new Patch
 		{
-			bool accent = (e % 2) == 0;                    // downbeats ring, offbeats chug
-			float lenFrac = accent ? (1f - 0.5f * chug) : (0.35f - 0.2f * chug);
-			int dur = (int)(spe * Math.Max( 0.12f, lenFrac ));
-			double dec = secPerEighth * (accent ? 0.8 : 0.3);
-			foreach ( var m in notes )
-				RenderPatch( _time.TickToSample( barTick + (e) * Timing.TicksPerEighth ), dur, Midi( m ), new Patch
-				{
-					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance / notes.Length * (accent ? 1f : 0.7f),
-					Attack = 0.002f, Decay = dec, Sustain = accent ? 0.45f : 0f, Sustained = accent,
-					Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = 0.8f,   // twang
-					Drive = driveAmt, Pan = 0f,
-				} );
+			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
+			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * _midMul / Math.Max( 1, voices )
+				* NoteGain( tick, vel ),
+			Attack = 0.002f, Decay = dec, Sustain = ring ? 0.45f : 0f, Sustained = ring,
+			Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso,
+			Drive = drive, Pan = 0f,
+		} );
+	}
+
+	// ── Rock: a two-bar riff motif ──
+	// Placed hits that ring, not an every-eighth chug. RhythmGtrChug shortens the ringing hits
+	// toward a palm mute; the figure decides WHERE they are.
+	void RenderRiffBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
+	{
+		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
+		int root = ChordRoot( chord ) + 12;               // chunky register, an octave up
+		var degs = ChordDegrees( chord );
+		int triBase = _rootMidi + _keyShift + 12;
+		foreach ( var h in hits )
+		{
+			bool ring = h.Value != CompFigure.Mute;
+			if ( h.Value == CompFigure.Mute )
+			{
+				EmitGuitar( h.Tick, Math.Max( 1, (int)(h.SpanTicks * (0.5f - 0.25f * chug)) ),
+					root, h.Vel * 0.65f, false, 1 );
+				continue;
+			}
+			int len = (int)(h.SpanTicks * (h.Value == CompFigure.Ring ? 1f - 0.4f * chug : 0.45f));
+			foreach ( var d in degs )
+				EmitGuitar( h.Tick, Math.Max( 1, len ), ScaleMidi( triBase, d ), h.Vel, ring, degs.Length );
 		}
 	}
 
-	// ── Metal rhythm guitar — palm-muted 16th-note gallop on the low root with power-chord
-	// accents. The relentless 16th chug (under the double-kick) is the "fast riff" engine; the
-	// downbeats and a few syncopated stabs ring a full power chord. Heavy base distortion, dark
-	// and tight. rng (the rhythm stream) breaks up the accent placement so riffs vary by section.
-	void RenderMetalRiffBar( int barTick, int chord, Rng rng, Rng exprRng )
+	// ── Country: the "chick" ──
+	// A clean strum of the full voicing on the offbeats, over the bass's "boom". Bright, short
+	// and never distorted — the genre's bite comes from the twang, not from gain.
+	void RenderStrumBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
-		int spe = _time.Spe;
-		double secPerEighth = _time.SecPerEighth;
-		int root = ChordRoot( chord );                    // low, chunky — no octave bump
-		int[] power = { 0, 7, 12 };
-		int six = spe / 2;
-		if ( six <= 0 ) return;
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
-		float driveAmt = 4f + MathF.Max( 1f, _c.RhythmGtrDrive ); // heavy
-		for ( int s = 0; s < EighthsPerBar * 2; s++ )     // 16 sixteenths
+		int triBase = _rootMidi + _keyShift + 12;
+		var degs = ChordDegrees( chord );
+		foreach ( var h in hits )
 		{
-			int at = _time.TickToSample( barTick + (s * 0.5) * Timing.TicksPerEighth );   // 16 sixteenths on the swung grid
-			bool beat = s % 4 == 0;                        // quarter-note downbeats → ring a chord
-			bool ring = beat || (s % 2 == 0 && rng.Chance( 0.3f )); // some offbeat eighths ring too
-			int[] offs = ring ? power : new[] { 0 };       // accents = power chord, chugs = root only
-			float gain = ring ? 1f : 0.6f;
-			// Palm mute = short, tight; accents ring longer. Chug tightens the muted notes further.
-			int dur = (int)(six * (ring ? 0.9f : Math.Max( 0.25f, 0.55f - 0.3f * chug )));
-			double dec = secPerEighth * (ring ? 0.4 : 0.12);
-			foreach ( var o in offs )
-				RenderPatch( at, dur, Midi( root + o ), new Patch
-				{
-					Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance / offs.Length * gain,
-					Attack = 0.002f, Decay = dec, Sustain = ring ? 0.35f : 0f, Sustained = ring,
-					Cutoff = _c.RhythmGtrCutoff, CutEnv = 1100f, Reso = 0.7f,
-					Drive = driveAmt, Pan = 0f,
-				} );
+			int len = Math.Max( 1, (int)(h.SpanTicks * (0.7f - 0.4f * chug)) );
+			// A strum is not a block chord: the strings sound in sequence. A couple of ticks per
+			// string is enough for the ear to hear a pick moving across them.
+			for ( int i = 0; i < degs.Length; i++ )
+				EmitGuitar( h.Tick + i * 2, len, ScaleMidi( triBase, degs[i] ), h.Vel, true, degs.Length );
+		}
+	}
+
+	// ── Punk: downstrokes ──
+	// Every hit is the same hit, hard and short, one chord per bar. The genre's whole rhythmic
+	// idea is that nothing varies, so the only shaping is the accent pattern underneath.
+	void RenderDownstrokeBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
+	{
+		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
+		int root = ChordRoot( chord ) + 12;
+		var degs = ChordDegrees( chord );
+		int triBase = _rootMidi + _keyShift + 12;
+		foreach ( var h in hits )
+		{
+			int len = Math.Max( 1, (int)(h.SpanTicks * (0.85f - 0.35f * chug)) );
+			foreach ( var d in degs )
+				EmitGuitar( h.Tick, len, ScaleMidi( triBase, d ), h.Vel, true, degs.Length );
+		}
+	}
+
+	// ── Metal: the palm-muted gallop ──
+	// The figure is authored at the sixteenth. Muted cells are the low root with no chord at all;
+	// ring cells open into the power chord. That contrast IS the riff.
+	void RenderGallopBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
+	{
+		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
+		int root = ChordRoot( chord );                    // low, chunky — no octave bump
+		var degs = ChordDegrees( chord );
+		int triBase = _rootMidi + _keyShift;
+		foreach ( var h in hits )
+		{
+			if ( h.Value == CompFigure.Mute )
+			{
+				EmitGuitar( h.Tick, Math.Max( 1, (int)(h.SpanTicks * Math.Max( 0.25f, 0.55f - 0.3f * chug )) ),
+					root, h.Vel * 0.6f, false, 1 );
+				continue;
+			}
+			int len = Math.Max( 1, (int)(h.SpanTicks * 0.9f) );
+			foreach ( var d in degs )
+				EmitGuitar( h.Tick, len, ScaleMidi( triBase, d ), h.Vel, true, degs.Length );
 		}
 	}
 }

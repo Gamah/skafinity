@@ -24,8 +24,12 @@ public sealed partial class MusicGen
 
 	// Sequential planning pass: RNG composition + drum synthesis written straight into
 	// the buffer, while every pitched note is collected as an event (rendered later,
-	// possibly in parallel). RNG draw order is identical to the old inline render —
-	// RenderPatch now only enqueues, and it never pulled RNG anyway.
+	// possibly in parallel).
+	//
+	// EVERY GENRE PULLS THE SAME NUMBER OF VALUES out of this stream. A weighted draw is one
+	// Next() however the table is weighted, a genre with no second chordal voice still takes its
+	// figure draw, and the ska-only rolls (lead instrument, organ bubble, horn section) happen
+	// for everyone. A knob decides WHAT plays, never how many values the composer pulls.
 	void ComposePlan( string tag )
 	{
 		_events.Clear();
@@ -33,6 +37,7 @@ public sealed partial class MusicGen
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
 		_genre = Math.Clamp( _c.Genre, 0, GenreProfile.Count - 1 );
 		var prof = GenreProfile.For( _genre );
+		_prof = prof;
 		_chordBars = Math.Max( 1, prof.ChordBars );
 		_hornLead = prof.HornLead;
 		var rng = new Rng( _tag.ToLowerInvariant() );
@@ -41,45 +46,45 @@ public sealed partial class MusicGen
 		// draw so every genre pulls the same number of values here.
 		_fast = rng.Chance( _c.FastChance ) || prof.AlwaysFast;
 		int bpm = prof.DrawBpm( rng, _fast, _c.TempoScale );
-		_scale = rng.Pick( prof.Scales );
+		_scale = rng.PickWeighted( prof.Scales, prof.ScaleWeights );
 		_prog = rng.Pick( prof.Progressions );
+		// The song's chord vocabulary — a triad, a 7th, a sus, a bare power chord. Every chordal
+		// voice reads this one voicing, so the guitar and the keys agree about what the chord IS
+		// while still playing different rhythms.
+		_voicing = rng.PickWeighted( prof.Voicings, prof.VoicingWeights );
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
 		// Which horn/organ voice takes the ska lead, weighted by the config. Rolled for every
 		// genre so the draw count doesn't depend on the genre; only ska reads the result (the
 		// rest route the lead to a guitar in RenderLeadNote).
 		_lead = PickInstrument( rng );
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
-		_widthScale = Math.Clamp( _c.PanAmount, 0f, 1f );
+		_widthScale = Math.Clamp( _c.PanAmount * prof.Mix.Width * _c.GenreMix, 0f, 1f );
 		_drumPan = DrumPan * _widthScale;
 		_bassPat = rng.Pick( prof.BassPatterns );
-		_drumStyle = prof.DrawDrumStyle( rng, _fast );
+		_compFig = rng.Pick( prof.CompFigures );
+		// The second chordal voice's figure. Drawn even where the genre has none, so the genres
+		// that do have one are not the only ones consuming the value.
+		_keysFig = PickOrNull( rng, prof.KeysFigures );
+		_groove = prof.DrawGroove( rng );
+		// Metal's bass either pedals under the riff or doubles it; punk sometimes takes the same
+		// unison. Both are RELATIONAL, so this decides whether the bass reads the guitar's onsets
+		// at render time rather than which table it plays from.
+		_riffBass = rng.Chance( prof.RiffBassChance );
 		// Whether this song has an organ bubbling under the skank, and whether the horn section
 		// backs the lead. Both are ska arrangement choices the ORGAN BUBBLE / HORN SECTION knobs
 		// set the odds of; rolled for every genre for the same draw-count reason as the lead.
 		_organBubble = rng.Chance( _c.OrganBubbleChance );
 		_hasHorns = rng.Chance( _c.HornSectionChance );
-		// Meter is fixed up front — the time base is built further down (it needs the song's
-		// length), so anything sized in eighths before then counts them from the meter.
-		int eighthsPerBar = beatsPerBar * Timing.TicksPerBeat / Timing.TicksPerEighth;
-		_hornMask = new bool[eighthsPerBar];
-		_hornMask[0] = true;
-		for ( int e = 1; e < eighthsPerBar; e++ )
-			_hornMask[e] = rng.Chance( _c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f) );
+		_hornFig = HornFigure( rng, beatsPerBar );
 		// How much this song leans on the ride cymbal vs the closed hats for the main pulse.
-		// Every song can do both — each SECTION rolls its own choice against this preference
-		// (see RenderSection), so a song can hat the verse and ride the chorus. The lean is
-		// genre-biased (rock/metal ride more) and spread per song so some strongly prefer one.
-		// One rng.Next(), spread around the genre's own lean (rock/metal ride more).
+		// Every song can do both — each SECTION rolls its own choice against this preference.
 		_ridePref = prof.DrawRidePref( rng );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
 		_crashBrightLeft = rng.Chance( 0.5f );
-		// This song's backbeat kick personality — which off-beat eighths the kick leans into
-		// beyond the fixed beat-1 & 3 anchors. Only the straight backbeat (rock/country/fast
-		// ska) reads it; drawn last so it shifts no earlier choice.
-		_kickAccents = rng.Pick( BackbeatKickAccents );
 
 		// Swing is the genre's own feel, drawn per song from its band exactly the way tempo is —
-		// not a knob, so a reroll can never hand metal a shuffle.
+		// not a knob, so a reroll can never hand metal a shuffle. Ska and country may instead
+		// draw a genuine 2:1 triplet shuffle, which is a different feel rather than more swing.
 		float swing = prof.DrawSwing( rng, _fast );
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
@@ -88,45 +93,120 @@ public sealed partial class MusicGen
 		// kit timing bias (− = ahead/push, + = behind/lay back; 0.5 = dead on).
 		float dt = Math.Clamp( _c.DrumTone, 0f, 1f );
 		_drumTone = dt;
-		// Gentle gain lean (neutral at 0.5 so the balanced kit is untouched there); the
-		// bulk of the toms↔cymbals bias now comes from what the part actually plays.
-		_drumLowMul = 1.2f - 0.4f * dt;
-		_drumHighMul = 0.7f + 0.6f * dt;
+		// Gentle gain lean (neutral at 0.5 so the balanced kit is untouched there), then the
+		// genre's own mix trim on top: metal dry and mid-scooped, pop bright, country centred.
+		_drumLowMul = (1.2f - 0.4f * dt) * MixTrim( prof.Mix.Low );
+		_drumHighMul = (0.7f + 0.6f * dt) * MixTrim( prof.Mix.High );
+		_midMul = MixTrim( prof.Mix.Mid );
 		int drumPush = (int)Math.Round( (0.5f - Math.Clamp( _c.DrumDrive, 0f, 1f )) * 2f * 0.13f * spe );
 
 		// Lay out the structure first — the time base is built over the song's full tick span,
-		// so it has to know how long the song is.
-		var structure = BuildStructure();
-		int totalBars = 0;
-		foreach ( var p in structure ) totalBars += p.Bars;
+		// so it has to know how long the song is, and the sections carry the tempo curve.
+		var structure = BuildStructure( _genre );
+		_sectionStart = new int[structure.Count];
+		int totalTicks = 0;
+		for ( int si = 0; si < structure.Count; si++ )
+		{
+			_sectionStart[si] = totalTicks;
+			totalTicks += SectionTicks( structure[si], beatsPerBar );
+		}
 
 		// The time base the whole band shares from here on. Ticks are the grid; the swing is a
-		// warp applied on the way out to samples, not a quantisation.
-		int totalTicks = totalBars * beatsPerBar * Timing.TicksPerBeat;
-		_time = new Timing( beatsPerBar, totalTicks, spe / (double)Timing.TicksPerEighth,
+		// warp applied on the way out to samples, not a quantisation; and the per-tick delta
+		// carries the tempo CURVE — each section's own tempo, plus the ritard over the final
+		// bars (a song that just stops reads as a loop point, not an ending).
+		double baseDelta = spe / (double)Timing.TicksPerEighth;
+		int ritardTicks = Math.Min( totalTicks / 2, 2 * beatsPerBar * Timing.TicksPerBeat );
+		int ritardFrom = Math.Max( 0, totalTicks - ritardTicks );
+		var delta = new double[totalTicks + 2];
+		for ( int t = 0; t < delta.Length; t++ )
+		{
+			float mul = structure[SectionAt( t, structure.Count )].TempoMul;
+			double d = baseDelta / Math.Max( 0.5f, mul );
+			if ( t > ritardFrom && ritardTicks > 0 )
+				d *= 1.0 + RitardAmount * (t - ritardFrom) / (double)ritardTicks;
+			delta[t] = d;
+		}
+		_time = new Timing( beatsPerBar, totalTicks, t => delta[Math.Min( t, delta.Length - 1 )],
 			swing, drumPush, _sr );
 
-		// Size to the structure plus a ring-out tail, so the ending's final chord and the
-		// reverb decay into real silence past the last bar rather than being cut off.
-		int structured = _time.SamplesForTicks( totalTicks );
-		int total = structured + (int)(_sr * RingOutTail);
+		// Size to the structure plus a ring-out tail. The tail grows with the ritard — it is a
+		// fixed number of SECONDS at the song's nominal tempo, and by the last bar the song is
+		// running slower than that, so a constant tail would be outrun by its own ending.
+		int total = _time.TotalSamples + (int)(_sr * RingOutTail * (1f + RitardAmount));
 		_bufL = new float[total];
 		_bufR = new float[total];
 
-		int barCursor = 0;
 		for ( int si = 0; si < structure.Count; si++ )
+			RenderSection( structure[si], si, _sectionStart[si], beatsPerBar,
+				si + 1 < structure.Count ? structure[si + 1] : structure[si] );
+	}
+
+	/// <summary>How much slower the song's final bars run than its nominal tempo.</summary>
+	const double RitardAmount = 0.22;
+
+	/// <summary>Length of a section in ticks, honouring any anomalous (short) bars.</summary>
+	static int SectionTicks( in Part p, int beatsPerBar )
+	{
+		int ticks = 0;
+		for ( int bar = 0; bar < p.Bars; bar++ )
+			ticks += BarBeats( p, bar, beatsPerBar ) * Timing.TicksPerBeat;
+		return ticks;
+	}
+
+	/// <summary>Beats in one bar of a section. Normally the song's meter; a section may name a
+	/// short bar (Biamonte's "anomalous measure" — a 2/4 inside a 4/4 context), which is how a
+	/// transition can cut a beat rather than politely filling the bar.</summary>
+	static int BarBeats( in Part p, int bar, int beatsPerBar )
+		=> p.BarBeats != null && bar < p.BarBeats.Length ? Math.Max( 1, p.BarBeats[bar] ) : beatsPerBar;
+
+	/// <summary>Which section a tick falls in.</summary>
+	int SectionAt( int tick, int count )
+	{
+		for ( int i = count - 1; i >= 0; i-- )
+			if ( tick >= _sectionStart[i] ) return i;
+		return 0;
+	}
+
+	/// <summary>Draw a figure from a table that may not exist for this genre. The draw is taken
+	/// either way — see the draw-count rule on <see cref="ComposePlan"/>.</summary>
+	static Pattern PickOrNull( Rng rng, Pattern[] table )
+	{
+		int i = rng.Int( Math.Max( 1, table?.Length ?? 1 ) );
+		return table == null || table.Length == 0 ? null : table[Math.Min( i, table.Length - 1 )];
+	}
+
+	/// <summary>The horn section's figure: a TWO-BAR call and response. The mask used to be eight
+	/// slots reused for the whole song, so the section played the identical stab pattern in every
+	/// bar of every chorus; bar 2 answering bar 1 is the actual ska convention, and it is what a
+	/// pattern with its own length buys.</summary>
+	Pattern HornFigure( Rng rng, int beatsPerBar )
+	{
+		int per = beatsPerBar * Timing.TicksPerBeat / Timing.TicksPerEighth;
+		var call = new int[per];
+		call[0] = CompFigure.Stab;
+		for ( int e = 1; e < per; e++ )
+			call[e] = rng.Chance( _c.HornDensity * (e % 2 == 1 ? 1.3f : 0.5f) )
+				? CompFigure.Stab : Harmony.Rest;
+
+		// The answer is the call displaced by a beat and opened up: it lands where the call left
+		// space, and pushes into the next bar on the last eighth.
+		var cells = new int[per * 2];
+		for ( int e = 0; e < per; e++ )
 		{
-			var part = structure[si];
-			RenderSection( part, si, barCursor * _time.BarTicks );
-			barCursor += part.Bars;
+			cells[e] = call[e];
+			cells[per + e] = call[(e + 2) % per];
 		}
+		cells[per] = Harmony.Rest;                 // the answer holds off the downbeat…
+		cells[per * 2 - 1] = CompFigure.Stab;      // …and pushes into the next call
+		return Pattern.Eighths( cells );
 	}
 
 	// Render one section. Each voice gets its own per-section RNG stream keyed so that repeats
 	// of a section type reproduce identical backing, while the lead key folds in the verse
 	// index (so the Nth verse's lead differs) and the fill key folds in the absolute section
 	// index (so every section closes with a unique fill).
-	void RenderSection( Part part, int absIndex, int sectionTick )
+	void RenderSection( Part part, int absIndex, int sectionTick, int beatsPerBar, Part next )
 	{
 		string bk = SectionKey( part.Type );
 		string lk = part.Type == Section.Verse ? $"verse:{part.VerseIndex}" : bk;
@@ -141,120 +221,187 @@ public sealed partial class MusicGen
 		var exprRng = new Rng( $"{_tag}:expr:{lk}" );
 		var noise = new Rng( $"{_tag}:drums:{bk}" );
 		// Hats vs ride is decided per section off its own stream (keyed by section TYPE, so every
-		// chorus rides-or-hats the same, but a verse can differ). Rolled against the song's
-		// _ridePref — independent stream, so it disturbs no other voice's draws.
+		// chorus rides-or-hats the same, but a verse can differ).
 		_ride = new Rng( $"{_tag}:ride:{bk}" ).Chance( _ridePref );
 		var fillRng = new Rng( $"{_tag}:fill:{absIndex}" );
 		var fillNoise = new Rng( $"{_tag}:fillnoise:{absIndex}" );
 
+		// ── the section's own state ──
+		// Everything below here reads these rather than asking "am I in a verse?": the energy
+		// contour, the half/double-time feel, the metric displacement, and the key.
+		_sectionTick = sectionTick;
+		_energy = Math.Clamp( part.Energy, 0f, 1f );
+		_feel = part.Feel;
+		_displace = part.Displace;
+		_keyShift = part.KeyShift;
+
 		bool isIntro = part.Type == Section.Intro;
 		bool isEnding = part.Type == Section.Ending;
+		// A fill that runs a whole bar or two has to be going somewhere: into a chorus, or out of
+		// a breakdown. Everywhere else it stays a beat or two.
+		bool bigBoundary = next.Type == Section.Chorus || part.Type == Section.Breakdown
+			|| part.Type == Section.PreChorus;
+
+		// ── the section's bar layout and its closing fill ──
+		// Bars are laid out first because a fill may be longer than the bar it lands in: it is
+		// planned once, in ticks, and the KIT stops where it begins. The melodic voices play
+		// through it, the way a band does — only the drums hand over.
+		var barStart = new int[part.Bars];
+		var barLen = new int[part.Bars];
+		int cursor = sectionTick;
+		for ( int bar = 0; bar < part.Bars; bar++ )
+		{
+			barLen[bar] = BarBeats( part, bar, beatsPerBar ) * Timing.TicksPerBeat;
+			barStart[bar] = cursor;
+			cursor += barLen[bar];
+		}
+
+		// The ending's fill moves one bar earlier so it sets up the final hit instead of pushing
+		// past the end into nothing.
+		int fillBar = isEnding ? part.Bars - 2 : part.Bars - 1;
+		int fillFrom = int.MaxValue, fillTo = 0;
+		if ( fillBar >= 0 && fillRng.Chance( _c.FillChance ) )
+		{
+			fillTo = barStart[fillBar] + barLen[fillBar];
+			fillFrom = Math.Max( sectionTick, FillStart( barStart[fillBar], barLen[fillBar], bigBoundary, fillRng ) );
+		}
 
 		for ( int bar = 0; bar < part.Bars; bar++ )
 		{
+			int barTick = barStart[bar];
+			int barTicks = barLen[bar];
+			_barTick = barTick;
+
 			// Harmonic rhythm is the genre's (GenreProfile.ChordBars): 2 bars/chord is the
 			// reggae-rock norm, while punk and pop take 1 so the four-chord loop IS the four-bar
 			// hypermeasure.
 			//
 			// nextChord is the NEXT BAR's chord, not the next slot's: with 2 bars/chord the first
 			// of the pair does not change harmony, and a bass approach note walking into a chord
-			// that is still a bar away just lands wrong. Equal chords is how the bass knows to
-			// stay put (see RenderBassBar). At a section's last bar this rolls back to slot 0,
-			// which is where the next section starts.
+			// that is still a bar away just lands wrong.
 			int chord = (bar / _chordBars) % _prog.Length;
 			int nextChord = ((bar + 1) / _chordBars) % _prog.Length;
-			int barTick = sectionTick + bar * _time.BarTicks;
 
 			// The ending lands on a held tonic chord that rings out — the band stops on the
 			// "one", it doesn't roll forward as if looping. The bar before it fills to lead in.
 			if ( isEnding && bar == part.Bars - 1 )
 			{
 				RenderEnding( barTick, noise );
-				continue;
+				break;
 			}
-			// Every section's last bar fills; for the ending that fill moves one bar earlier so
-			// it sets up the final hit instead of pushing past the end into nothing.
-			bool lastBar = bar == part.Bars - 1 || (isEnding && bar == part.Bars - 2);
 
-			// Intro build-in: rather than slamming in at full band (which reads as looping back
-			// into the middle of the song), the voices enter a layer at a time — bass + drums
-			// lay down the groove first, then the chordal voice, then the horns/lead on top. The
-			// thresholds are derived from the intro length (not hardcoded bar numbers) so the build
-			// always spans the whole intro and can't silently collapse if part.Bars changes: the
-			// chord enters a quarter of the way in, the top half-way. (4-bar intro ⇒ bars 1 and 2.)
+			// The cadential regrouping: over a hemiola section's last two bars the chordal voice
+			// swaps its figure for one whose length does not divide the bar, so the comp and the
+			// bar line pull apart on the way into the next section.
+			bool hemiola = part.Hemiola && bar >= part.Bars - 2;
+
+			// Intro build-in: rather than slamming in at full band, the voices enter a layer at a
+			// time — bass + drums first, then the chordal voice, then the horns/lead on top. The
+			// thresholds are derived from the intro length so the build always spans it.
 			bool playChord = !isIntro || bar >= part.Bars / 4;
-			bool playTop = !isIntro || bar >= part.Bars / 2;
+			bool playTop = (!isIntro || bar >= part.Bars / 2) && _energy > 0.32f;
 
-			RenderBassBar( barTick, chord, nextChord, bassRng, bassOrn, exprRng );
-			if ( playChord )
-				switch ( _genre )
-				{
-					case 1: // rock: keys comp + power-chord guitar
-					case 2: // country: honky-tonk piano comp + strummed twang guitar
-						RenderKeysBar( barTick, chord, keysRng, exprRng );
-						RenderRhythmGuitarBar( barTick, chord, rhythmRng, exprRng );
-						break;
-					case 3: // metal: palm-muted gallop riff carries the bar
-						RenderMetalRiffBar( barTick, chord, rhythmRng, exprRng );
-						break;
-					case 4: // punk: lean — power-chord guitar carries it, no keys
-						RenderRhythmGuitarBar( barTick, chord, rhythmRng, exprRng );
-						break;
-					case 5: // pop: synth comp (the keys voice, run clean + bright)
-						RenderKeysBar( barTick, chord, keysRng, exprRng );
-						break;
-					default: // ska: skank chop + horn stabs
-						RenderRhythmBar( barTick, chord, rhythmRng, exprRng );
-						if ( _hasHorns && playTop )
-							RenderHornStabs( barTick, chord, hornRng, exprRng );
-						break;
-				}
-			RenderDrumBar( barTick, lastBar, noise, fillRng, fillNoise );
+			// RENDER ORDER. Where the bass follows the riff it has to know what the riff played,
+			// so the chordal voice goes first and the bass reads its onsets. Everywhere else the
+			// bass leads, as it always has.
+			_riffOnsets.Clear();
+			if ( _riffBass && playChord )
+			{
+				RenderComp( barTick, barTicks, chord, rhythmRng, keysRng, exprRng, hemiola );
+				RenderBassBar( barTick, barTicks, chord, nextChord, bassRng, bassOrn, exprRng );
+			}
+			else
+			{
+				RenderBassBar( barTick, barTicks, chord, nextChord, bassRng, bassOrn, exprRng );
+				if ( playChord )
+					RenderComp( barTick, barTicks, chord, rhythmRng, keysRng, exprRng, hemiola );
+			}
 
-			// No lead in the ending: a lead phrase starts every two bars and runs ~two bars, so in
-			// the short outro it spilled melody notes across the held final chord — the band has
-			// already resolved and stopped, so the lead must too (it read as "random notes after
-			// the hold"). The ending is just the fill bar → the ringing tonic.
-			if ( playTop && bar % 2 == 0 && !isEnding )
-				RenderLeadPhrase( barTick, chord, leadRng, exprRng );
+			if ( _hornLead && _hasHorns && playTop )
+				RenderHornStabs( barTick, barTicks, chord, hornRng, exprRng );
+
+			RenderDrumBar( barTick, barTicks, fillFrom, noise );
+
+			// No lead in the ending: the band has already resolved, so the lead must too.
+			if ( playTop && !isEnding && bar % Math.Max( 1, _prof.LeadPhraseBars ) == 0 )
+				RenderLeadPhrase( barTick, barTicks, chord, leadRng, exprRng );
 		}
+
+		// The fill, once, wherever it started — a beat, or the two bars before a final chorus.
+		if ( fillTo > 0 ) RenderFill( fillFrom, fillTo, fillNoise, fillRng );
+	}
+
+	/// <summary>The chordal layer: the genre's main comp figure, plus its keys/piano/synth voice
+	/// where it has one. Which of them plays what is <see cref="CompStyle"/>'s business.</summary>
+	void RenderComp( int barTick, int barTicks, int chord, Rng rhythmRng, Rng keysRng, Rng exprRng,
+		bool hemiola )
+	{
+		int to = barTick + barTicks;
+		var fig = hemiola ? CompFigure.Hemiola : _compFig;
+		RenderCompVoice( barTick, to, chord, fig, rhythmRng, exprRng );
+		if ( _prof.Keys != KeysStyle.None && _keysFig != null && _energy > 0.35f )
+			RenderKeysVoice( barTick, to, chord, keysRng, exprRng );
 	}
 
 	// The song's final downbeat. The whole band resolves home to the tonic on the "one" and
 	// lets the chord ring out into the tail RingOutTail reserved — a landing, not a turnaround.
-	// The previous bar's fill (see RenderSection) leads in and its terminal crash lands right
-	// here, so the ending itself only adds the kick + the sustained, decaying chord.
+	// The previous bar's fill leads in and its terminal crash lands right here, so the ending
+	// itself only adds the kick + the sustained, decaying chord.
 	void RenderEnding( int barTick, Rng noise )
 	{
 		int at = _time.TickToSample( barTick );
 		RenderKick( at, noise );
 
 		// Resolve to the progression's tonic (slot 0) wherever the chord cycle happened to
-		// land, and ring it with a natural exponential tail (Sustained = false) long enough to
-		// bloom into the reserved tail room. A held triad up top + the root an octave below.
+		// land, and ring it with a natural exponential tail (Sustained = false). The voicing is
+		// the song's own, so a ska song ends on its 9th and a metal song on a bare fifth.
 		int dur = (int)(_sr * RingOutTail * 0.92f);
-		int baseMidi = _rootMidi + 19;
-		int[] degs = { _prog[0], _prog[0] + 2, _prog[0] + 4, _prog[0] + 7 };
-		foreach ( var d in degs )
+		int baseMidi = _rootMidi + _keyShift + 19;
+		foreach ( var d in _voicing )
 		{
 			var pad = new Patch
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = 0.7f / degs.Length, Attack = 0.006f, Decay = 1.2,
+				Amp = 0.7f / _voicing.Length * _midMul, Attack = 0.006f, Decay = 1.2,
 				Sustain = 0f, Sustained = false,
 				Cutoff = _c.SkankCutoff, CutEnv = 700f, Reso = 0.8f,
 				Drive = _genre == 3 ? 3.5f : 1.3f, Pan = 0f,
 			};
-			RenderPatch( at, dur, Midi( ScaleMidi( baseMidi, d ) ), pad );
+			RenderPatch( at, dur, Midi( ScaleMidi( baseMidi, _prog[0] + d ) ), pad );
 		}
 		var low = new Patch
 		{
 			Osc = 3, Voices = 2, Detune = _c.Detune * 0.4f,
-			Amp = _c.BassVol * _c.BassBalance, Attack = 0.004f, Decay = 1.4,
+			Amp = _c.BassVol * _c.BassBalance * MixTrim( _prof.Mix.Low ), Attack = 0.004f, Decay = 1.4,
 			Sustain = 0f, Sustained = false,
 			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive, Pan = 0f,
 		};
 		RenderPatch( at, dur, Midi( ChordRoot( 0 ) ), low, mono: true );
 	}
+
+	// ── dynamics ──
+	// Velocity as a first-class value: the pattern cell's own weight, times where the note falls
+	// in the bar (the genre's accent pattern), times the section's energy. Every voice scales its
+	// level through here rather than inventing its own — a per-patch constant with two ad-hoc
+	// exceptions was the flat, mechanical tell that survived every rhythmic fix.
+	float NoteGain( int tick, float vel ) => vel * MetricGain( tick ) * EnergyGain( 0.35f );
+
+	/// <summary>The genre's accent weight for where <paramref name="tick"/> falls in the bar.</summary>
+	float MetricGain( int tick )
+	{
+		int bar = _time.BarTicks;
+		int rel = ((tick - _barTick) % bar + bar) % bar;
+		if ( rel == 0 ) return _prof.AccentDown;
+		if ( rel % Timing.TicksPerBeat != 0 ) return _prof.AccentOff;
+		return (rel / Timing.TicksPerBeat) % 2 == 1 ? _prof.AccentBack : 1f;
+	}
+
+	/// <summary>Section energy as a gain. <paramref name="depth"/> is how much this voice cares:
+	/// 0 = plays at full level in a breakdown, 1 = disappears entirely.</summary>
+	float EnergyGain( float depth ) => 1f - depth * (1f - _energy);
+
+	/// <summary>A genre mix trim, scaled by the runtime GENRE MIX amount so the whole per-genre
+	/// mix can be dialled back (or off) from skafinity.config.json without a rebuild.</summary>
+	float MixTrim( float trim ) => 1f + (trim - 1f) * Math.Clamp( _c.GenreMix, 0f, 2f );
 }

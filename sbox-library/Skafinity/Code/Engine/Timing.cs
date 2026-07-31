@@ -65,9 +65,19 @@ sealed class Timing
 
 	/// <param name="totalTicks">Length of the song in ticks. The accumulator is built once over
 	/// this span.</param>
-	/// <param name="samplesPerTick">Sample delta per tick. A constant today; the accumulator
-	/// exists so this can become a per-tick value.</param>
+	/// <param name="samplesPerTick">Sample delta per tick — one tempo for the whole song.</param>
 	public Timing( int beatsPerBar, int totalTicks, double samplesPerTick, float swing,
+		int drumPush, int sampleRate, int[] beatGrouping = null )
+		: this( beatsPerBar, totalTicks, _ => samplesPerTick, swing, drumPush, sampleRate, beatGrouping )
+	{ }
+
+	/// <summary>The tempo-curve constructor: the per-tick sample delta is a FUNCTION of the tick.
+	/// This is what the accumulator was built for — a per-section tempo and an ending ritard are
+	/// both just a delta that varies as the loop runs, so neither needs anything rewritten and
+	/// neither can drift, because every later position is accumulated from the one before it.
+	/// </summary>
+	/// <param name="samplesPerTickAt">Sample delta to use for the tick passed in.</param>
+	public Timing( int beatsPerBar, int totalTicks, Func<int, double> samplesPerTickAt, float swing,
 		int drumPush, int sampleRate, int[] beatGrouping = null )
 	{
 		BeatsPerBar = beatsPerBar;
@@ -75,7 +85,6 @@ sealed class Timing
 		Swing = swing;
 		DrumPush = drumPush;
 		SampleRate = sampleRate;
-		_secPerTick = samplesPerTick / sampleRate;
 
 		BeatGrouping = beatGrouping ?? Uniform( beatsPerBar );
 
@@ -85,8 +94,9 @@ sealed class Timing
 		for ( int i = 0; i < _tickSample.Length; i++ )
 		{
 			_tickSample[i] = at;
-			at += samplesPerTick;   // ← the per-tick delta a tempo curve would vary
+			at += samplesPerTickAt( i );   // ← the per-tick delta a tempo curve varies
 		}
+		_secPerTick = (_tickSample[1] - _tickSample[0]) / sampleRate;
 	}
 
 	static int[] Uniform( int beats )
@@ -151,9 +161,24 @@ sealed class Timing
 		return (int)Math.Round( a + frac * (b - a) );
 	}
 
-	/// <summary>Length in samples of a span of <paramref name="ticks"/> ticks. A duration, not a
-	/// position — it carries no swing.</summary>
+	/// <summary>Length in samples of a span of <paramref name="ticks"/> ticks at the song's
+	/// NOMINAL tempo. A duration, not a position — it carries no swing.</summary>
 	public int SamplesForTicks( double ticks ) => (int)Math.Round( ticks * SamplesPerTick );
+
+	/// <summary>Length in samples of a span of <paramref name="ticks"/> ticks starting at
+	/// <paramref name="fromTick"/> — measured through the accumulator, so it follows a section
+	/// tempo or a ritard instead of assuming the song's opening speed. Note LENGTHS use this;
+	/// <see cref="SamplesForTicks(double)"/> remains for spans with no position.</summary>
+	public int SpanSamples( int fromTick, double ticks )
+		=> Math.Max( 1, TickToSample( fromTick + ticks ) - TickToSample( fromTick ) );
+
+	/// <summary>As <see cref="SpanSamples"/>, in seconds — the unit the synth's decay times are
+	/// expressed in.</summary>
+	public double SpanSeconds( int fromTick, double ticks ) => SpanSamples( fromTick, ticks ) / (double)SampleRate;
+
+	/// <summary>Total length of the song in samples, read off the finished accumulator (so a song
+	/// that slows down at the end is sized for the slowdown rather than clipped by it).</summary>
+	public int TotalSamples => (int)Math.Round( _tickSample[^1] );
 
 	/// <summary>Length in seconds of a span of <paramref name="ticks"/> ticks.</summary>
 	public double SecondsForTicks( double ticks ) => ticks * _secPerTick;
@@ -161,10 +186,6 @@ sealed class Timing
 	/// <summary>The nominal per-tick sample delta. Durations use this; positions go through the
 	/// accumulator so they stay correct if tempo ever varies.</summary>
 	public double SamplesPerTick => _tickSample[1] - _tickSample[0];
-
-	/// <summary>Eighth-note cells in a bar. Pattern tables are still authored one cell per
-	/// eighth; this is what maps such a table onto the bar.</summary>
-	public int EighthsPerBar => BarTicks / TicksPerEighth;
 
 	/// <summary>Samples in an eighth note — the unit most durations are still expressed in.</summary>
 	public int Spe => SamplesForTicks( TicksPerEighth );

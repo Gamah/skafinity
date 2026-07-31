@@ -5,152 +5,308 @@ using static Skafinity.Osc;
 
 namespace Skafinity;
 
-// The kit's patterns: which drum lands where. The per-song groove, the backbeat kick
-// accents, and the phrase-end fill.
+/// <summary>
+/// One drum groove: what the kick, the snare and the cymbal play.
+///
+/// Grooves used to be five cases in a <c>switch</c>, and rock, country AND punk all resolved to
+/// the same <c>default</c> straight backbeat — three of six genres playing identical drums under
+/// different guitars. A groove is a set of patterns now, the same way harmony is a set of
+/// tables, and each genre draws from its own.
+///
+/// Cell values: the kick has none (an onset is a kick). A snare cell is 0 for a hit and
+/// <see cref="Ghost"/> for a ghost note. A cymbal cell is 0 for the closed/bow articulation and
+/// <see cref="Open"/> for the open hat / ride bell — which of the two instruments plays is the
+/// section's hats-or-ride roll, not the groove's business.
+/// </summary>
+sealed class DrumGroove
+{
+	public const int Ghost = 1;
+	public const int Open = 1;
+
+	public string Name { get; init; }
+	public Pattern Kick { get; init; }
+	public Pattern Snare { get; init; }
+	public Pattern Cymbal { get; init; }
+
+	/// <summary>Extra ghost-note propensity on top of what the pattern names — the "busy" layer's
+	/// scaling factor for this groove.</summary>
+	public float GhostRate { get; init; } = 1f;
+
+	/// <summary>Chance of a crash on the section's first downbeat.</summary>
+	public float CrashOnOne { get; init; } = 0.35f;
+
+	const int R = Harmony.Rest;
+	static Pattern E( params int[] c ) => Pattern.Eighths( c );
+	static Pattern S( params int[] c ) => Pattern.Sixteenths( c );
+
+	// ── Ska ──
+	public static readonly DrumGroove[] Ska =
+	{
+		new()
+		{
+			Name = "one drop",
+			// The one drop: nothing on beat 1 at all. Kick and snare land together on beat 3, and
+			// the space where the downbeat should be is the whole point of the feel.
+			Kick = E( R, R, R, R, 0, R, R, R ),
+			Snare = E( R, R, Ghost, R, 0, R, R, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, Open ),
+			GhostRate = 0.8f, CrashOnOne = 0.25f,
+		},
+		new()
+		{
+			Name = "steppers",
+			// Steppers: a kick on every beat — the four-to-the-floor of reggae, and what a ska
+			// song reaches for when it wants to drive rather than lope.
+			Kick = E( 0, R, 0, R, 0, R, 0, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, Open ),
+		},
+	};
+
+	// ── Rock ──
+	public static readonly DrumGroove[] Rock =
+	{
+		new()
+		{
+			Name = "backbeat",
+			// Two bars, because a rock backbeat that is byte-identical every bar is a drum
+			// machine. Bar 2 pushes the kick into the "and of 3".
+			Kick = E( 0, R, R, R, 0, R, R, R,
+			          0, R, R, 0, 0, R, R, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R,
+			           R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, Open ),
+		},
+		new()
+		{
+			Name = "driving eights",
+			Kick = E( 0, R, R, 0, 0, R, R, R,
+			          0, R, R, 0, 0, R, 0, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R,
+			           R, R, 0, R, R, R, 0, Ghost ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 1.2f,
+		},
+	};
+
+	// ── Country ──
+	public static readonly DrumGroove[] Country =
+	{
+		new()
+		{
+			Name = "train beat",
+			// The train beat: a constant running snare, ghosted everywhere except the backbeat,
+			// which is the sound of country drumming and did not exist in this engine at all.
+			Kick = E( 0, R, R, R, 0, R, R, R ),
+			Snare = S( Ghost, Ghost, Ghost, Ghost, 0, Ghost, Ghost, Ghost,
+			           Ghost, Ghost, Ghost, Ghost, 0, Ghost, Ghost, Ghost ),
+			Cymbal = E( 0, R, 0, R, 0, R, 0, R ),
+			GhostRate = 0.6f, CrashOnOne = 0.2f,
+		},
+		new()
+		{
+			Name = "two beat",
+			// The other country feel: a two-beat "boom-chick" where the kit gets out of the way
+			// of the bass and the guitar entirely.
+			Kick = E( 0, R, R, R, 0, R, R, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, R, 0, R, 0, R, 0, Open ),
+			GhostRate = 0.5f, CrashOnOne = 0.15f,
+		},
+	};
+
+	// ── Metal ──
+	public static readonly DrumGroove[] Metal =
+	{
+		new()
+		{
+			Name = "double kick",
+			Kick = S( 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ),
+			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0f, CrashOnOne = 0.55f,
+		},
+		new()
+		{
+			Name = "thrash",
+			// Kick on every eighth under a snare that answers it — faster to read than the
+			// double-kick wall, and it leaves the snare somewhere to go.
+			Kick = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			Snare = E( R, R, 0, R, R, R, 0, 0 ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0.3f, CrashOnOne = 0.5f,
+		},
+	};
+
+	// ── Punk ──
+	public static readonly DrumGroove[] Punk =
+	{
+		new()
+		{
+			Name = "eighth drive",
+			// The punk engine: eighth-note ride/snare drive at speed. It is not a backbeat with
+			// the tempo turned up — the cymbal hand never stops and the kick pushes every beat.
+			Kick = E( 0, R, 0, R, 0, R, 0, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0.4f, CrashOnOne = 0.45f,
+		},
+		new()
+		{
+			Name = "d-beat",
+			Kick = E( 0, R, R, 0, R, 0, R, R,
+			          0, R, R, 0, R, 0, R, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R,
+			           R, R, 0, R, R, R, 0, Ghost ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0.5f, CrashOnOne = 0.5f,
+		},
+	};
+
+	// ── Pop ──
+	public static readonly DrumGroove[] Pop =
+	{
+		new()
+		{
+			Name = "four on the floor",
+			Kick = E( 0, R, 0, R, 0, R, 0, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, Open, 0, Open, 0, Open, 0, Open ),
+			GhostRate = 0.5f, CrashOnOne = 0.3f,
+		},
+		new()
+		{
+			Name = "half-time backbeat",
+			// The other modern pop feel: the backbeat falls on 3 alone, which halves the pulse
+			// without touching the tempo.
+			Kick = E( 0, R, R, 0, R, R, 0, R ),
+			Snare = E( R, R, R, R, 0, R, R, R ),
+			Cymbal = S( 0, R, 0, 0, 0, R, 0, 0, 0, R, 0, 0, 0, R, 0, Open ),
+			GhostRate = 0.7f, CrashOnOne = 0.35f,
+		},
+	};
+}
+
+// The kit's patterns: which drum lands where. The per-song groove, the section's energy, and
+// the phrase-end fill.
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
 public sealed partial class MusicGen
 {
 	// ── Drums ──
-	// Render a bar of kit. On a section's last bar (fillEnd) the closing beat is replaced by a
-	// fill — driven by its own RNG streams so every section's fill is different even when the
-	// groove before it is identical.
-	void RenderDrumBar( int barTick, bool fillEnd, Rng noise, Rng fillRng, Rng fillNoise )
+	// Render one bar of kit off the song's groove. `fillTick` is where a fill takes over (the
+	// bar's end tick if there is none), so the groove simply stops there and the fill owns the
+	// rest — which is what lets a fill be anything from one beat to two bars.
+	void RenderDrumBar( int barTick, int barTicks, int fillTick, Rng noise )
 	{
-		int spe = _time.Spe;
 		// Knob ceiling was too frantic: scale so DRUM BUSY 100% reads as the old 75%.
-		float busy = Math.Clamp( _c.DrumBusy, 0f, 1f ) * 0.75f;
-		int six = spe / 2;
-		int hatEnd = fillEnd ? 6 : EighthsPerBar;         // hats stop where the fill begins
+		float busy = Math.Clamp( _c.DrumBusy, 0f, 1f ) * 0.75f * _groove.GhostRate;
+		int to = Math.Min( barTick + barTicks, fillTick );
+		if ( to <= barTick ) return;
 
-		// closed hats on eighths (open on the "and of 4"); busy fills the gaps with
-		// quieter sixteenth-note hats (constant 16th chatter at the top of the range). On
-		// ride songs the ride cymbal carries the eighth pulse instead (bell on the beats), with
-		// the open hat still punctuating the "and of 4".
-		for ( int e = 0; e < hatEnd; e++ )
+		// The cymbal hand. Which instrument it is was decided per section (_ride); the groove
+		// only says where the hits land and which are "open". A thin section drops the offbeat
+		// cymbal entirely rather than playing quieter — that is what makes a verse read as a
+		// verse and a breakdown as a breakdown.
+		bool sparse = _energy < 0.4f;
+		foreach ( var h in _groove.Cymbal.Slice( barTick, to, _sectionTick, _feel ) )
 		{
-			int at = _time.TickToSample( barTick + (e) * Timing.TicksPerEighth );
-			// Pop pumps an open hat on every offbeat (the classic four-on-the-floor "ts-ts-ts");
-			// every other style opens only on the "and of 4".
-			bool open = e == 7 || (_drumStyle == 4 && e % 2 == 1);
-			float amp = e % 2 == 1 ? _c.HatVol : _c.HatVol * 0.6f;
-			if ( _ride && !open )
-				RenderRide( at, e % 2 == 0, amp, noise );    // bell accent on the downbeats
-			else
-				RenderHat( at, open, amp, noise );
-			if ( !open && six > 0 && noise.Chance( busy ) )
+			bool onBeat = (h.Tick - barTick) % Timing.TicksPerBeat == 0;
+			if ( sparse && !onBeat ) continue;
+			int at = _time.TickToSample( h.Tick );
+			bool open = h.Value == DrumGroove.Open;
+			float amp = _c.HatVol * h.Vel * (onBeat ? 1f : 0.75f) * EnergyGain( 0.55f );
+			if ( _ride && !open ) RenderRide( at, onBeat, amp, noise );
+			else RenderHat( at, open, amp, noise );
+
+			// Busy fills the gaps with quieter sixteenth chatter.
+			if ( !open && !sparse && noise.Chance( busy ) )
 			{
-				int sixAt = _time.TickToSample( barTick + (e + 0.5) * Timing.TicksPerEighth );
-				if ( _ride ) RenderRide( sixAt, false, _c.HatVol * 0.4f, noise );
-				else RenderHat( sixAt, false, _c.HatVol * 0.4f, noise );
+				int sixAt = _time.TickToSample( h.Tick + Timing.TicksPerEighth / 2 );
+				if ( _ride ) RenderRide( sixAt, false, amp * 0.4f, noise );
+				else RenderHat( sixAt, false, amp * 0.4f, noise );
 			}
 		}
 
-		if ( fillEnd )
+		foreach ( var h in _groove.Kick.Slice( barTick, to, _sectionTick, _feel ) )
+			RenderKick( _time.TickToSample( h.Tick ), noise );
+
+		// The kick's own humanising. A groove pattern is exact, and a drummer is not: KICK SYNC is
+		// the chance of a stray extra kick pushing into the following beat, rolled per bar so the
+		// groove breathes instead of stamping the identical bar out for eight bars running.
+		if ( _c.KickSyncChance > 0f )
+			for ( int t = barTick + Timing.TicksPerEighth; t < to; t += Timing.TicksPerBeat )
+				if ( noise.Chance( _c.KickSyncChance * (0.4f + busy) * _energy ) )
+					RenderKick( _time.TickToSample( t ), noise );
+
+		foreach ( var h in _groove.Snare.Slice( barTick, to, _sectionTick, _feel ) )
 		{
-			RenderKickSnareGroove( barTick, 0, 6, busy, noise );   // first 3 beats normal
-			RenderFill( barTick, 6, fillNoise, fillRng );
-			return;
+			bool ghost = h.Value == DrumGroove.Ghost;
+			// The groove's own ghost notes thin out with the section rather than hammering a
+			// verse as hard as a chorus.
+			if ( ghost && !noise.Chance( 0.35f + 0.65f * _energy ) ) continue;
+			RenderSnare( _time.TickToSample( h.Tick ), noise, ghost );
 		}
-		RenderKickSnareGroove( barTick, 0, EighthsPerBar, busy, noise );
+
+		// Extra ghosts / toms between the groove's own hits: the "busy" layer. Metal's double
+		// kick already fills every sixteenth, so its groove asks for none (GhostRate 0).
+		if ( busy > 0f && !sparse )
+			for ( int t = barTick; t < to; t += Timing.TicksPerEighth / 2 )
+			{
+				if ( !noise.Chance( _c.GhostSnareChance * busy * 0.5f ) ) continue;
+				int at = _time.TickToSample( t );
+				if ( noise.Chance( (1f - _drumTone) * 0.5f ) ) RenderTom( at, 150f + 40f * ((t / 24) & 1), noise );
+				else RenderSnare( at, noise, true );
+			}
 	}
 
-	// Per-song kick accents for the straight backbeat: eighths (beyond the beat-1 & 3 anchors)
-	// the kick leans into. e1 = "and of 1", e3 = "and of 2", e5 = "and of 3", e6 = beat 4,
-	// e7 = "and of 4". One set is picked per song, then each accent is rolled per bar so the
-	// groove breathes instead of stamping the same kick pattern every bar — the main nuance
-	// lever that keeps rock/country from all sharing one mechanical backbeat.
-	static readonly int[][] BackbeatKickAccents =
+	// ── Fills ──
+	// A fill is a span, not "the last beat of the bar". Length is a weighted draw — a beat most
+	// of the time, occasionally a whole bar or two — and the long ones are GATED to the
+	// boundaries that earn them (into a final chorus, out of a breakdown), because a two-bar
+	// fill at every phrase end is not a fill, it is the arrangement.
+	//
+	// Returns the tick the fill starts at, so the groove above knows where to stop.
+	int FillStart( int barTick, int barTicks, bool bigBoundary, Rng rng )
 	{
-		new int[0],          // bone-dry: just 1 & 3
-		new[] { 3 },         // push into the snare ("and of 2")
-		new[] { 7 },         // pickup into the next bar ("and of 4")
-		new[] { 3, 7 },      // push + pickup
-		new[] { 6 },         // driving beat-4 kick
-		new[] { 5, 7 },      // syncopated "and of 3" + pickup
-		new[] { 3, 6 },      // push into 3 + beat-4 drive
-	};
+		float r = rng.Next();
+		int span;
+		if ( r < 0.55f ) span = Timing.TicksPerBeat;                       // one beat
+		else if ( r < 0.80f || !bigBoundary ) span = Timing.TicksPerBeat * 2; // two beats (from 3)
+		else if ( r < 0.95f ) span = barTicks;                             // a whole bar
+		else span = barTicks * 2;                                          // two bars
 
-	void RenderKickSnareGroove( int barTick, int from, int to, float busy, Rng noise )
-	{
-		int spe = _time.Spe;
-		int six = spe / 2;
-		for ( int e = from; e < to; e++ )
-		{
-			int at = _time.TickToSample( barTick + (e) * Timing.TicksPerEighth );
-			int sixAt = six > 0 ? _time.TickToSample( barTick + (e + 0.5) * Timing.TicksPerEighth ) : at;
-			switch ( _drumStyle )
-			{
-				case 0: // one-drop: kick + snare together on beat 3
-					if ( e == 4 ) { RenderKick( at, noise ); RenderSnare( at, noise, false ); }
-					else if ( e == 2 && noise.Chance( _c.GhostSnareChance * (0.4f + busy) ) ) RenderSnare( at, noise, true );
-					break;
-				case 1: // steppers: kick every beat, snare on 2 & 4
-					if ( e % 2 == 0 ) RenderKick( at, noise );
-					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
-					break;
-				case 3: // metal double-kick: 16th-note kick gallop + crashing, snare backbeat
-					if ( e == 0 && noise.Chance( 0.55f ) ) RenderCrash( at, noise, noise.Chance( 0.35f ) );
-					RenderKick( at, noise );
-					if ( six > 0 ) RenderKick( sixAt, noise ); // the second pedal → the 16th gallop
-					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
-					break;
-				case 4: // pop four-on-the-floor: kick on every beat, backbeat snare/clap on 2 & 4
-					if ( e % 2 == 0 ) RenderKick( at, noise );
-					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
-					else if ( noise.Chance( _c.GhostSnareChance * busy * 0.5f ) ) RenderSnare( at, noise, true );
-					break;
-				default: // straight backbeat — anchors on beats 1 & 3, plus this song's kick
-					     // accents, each humanised per bar so the groove breathes
-					bool kick = e == 0 || e == 4;
-					if ( !kick && Array.IndexOf( _kickAccents, e ) >= 0 )
-						kick = noise.Chance( 0.82f );                 // mostly play the accent, occasionally lay out
-					else if ( !kick && e == 3 )
-						kick = noise.Chance( _c.KickSyncChance * (0.4f + busy) ); // stray push into beat 3
-					if ( kick ) RenderKick( at, noise );
-					if ( e == 2 || e == 6 ) RenderSnare( at, noise, false );
-					else if ( noise.Chance( _c.GhostSnareChance * busy ) ) RenderSnare( at, noise, true );
-					break;
-			}
-			// Busy fills the "e/a" sixteenths between hits: more snare as busy rises, and —
-			// when the tone leans low — toms too. (Busy → snare + toms; tone → tom vs cymbal.)
-			// Metal already fills every 16th with the double-kick, so it skips the ghost layer.
-			if ( _drumStyle != 3 && six > 0 && e != 4 && noise.Chance( _c.GhostSnareChance * busy ) )
-			{
-				if ( noise.Chance( (1f - _drumTone) * 0.5f ) )
-					RenderTom( sixAt, 150f + 40f * (e & 1), noise );
-				else
-					RenderSnare( sixAt, noise, true );
-			}
-		}
+		// The fill ends on the bar line it is leading into, so a longer one simply starts
+		// earlier — two beats start on beat 3, two bars start in the bar before.
+		return Math.Max( barTick - barTicks, barTick + barTicks - span );
 	}
 
-	// Tom/snare roll across the last beat (two eighths). Straight = four 16ths;
-	// triplet (TripletChance) = six even subdivisions for a rolling shuffle feel.
-	// The fill rolls across the last beat — the two eighths starting at baseE (6) up to the bar
-	// line — on the same swung grid as the rest of the band.
-	void RenderFill( int barTick, int baseE, Rng noise, Rng rng )
+	// Roll across a span: tom/snare/cymbal hits, subdivided straight (16ths) or as triplets. The
+	// span is whatever FillStart drew, so the same code plays a one-beat pickup and a two-bar
+	// blow-out. The terminal crash lands on the downbeat the fill is leading into.
+	void RenderFill( int fromTick, int toTick, Rng noise, Rng rng )
 	{
-		int spe = _time.Spe;
-		// straight = four 16ths; triplet = either an eighth-note triplet (3) or a
-		// faster 16th-note triplet (6) across the beat.
-		int n = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6) : 4;
-		int step = (spe * 2) / n;
+		int span = toTick - fromTick;
+		if ( span <= 0 ) return;
+		// One subdivision per beat, so a longer fill is more notes rather than slower ones.
+		int beats = Math.Max( 1, span / Timing.TicksPerBeat );
+		int per = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6) : 4;
 		float[] toms = { 260f, 215f, 175f, 145f, 120f, 100f };
-		// Half the hits stay snare so it still reads as a drum fill; the rest are biased by
-		// DrumTone — toms when the tone leans low, cymbals (ride hits) when it leans high.
-		for ( int i = 0; i < n; i++ )
+
+		for ( int b = 0; b < beats; b++ )
 		{
-			int t = _time.EvenSpan( barTick + baseE * Timing.TicksPerEighth,
-				2.0 * Timing.TicksPerEighth, i / (double)n );
-			if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
-			else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
-			else RenderTom( t, toms[i], noise );  // pan derived from pitch inside RenderTom
+			int beatTick = fromTick + b * Timing.TicksPerBeat;
+			for ( int i = 0; i < per; i++ )
+			{
+				int t = _time.EvenSpan( beatTick, Timing.TicksPerBeat, i / (double)per );
+				// Half the hits stay snare so it still reads as a drum fill; the rest are biased
+				// by DrumTone — toms when it leans low, cymbals when it leans high.
+				if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
+				else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
+				else RenderTom( t, toms[(i + b) % toms.Length], noise );
+			}
 		}
-		// crash into the downbeat (lands on the bar line, an on-beat anchor → dead straight) — a
-		// bright crash or a darker, washier crash, picked off the fill stream so the cymbal colour
-		// varies section to section.
-		RenderCrash( _time.TickToSample( barTick + (baseE + 2.0) * Timing.TicksPerEighth ), noise, rng.Chance( 0.4f ) );
+		RenderCrash( _time.TickToSample( toTick ), noise, rng.Chance( 0.4f ) );
 	}
 }

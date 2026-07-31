@@ -54,4 +54,26 @@ sealed class Rng
 	public bool Chance( float p ) => Next() < p;
 
 	public T Pick<T>( T[] arr ) => arr[Int( arr.Length )];
+
+	/// <summary>A weighted draw — ONE <see cref="Next"/> whatever the weights are.
+	///
+	/// The tables used to bias a draw by listing an entry twice, which quietly tied "how likely"
+	/// to "how many entries" (and to the no-two-genres-share-more-than-one cap the engine test
+	/// enforces). A real weighted draw separates them, and costs the same single value out of
+	/// the song stream, so a genre's draw count still cannot depend on its tables.</summary>
+	public T PickWeighted<T>( T[] arr, int[] weights )
+	{
+		if ( arr == null || arr.Length == 0 ) return default;
+		if ( weights == null || weights.Length != arr.Length ) return Pick( arr );
+		int total = 0;
+		foreach ( var w in weights ) total += Math.Max( 0, w );
+		if ( total <= 0 ) return Pick( arr );
+		float r = Next() * total;
+		for ( int i = 0; i < arr.Length; i++ )
+		{
+			r -= Math.Max( 0, weights[i] );
+			if ( r < 0f ) return arr[i];
+		}
+		return arr[arr.Length - 1];
+	}
 }

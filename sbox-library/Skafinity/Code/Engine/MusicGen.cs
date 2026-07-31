@@ -74,11 +74,9 @@ public sealed partial class MusicGen
 	/// <see cref="RenderPitchedRange"/> window has finished.</summary>
 	public short[] FinishStereo() => ToShorts( Master() );
 
-	// Eighth-note cells in a bar, derived from the time base rather than assumed. Pattern
-	// tables are still authored as one cell per eighth; positions are ticks (see Timing).
-	int EighthsPerBar => _time.EighthsPerBar;
-
+	GenreProfile _prof;      // the genre's character table — every per-genre decision reads this
 	int[] _scale, _prog;
+	int[] _voicing;          // the song's chord voicing, in scale-degree offsets (Harmony)
 	int _rootMidi;
 	Instrument _lead;
 	float _leadPan;
@@ -87,10 +85,13 @@ public sealed partial class MusicGen
 	                         // width; 0 = everything collapses to centre (mono).
 	float _drumPan = DrumPan;// per-song effective drum spread = DrumPan * _widthScale
 	bool _hasHorns;
-	bool[] _hornMask;
-	int[] _bassPat;
-	int _drumStyle;          // 0 one-drop, 1 steppers, 2 straight backbeat
-	int[] _kickAccents = Array.Empty<int>(); // per-song backbeat kick accents (see BackbeatKickAccents)
+	Pattern _hornFig;        // the horn section's 2-bar call-and-response figure
+	Pattern _bassPat;        // the song's bass line — a Pattern, so it can be a 2- or 4-bar phrase
+	Pattern _compFig;        // the main chordal voice's comp figure
+	Pattern _keysFig;        // the second chordal voice's figure (null where the genre has none)
+	DrumGroove _groove;      // the song's groove — per-genre tables, not a shared switch default
+	bool _riffBass;          // the bass reads the riff's onsets instead of playing its own pattern
+	readonly List<Hit> _riffOnsets = new(); // this bar's riff, for the bass to double
 	bool _ride;              // per-SECTION: ride cymbal drives the eighth pulse instead of closed hats (set in RenderSection from _ridePref)
 	float _ridePref;         // per-song lean toward riding the ride vs the hats; each section rolls its own _ride against this
 	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
@@ -102,6 +103,18 @@ public sealed partial class MusicGen
 	string _tag;             // the per-song seed string, reused to seed per-section streams
 	Timing _time;            // the song's time base: eighth length, swing, kit push (see Timing.cs)
 	float _drumTone = 0.5f;  // DrumTone 0..1 → toms↔cymbals CONTENT bias in fills/groove decoration
-	float _drumLowMul = 1f;  // DrumTone → kick/tom gain lean (gentle, on top of the content bias)
-	float _drumHighMul = 1f; // DrumTone → hat/cymbal gain lean (gentle, on top of the content bias)
+	float _drumLowMul = 1f;  // DrumTone + the genre mix trim → kick/tom/bass gain lean
+	float _drumHighMul = 1f; // DrumTone + the genre mix trim → hat/cymbal gain lean
+	float _midMul = 1f;      // the genre mix trim on the body of the mix (guitars, keys, horns)
+
+	// ── per-SECTION state ──
+	// Set once per section in RenderSection; every voice reads these instead of asking "am I in
+	// a verse?" (see Part). This is what makes a chorus a chorus rather than a repeat.
+	int[] _sectionStart = Array.Empty<int>(); // first tick of each section
+	int _sectionTick;        // the current section's first tick — patterns loop from here
+	int _barTick;            // the current bar's first tick — the accent grid is relative to it
+	float _energy = 1f;      // 0 = as thin as the arrangement gets, 1 = full band
+	float _feel = 1f;        // pattern-rate multiplier: 0.5 half time, 2 double time
+	int _displace;           // metric displacement of the comp, in ticks
+	int _keyShift;           // semitones this section is transposed by (the final-chorus lift)
 }

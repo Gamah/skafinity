@@ -12,24 +12,26 @@ namespace Skafinity;
 public sealed partial class MusicGen
 {
 	// ── Backing horns (panned spread) ──
-	// Block stabs on the mask read "samey" (only eighth-note chords). A dedicated
-	// stream (horn:tag, so the main composition order is unchanged) breaks them up
-	// with rolling arpeggios, 16th pairs, grace pickups and varied length. Kept
-	// modest — the bass got over-busy when its ornament rate ran high.
-	void RenderHornStabs( int barTick, int chord, Rng orn, Rng exprRng )
+	// The figure is a TWO-BAR call and response (see MusicGen.HornFigure): the section states a
+	// line and then answers it, which is what a horn section does and what a single reused
+	// eight-slot mask could never express. On top of that a dedicated stream breaks the stabs up
+	// with rolling arpeggios, 16th pairs and grace pickups so even a repeated call is played
+	// slightly differently.
+	void RenderHornStabs( int barTick, int barTicks, int chord, Rng orn, Rng exprRng )
 	{
 		int spe = _time.Spe;
-		double secPerEighth = _time.SecPerEighth;
-		int baseMidi = _rootMidi + 19;
-		int[] degs = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4 };
+		int baseMidi = _rootMidi + _keyShift + 19;
+		var degs = ChordDegrees( chord );
 		float spread = _c.PanAmount * 0.7f;
 		int six = spe / 2;
 		float ornChance = 0.18f + _c.TripletChance; // ~0.24 default; rides the same knob
 
-		// Section expression — vibrato + a chance of a scoop/fall, rolled once per onset (below)
-		// and applied to every tone of that stab so the whole section bends together.
+		// Section expression — vibrato + a chance of a scoop/fall, rolled once per onset and
+		// applied to every tone of that stab so the whole section bends together.
 		var ex = Expr( "HORNS" );
 		Voicing hornVc = default;
+		float gainNow = 1f;
+		int tickNow = barTick;
 
 		// one chord-tone voice
 		void Note( int at, int dur, int k, double dec, float gain )
@@ -37,10 +39,13 @@ public sealed partial class MusicGen
 			var horn = new Patch
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = _c.HornVol * _c.HornBalance / degs.Length * gain, Attack = 0.008f, Decay = dec,
+				Amp = _c.HornVol * _c.HornBalance * _midMul / degs.Length * gain
+					* NoteGain( tickNow, gainNow ),
+				Attack = 0.008f, Decay = dec,
 				Sustain = 0.2f, Sustained = false,
 				Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
-				Drive = _c.HornDrive, Pan = spread * (k / (float)(degs.Length - 1) * 2f - 1f),
+				Drive = _c.HornDrive,
+				Pan = spread * (k / (float)Math.Max( 1, degs.Length - 1 ) * 2f - 1f),
 				Vibrato = _c.MelodyVibrato,
 			};
 			ApplyVoicing( ref horn, hornVc );
@@ -53,10 +58,11 @@ public sealed partial class MusicGen
 			for ( int k = 0; k < degs.Length; k++ ) Note( at, dur, k, dec, gain );
 		}
 
-		for ( int e = 0; e < EighthsPerBar; e++ )
+		foreach ( var h in _hornFig.Slice( barTick, barTick + barTicks, _sectionTick, _feel, _displace ) )
 		{
-			if ( !_hornMask[e] ) continue;
-			int at = _time.TickToSample( barTick + (e) * Timing.TicksPerEighth );
+			int at = _time.TickToSample( h.Tick );
+			double secPerEighth = _time.SpanSeconds( h.Tick, Timing.TicksPerEighth );
+			tickNow = h.Tick; gainNow = h.Vel;
 			hornVc = Roll( ex, baseMidi, NoPrev, exprRng );
 
 			if ( six > 0 && orn.Chance( ornChance ) )
@@ -67,19 +73,21 @@ public sealed partial class MusicGen
 					// rolling arpeggio: chord tones climb across a 16th-triplet
 					int step = spe / 3;
 					for ( int k = 0; k < degs.Length; k++ )
-						Note( _time.EvenSpan( barTick + e * Timing.TicksPerEighth,
-						Timing.TicksPerEighth, k / 3.0 ), (int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
+						Note( _time.EvenSpan( h.Tick, Timing.TicksPerEighth, k / 3.0 ),
+							(int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
 					continue;
 				}
 				if ( r < 0.75f )
 				{
 					// 16th pair: stab on the beat, softer echo on the "e"
 					Stab( at, (int)(six * 0.85f), secPerEighth * 0.5 * 0.8, 1f );
-					Stab( _time.TickToSample( barTick + (e + 0.5) * Timing.TicksPerEighth ), (int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
+					Stab( _time.TickToSample( h.Tick + Timing.TicksPerEighth / 2 ),
+						(int)(six * 0.85f), secPerEighth * 0.5 * 0.7, 0.6f );
 					continue;
 				}
 				// grace pickup: a soft single tone just before the block stab
-				Note( _time.TickToSample( barTick + (e - 0.5) * Timing.TicksPerEighth ), (int)(six * 0.8f), 0, secPerEighth * 0.5 * 0.6, 0.5f );
+				Note( _time.TickToSample( h.Tick - Timing.TicksPerEighth / 2 ), (int)(six * 0.8f), 0,
+					secPerEighth * 0.5 * 0.6, 0.5f );
 				Stab( at, (int)(spe * 0.6f), 0.22, 1f );
 				continue;
 			}

@@ -236,7 +236,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 87;
+	public const int Size = 88;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -265,6 +265,8 @@ static class Cfg
 		// stereo double-tracking / width (see VibeCodec.AdvancedFields)
 		c.DoubleTrack, c.WidthBacking, c.WidthLead, c.WidthDetune,
 		c.WidthDelayMs, c.WidthJitterMs, c.WidthAmpVar, c.WidthCutoffVar,
+		// how far each genre's own mix profile is taken (see GenreProfile.Mix)
+		c.GenreMix,
 	};
 
 	public static MusicGen.Config From( double[] a )
@@ -294,6 +296,7 @@ static class Cfg
 		c.KeysBalance = (float)a[i++]; c.RhythmGtrBalance = (float)a[i++]; c.LeadGtrBalance = (float)a[i++];
 		c.DoubleTrack = (float)a[i++]; c.WidthBacking = (float)a[i++]; c.WidthLead = (float)a[i++]; c.WidthDetune = (float)a[i++];
 		c.WidthDelayMs = (float)a[i++]; c.WidthJitterMs = (float)a[i++]; c.WidthAmpVar = (float)a[i++]; c.WidthCutoffVar = (float)a[i++];
+		c.GenreMix = (float)a[i++];
 		return c;
 	}
 }

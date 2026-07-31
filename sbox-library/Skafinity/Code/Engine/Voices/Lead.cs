@@ -5,8 +5,10 @@ using static Skafinity.Osc;
 
 namespace Skafinity;
 
-// The lead line: phrase generation (chord-tone locked, so it stays consonant), the lead
-// instrument voices, and the genre dispatch that picks between them.
+// The lead line. One phrase generator served every genre — same rest chance, same leap logic,
+// same register, same "a phrase every two bars" — which made the melody the most interchangeable
+// thing in the song. There is a grammar per genre now (see LeadStyle); the VOICES below are
+// unchanged, because a trumpet is a trumpet whatever it plays.
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
@@ -15,97 +17,258 @@ enum Instrument { Trumpet, Sax, Organ, Trombone }
 
 public sealed partial class MusicGen
 {
-	// ── Lead melody (chord-tone locked → consonant) ──
-	void RenderLeadPhrase( int barTick, int chord, Rng rng, Rng exprRng )
+	// The pop hook: a two-bar motif drawn ONCE per song and then repeated. No other genre repeats
+	// a motif, and a pop song that never does reads as an improvisation over a pop backing. Built
+	// off its own stream, so having one shifts nothing else in the song.
+	List<(int Tick, int Degree, int Len)> _hook;
+
+	/// <summary>One lead phrase, in the genre's own grammar.</summary>
+	void RenderLeadPhrase( int barTick, int barTicks, int chord, Rng rng, Rng exprRng )
 	{
-		int spe = _time.Spe;
-		double secPerEighth = _time.SecPerEighth;
-		int slots = EighthsPerBar * 2;
-		int melBase = _rootMidi + 24;
-		int[] tones = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 6 }; // chord tones
-		int degree = tones[rng.Int( 3 )];
-		bool guitarLead = !_hornLead;                     // ska is the only horn lead
-		float amp = guitarLead ? _c.LeadGtrVol * _c.LeadGtrBalance : _c.MelodyVol * _c.MelodyBalance;
-		float drive = guitarLead ? _c.LeadGtrDrive : _c.MelodyDrive;
-		// Rock lead trades fast RUNS for BENDINESS (handled via expression), so its run rate is
-		// forced to 0; metal shreds (a high floor of runs); ska/country keep the TRIPLETS knob.
-		float tripChance = _genre switch
+		if ( rng.Chance( _prof.LeadSilence ) ) return;              // the phrase rests
+		int span = Math.Max( 1, _prof.LeadPhraseBars ) * barTicks;
+		switch ( _prof.Lead )
 		{
-			1 => 0f,
-			3 => MathF.Max( _c.TripletChance, 0.4f ),
-			_ => _c.TripletChance,
-		};
+			case LeadStyle.Shred: RenderShredPhrase( barTick, span, chord, rng, exprRng ); break;
+			case LeadStyle.DoubleStop: RenderDoubleStopPhrase( barTick, span, chord, rng, exprRng ); break;
+			case LeadStyle.Unison: RenderUnisonPhrase( chord, exprRng ); break;
+			case LeadStyle.Hook: RenderHookPhrase( barTick, span, chord, exprRng ); break;
+			case LeadStyle.Bluesy: RenderSungPhrase( barTick, span, chord, rng, exprRng, sparse: true ); break;
+			default: RenderSungPhrase( barTick, span, chord, rng, exprRng, sparse: false ); break;
+		}
+	}
+
+	/// <summary>The lead's register, per grammar. A shred line lives high and wide; a horn line
+	/// sits where a horn sits.</summary>
+	int LeadBase() => _rootMidi + _keyShift + (_prof.Lead switch
+	{
+		LeadStyle.Shred => 26,
+		LeadStyle.Bluesy => 21,
+		LeadStyle.DoubleStop => 24,
+		_ => 24,
+	});
+
+	// ── Ska (and rock, sparser): a sung line ──
+	// Chord-tone locked on the strong beats so it stays consonant, stepping or leaping between
+	// them. This is the old generator, kept for the two genres whose lead really is a melody —
+	// with ska phrasing its second half as an ANSWER to its first (the horn convention), and rock
+	// leaving far more space than it plays.
+	void RenderSungPhrase( int barTick, int span, int chord, Rng rng, Rng exprRng, bool sparse )
+	{
+		int melBase = LeadBase();
+		var tones = ChordDegrees( chord );
+		int degree = tones[rng.Int( Math.Min( 3, tones.Length ) )];
+		bool guitarLead = !_hornLead;
+		float amp = guitarLead ? _c.LeadGtrVol * _c.LeadGtrBalance : _c.MelodyVol * _c.MelodyBalance;
+		amp *= _midMul;
+		float drive = guitarLead ? _c.LeadGtrDrive : _c.MelodyDrive;
+		float rest = _c.MelodyRestChance * (sparse ? 1.6f : 1f);
+		float tripChance = sparse ? 0f : _c.TripletChance;
 		var ex = guitarLead ? Expr( "LEAD GTR" ) : Expr( "LEAD" );
 		int prevMidi = NoPrev;
 
-		int e = 0;
-		while ( e < slots )
+		int t = barTick;
+		int half = barTick + span / 2;
+		while ( t < barTick + span )
 		{
-			if ( rng.Chance( _c.MelodyRestChance ) ) { e++; continue; }
+			if ( rng.Chance( rest ) ) { t += Timing.TicksPerEighth; continue; }
 
-			// ornament: a sixteenth pair, or a triplet at one of three rates — a tight
-			// 16th-triplet (3 in an eighth), an eighth-note triplet (3 in a beat), or a
-			// wide quarter-note triplet (3 over two beats). Wider spans give the lazy,
-			// over-the-barline triplet feel, not just the fast run.
 			if ( rng.Chance( tripChance ) )
 			{
-				float r = rng.Next();
-				int n, spanE; // n notes evenly across spanE eighths
-				if ( r < 0.25f ) { n = 2; spanE = 1; }       // sixteenth pair
-				else if ( r < 0.50f ) { n = 3; spanE = 1; }  // 16th-note triplet
-				else if ( r < 0.80f ) { n = 3; spanE = 2; }  // eighth-note triplet (1 beat)
-				else { n = 3; spanE = 4; }                   // quarter-note triplet (2 beats)
-				if ( e + spanE > slots ) spanE = 1;
-
-				int span = spanE * spe;
-				int step = span / n;
-				int firstMidi = ScaleMidi( melBase, Math.Clamp( degree - n / 2, _prog[chord] - 3, _prog[chord] + 10 ) );
-				var runVc = Roll( ex, firstMidi, prevMidi, exprRng );
-				for ( int k = 0; k < n; k++ )
-				{
-					int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
-					int m2 = ScaleMidi( melBase, d2 );
-					RenderLeadNote( _time.EvenSpan( barTick + e * Timing.TicksPerEighth,
-						spanE * Timing.TicksPerEighth, k / (double)n ), (int)(step * 0.9f),
-						m2, amp, secPerEighth * spanE / (double)n * 0.85, drive, runVc );
-					prevMidi = m2;
-				}
-				e += spanE;
+				t = RenderLeadRun( t, chord, degree, melBase, amp, drive, ex, rng, exprRng, ref prevMidi );
 				continue;
 			}
 
-			int len = 1 + rng.Int( 3 );
-			if ( e + len > slots ) len = slots - e;
-			bool strong = (e % 2) == 0;
+			int len = (1 + rng.Int( 3 )) * Timing.TicksPerEighth;
+			if ( t + len > barTick + span ) len = barTick + span - t;
+			bool strong = ((t - barTick) / Timing.TicksPerEighth) % 2 == 0;
 
-			if ( strong )
-			{
-				// land on a chord tone near the current degree
-				int best = tones[0], bestD = 999;
-				foreach ( var t in tones )
-				{
-					for ( int oc = -7; oc <= 14; oc += 7 )
-					{
-						int cand = t + (oc / 7) * 7; // keep in degree space
-						int dist = Math.Abs( cand - degree );
-						if ( dist < bestD ) { bestD = dist; best = cand; }
-					}
-				}
-				degree = best;
-			}
+			// The answer half of a horn line lands a step lower than the call did — same shape,
+			// resolved — rather than re-rolling as if it were a new phrase.
+			if ( strong ) degree = NearestChordTone( tones, degree ) - (t >= half && !sparse ? 1 : 0);
 			else
 			{
-				int step = rng.Chance( _c.MelodyLeapChance ) ? (rng.Chance( 0.5f ) ? 3 : -3) : (rng.Chance( 0.5f ) ? 1 : -1);
+				int step = rng.Chance( _c.MelodyLeapChance ) ? (rng.Chance( 0.5f ) ? 3 : -3)
+					: (rng.Chance( 0.5f ) ? 1 : -1);
 				degree = Math.Clamp( degree + step, _prog[chord] - 3, _prog[chord] + 10 );
 			}
 
 			int midi = ScaleMidi( melBase, degree );
 			var vc = Roll( ex, midi, prevMidi, exprRng );
-			RenderLeadNote( _time.TickToSample( barTick + (e) * Timing.TicksPerEighth ), (int)(spe * len * 0.9f), midi,
-				amp, secPerEighth * len * 0.7f, drive, vc );
+			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi,
+				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, len ) * 0.7, drive, vc );
 			prevMidi = midi;
-			e += len;
+			t += Math.Max( Timing.TicksPerEighth, len );
 		}
+	}
+
+	/// <summary>Metal: scalar shred. Runs of sixteenths straight up and down the mode across the
+	/// whole register — not the sung line's chord-tone hops with a triplet ornament on top.</summary>
+	void RenderShredPhrase( int barTick, int span, int chord, Rng rng, Rng exprRng )
+	{
+		int melBase = LeadBase();
+		float amp = _c.LeadGtrVol * _c.LeadGtrBalance * _midMul;
+		var ex = Expr( "LEAD GTR" );
+		int prevMidi = NoPrev;
+		int step = Timing.TicksPerEighth / 2;                       // sixteenths
+		int degree = _prog[chord];
+		int dir = rng.Chance( 0.5f ) ? 1 : -1;
+
+		for ( int t = barTick; t < barTick + span; t += step )
+		{
+			// A run breathes at the phrase's seams, and turns around when it runs out of register.
+			if ( rng.Chance( 0.12f ) ) { dir = -dir; continue; }
+			degree += dir;
+			if ( degree > _prog[chord] + 14 || degree < _prog[chord] - 7 ) { dir = -dir; degree += 2 * dir; }
+			int midi = ScaleMidi( melBase, degree );
+			var vc = Roll( ex, midi, prevMidi, exprRng );
+			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, step * 0.95 ), midi,
+				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, step ) * 0.8,
+				_c.LeadGtrDrive, vc );
+			prevMidi = midi;
+		}
+	}
+
+	/// <summary>Country: pentatonic double-stops. Two notes a third apart, bent into — the
+	/// Telecaster move, and the reason country's lead reads as country even over the same changes.
+	/// </summary>
+	void RenderDoubleStopPhrase( int barTick, int span, int chord, Rng rng, Rng exprRng )
+	{
+		int melBase = LeadBase();
+		float amp = _c.LeadGtrVol * _c.LeadGtrBalance * _midMul;
+		var ex = Expr( "LEAD GTR" );
+		var tones = ChordDegrees( chord );
+		int prevMidi = NoPrev;
+		int degree = tones[rng.Int( tones.Length )];
+
+		for ( int t = barTick; t < barTick + span; )
+		{
+			int len = (1 + rng.Int( 3 )) * Timing.TicksPerEighth;
+			if ( t + len > barTick + span ) len = barTick + span - t;
+			if ( rng.Chance( 0.25f ) ) { t += len; continue; }       // country leaves space
+
+			int lower = ScaleMidi( melBase, degree );
+			int upper = ScaleMidi( melBase, degree + 2 );            // the third above, in the mode
+			var vc = Roll( ex, lower, prevMidi, exprRng );
+			int dur = _time.SpanSamples( t, len * 0.9 );
+			double dec = _time.SpanSeconds( t, len ) * 0.75;
+			RenderLeadNote( _time.TickToSample( t ), dur, lower, amp * 0.75f * NoteGain( t, 1f ),
+				dec, _c.LeadGtrDrive, vc );
+			RenderLeadNote( _time.TickToSample( t ), dur, upper, amp * 0.75f * NoteGain( t, 1f ),
+				dec, _c.LeadGtrDrive, vc );
+			prevMidi = lower;
+
+			degree = rng.Chance( 0.5f ) ? NearestChordTone( tones, degree + (rng.Chance( 0.5f ) ? 2 : -2) )
+				: degree + (rng.Chance( 0.5f ) ? 1 : -1);
+			t += Math.Max( Timing.TicksPerEighth, len );
+		}
+	}
+
+	/// <summary>Punk: unison. When the lead plays at all it doubles the riff an octave up, which
+	/// is what a second guitarist in a three-piece actually does. Falls silent when there is no
+	/// riff to double (its LeadSilence is high, so that is most phrases anyway).</summary>
+	void RenderUnisonPhrase( int chord, Rng exprRng )
+	{
+		if ( _riffOnsets.Count == 0 ) return;
+		int melBase = LeadBase();
+		float amp = _c.LeadGtrVol * _c.LeadGtrBalance * _midMul * 0.8f;
+		var ex = Expr( "LEAD GTR" );
+		int prev = NoPrev;
+		foreach ( var h in _riffOnsets )
+		{
+			if ( h.Value == CompFigure.Mute ) continue;              // the muted chug is not a note
+			int midi = ScaleMidi( melBase, _prog[chord] );
+			var vc = Roll( ex, midi, prev, exprRng );
+			prev = midi;
+			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.9 ),
+				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.7,
+				_c.LeadGtrDrive, vc );
+		}
+	}
+
+	/// <summary>Pop: the hook. The SAME two-bar motif every phrase, transposed onto the current
+	/// chord — that repetition is the whole difference between a pop lead and a solo.</summary>
+	void RenderHookPhrase( int barTick, int span, int chord, Rng exprRng )
+	{
+		_hook ??= BuildHook( new Rng( $"{_tag}:hook" ), span );
+		int melBase = LeadBase();
+		float amp = _c.LeadGtrVol * _c.LeadGtrBalance * _midMul;
+		var ex = Expr( "LEAD GTR" );
+		int prev = NoPrev;
+		foreach ( var (offset, degree, len) in _hook )
+		{
+			int t = barTick + offset;
+			if ( offset >= span ) break;
+			int midi = ScaleMidi( melBase, _prog[chord] + degree );
+			var vc = Roll( ex, midi, prev, exprRng );
+			prev = midi;
+			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi,
+				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, len ) * 0.7, _c.LeadGtrDrive, vc );
+		}
+	}
+
+	/// <summary>Draw the song's hook: a handful of notes over the phrase, aligned to the eighth
+	/// grid and ending on a chord tone so every repetition lands.</summary>
+	static List<(int, int, int)> BuildHook( Rng rng, int span )
+	{
+		var hook = new List<(int, int, int)>();
+		int degree = 0;
+		for ( int t = 0; t < span; )
+		{
+			int len = (1 + rng.Int( 3 )) * Timing.TicksPerEighth;
+			if ( !rng.Chance( 0.25f ) ) hook.Add( (t, degree, len) );
+			degree += rng.Chance( 0.35f ) ? (rng.Chance( 0.5f ) ? 2 : -2) : (rng.Chance( 0.5f ) ? 1 : -1);
+			degree = Math.Clamp( degree, -3, 9 );
+			t += len;
+		}
+		if ( hook.Count > 0 )
+		{
+			var last = hook[^1];
+			hook[^1] = (last.Item1, 0, last.Item3);                 // resolve home
+		}
+		return hook;
+	}
+
+	/// <summary>A run of evenly-spaced notes around the current degree — the sung line's ornament.
+	/// Returns the tick the phrase continues from.</summary>
+	int RenderLeadRun( int t, int chord, int degree, int melBase, float amp, float drive,
+		in Expression ex, Rng rng, Rng exprRng, ref int prevMidi )
+	{
+		float r = rng.Next();
+		int n, spanTicks;
+		if ( r < 0.25f ) { n = 2; spanTicks = Timing.TicksPerEighth; }
+		else if ( r < 0.50f ) { n = 3; spanTicks = Timing.TicksPerEighth; }
+		else if ( r < 0.80f ) { n = 3; spanTicks = Timing.TicksPerBeat; }
+		else { n = 3; spanTicks = Timing.TicksPerBeat * 2; }
+
+		int first = ScaleMidi( melBase, Math.Clamp( degree - n / 2, _prog[chord] - 3, _prog[chord] + 10 ) );
+		var runVc = Roll( ex, first, prevMidi, exprRng );
+		for ( int k = 0; k < n; k++ )
+		{
+			int d2 = Math.Clamp( degree + (k - n / 2), _prog[chord] - 3, _prog[chord] + 10 );
+			int m2 = ScaleMidi( melBase, d2 );
+			// A tuplet divides its own span evenly — it is not warped onto the shuffle grid a
+			// second time (see Timing.EvenSpan).
+			RenderLeadNote( _time.EvenSpan( t, spanTicks, k / (double)n ),
+				_time.SpanSamples( t, spanTicks / (double)n * 0.9 ), m2, amp * NoteGain( t, 1f ),
+				_time.SpanSeconds( t, spanTicks ) / n * 0.85, drive, runVc );
+			prevMidi = m2;
+		}
+		return t + spanTicks;
+	}
+
+	/// <summary>The chord tone nearest <paramref name="degree"/>, in degree space.</summary>
+	int NearestChordTone( int[] tones, int degree )
+	{
+		int best = tones[0], bestD = int.MaxValue;
+		foreach ( var t in tones )
+			for ( int oc = -_scale.Length; oc <= 2 * _scale.Length; oc += _scale.Length )
+			{
+				int cand = t + oc;
+				int dist = Math.Abs( cand - degree );
+				if ( dist < bestD ) { bestD = dist; best = cand; }
+			}
+		return best;
 	}
 
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,

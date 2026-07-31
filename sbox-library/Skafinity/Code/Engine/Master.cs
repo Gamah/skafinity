@@ -41,10 +41,13 @@ public sealed partial class MusicGen
 		return peak > 0.0001f ? _c.MasterPeak / peak : 1f;
 	}
 
-	// The song's room, from the two Config knobs that shape it.
+	// The song's room, from the two Config knobs that shape it — trimmed by the genre's own mix
+	// profile. A room is part of what a genre sounds like: ska is recorded in one, metal is
+	// recorded dry and close, country sits in between and centred. The REVERB knob still rides on
+	// top; the trim moves what "0.5" means for this genre.
 	void ApplyReverb()
 	{
-		float wet = Math.Clamp( _c.MasterReverb, 0f, 1f );
+		float wet = Math.Clamp( _c.MasterReverb * MixTrim( _prof.Mix.Reverb ), 0f, 1f );
 		if ( wet <= 0.0001f ) return;
 		float feedback = 0.70f + 0.28f * Math.Clamp( _c.ReverbDecay, 0f, 1f ); // tail length
 		Reverb.Process( _bufL, 0, wet, feedback, _sr );

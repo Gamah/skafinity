@@ -76,17 +76,19 @@ skafinity/
         MusicGen.cs       #   core: per-song state, ctor, public entry points
         MusicGen.Config.cs#   every knob the composer + synth read
         Rng.cs            #   xmur3 → mulberry32, the root of every musical choice
-        Harmony.cs        #   per-genre scale/progression/bass tables + degree→pitch
-        Structure.cs      #   Section, Part, the arrangement
-        GenreProfile.cs   #   per-genre character that is NOT a knob (swing band)
+        Harmony.cs        #   per-genre scale/progression/voicing/bass tables + degree→pitch
+        Pattern.cs        #   THE RHYTHMIC UNIT: a figure with its own LengthTicks
+        CompFigure.cs     #   the comp figures — what rhythm each genre's chordal voices play
+        Structure.cs      #   Section, Part (energy/feel/key/tempo), the per-genre song forms
+        GenreProfile.cs   #   per-genre character that is NOT a knob (form, grooves, accents…)
         Timing.cs         #   THE TIME BASE: ticks -> samples, tempo accumulator, swing
         Compose.cs        #   the composition pass (plan song → render sections)
         Expression.cs     #   per-note pitch shaping (vibrato/bend/glide/scoop)
         Master.cs         #   reverb, soft-clip, normalize
         Wav.cs            #   float mix → PCM, WAV container
         VibeCodec.cs      #   seed encoding + the AdvancedFields registry
-        Voices/           #   Bass, Skank, Lead, Keys, Guitar, Horns
-        Drums/            #   Groove (patterns) + Kit (voices)
+        Voices/           #   Comp (dispatch), Bass, Skank, Lead, Keys, Guitar, Horns
+        Drums/            #   Groove (DrumGroove tables + the kit/fill pass) + Kit (voices)
         Synth/            #   Patch, Notes (queue), Render, Osc
       SkafinityPlayer.cs  # s&box-only playback driver — outside the glob
       UI/                 # s&box-only Razor panel — outside the glob
@@ -232,16 +234,27 @@ as knobs makes a reroll able to produce nonsense — swing was the example: a gl
 meant shuffle could hand metal a 40% shuffle. `GenreProfile` holds that kind of value and draws
 it per song from the seed.
 
-It now carries the swing band, the **tempo band and uptempo band**, `ChordBars` (the harmonic
-rhythm — 2 bars/chord, or 1 for punk/pop so the four-chord loop *is* the hypermeasure), the drum
-style, the ride-vs-hats lean, whether the lead is the ska horn or a guitar, and **which harmony
-tables the genre draws from**. `Harmony` is just the tables now — the old `ScalesFor`/
-`ProgressionsFor`/`BassPatternsFor` dispatchers are gone; read `GenreProfile.For(g).Progressions`.
+It carries the swing band and the **shuffle chance** (a 2:1 triplet shuffle is a different feel,
+not a wider band — widening ska's band to reach it would only make its ordinary songs sloppy), the
+**tempo band and uptempo band**, `ChordBars` (2 bars/chord, or 1 for punk/pop so the four-chord
+loop *is* the hypermeasure), the ride-vs-hats lean, whether the lead is the ska horn or a guitar,
+and **which tables the genre draws from for everything else**: harmony (scales + weights,
+progressions, voicings), the `Form` (its section map), the `CompFigures`/`KeysFigures` its chordal
+voices play, its `Grooves`, its `BassPatterns`, its `LeadStyle`, its accent weights and its `Mix`.
+`Harmony` is just the tables — read `GenreProfile.For(g).Progressions`.
 
-**The line the table draws:** it holds what the *composer* reads — harmony, tempo, feel, form.
-Per-voice **timbre** tables (a genre's lead distortion in `Lead.cs`, its expression propensities
-in `Expression.cs`) stay next to the voice that renders them, because those are the sound of one
-instrument rather than the identity of the genre. Don't drag them in.
+Everything that used to be a shared `switch` is now a table lookup, and that is the pattern to
+follow: the old drum `switch` resolved rock, country AND punk to one `default` backbeat, one
+`KeysOnsets` served three genres, and one `RenderLeadPhrase` served all six. **If you find
+yourself writing `if (_genre == …)` in a voice, the answer almost certainly belongs in the
+profile's table instead** — the exception is timbre (below).
+
+**The line the table draws:** it holds what the *composer* reads — harmony, tempo, feel, form,
+figures, grooves, accents. Per-voice **timbre** stays next to the voice that renders it, because
+that is the sound of one instrument rather than the identity of a genre: `BassTone()` in
+`Bass.cs` (register/osc/sustain/filter), `RhythmGtrTone()` in `Guitar.cs`, `KeysDriveFor()` in
+`Keys.cs`, the lead's per-genre distortion in `Lead.cs`, the expression propensities in
+`Expression.cs`. Don't drag those in, and don't push a rhythm out.
 
 When adding per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a
 genre grid) or the genre's identity (`GenreProfile`). Getting it wrong is only obvious once
@@ -253,15 +266,23 @@ lands exactly on a level). The old absolute `TEMPO MIN`/`TEMPO MAX` knobs — an
 `BpmMax`/`FastBpm*` `Config` fields behind them — are gone; their two wire positions are reserved
 nulls. `FastChance` survives as `TEMPO BIAS`: how often a song takes the genre's uptempo band.
 
-**No two genres may share more than one progression.** Six genres drawing from overlapping tables
-is how they came to sound alike (I–V–vi–IV was in four of them), so the tables are pruned and the
-engine test asserts the cap. Adding an entry means checking it against the other five.
+**No two genres may share more than one progression — or more than one scale.** Six genres drawing
+from overlapping tables is how they came to sound alike (I–V–vi–IV was in four progression tables;
+major was in four scale tables), so both are pruned and the engine test asserts the cap on each.
+Adding an entry means checking it against the other five. The same rule is asserted structurally
+for bass patterns and grooves: no two genres may share the object at all.
+
+**Weights are real weights.** The tables used to bias a draw by listing an entry twice, which tied
+"how likely" to "how many entries" — and to the overlap cap. `rng.PickWeighted(table, weights)`
+separates them and still costs exactly one value out of the stream.
 
 **Every genre pulls the same number of values out of the song stream.** The lead-instrument pick,
 the organ-bubble roll and the horn-section roll happen for *all* genres even though only ska
 reads them, and `ForceInstrument` takes its draw before overriding the result. A knob decides
 *what* plays, never *how many* values the composer pulls — otherwise setting one quietly rewrites
-the rest of the song.
+the rest of the song. Two helpers exist to keep that true: `PickWeighted` is one draw whatever the
+weights say, and `PickOrNull` takes its draw even for a genre whose table is `null` (pop has no
+second chordal voice; it still pays for the slot).
 
 Retiring a knob leaves a **reserved slot** in the wire rather than shifting positions — see the
 `VibeCodec` header. That is why the encoded vibe can be longer than the live knob count, so never
@@ -290,6 +311,14 @@ To add a baseline-mix knob: add the `Config` field, add a row to `VibeCodec.Adva
 it to `Cfg.To`/`From` (+ bump `Cfg.Size`), and add a key to the JSON. To make something a *vibe*
 knob instead, put it in a genre grid / `GlobalFields` (see above), not here.
 
+**`GenreMix` is the one that is not a level.** Each genre carries its own mix profile
+(`GenreProfile.Mix`: reverb, width, and low/mid/high trims — metal dry and mid-scooped, pop wide
+and bright, country dry and centred, ska roomy), and `GenreMix` says how far that profile is
+taken: 1 = as designed, 0 = every genre through one neutral mix, 2 = exaggerated. The SHAPE lives
+in the profile because it is character; only the amount is house config, which is why this is one
+value rather than six genres × five trims of JSON. Voices apply it through `MixTrim(trim)` —
+`_drumLowMul`/`_drumHighMul`/`_midMul` already carry it for the kit and the body of the mix.
+
 ---
 
 ## The time base (`Engine/Timing.cs`)
@@ -313,8 +342,65 @@ Durations are spans, not positions: `SamplesForTicks`/`SecondsForTicks` carry no
 `DrumPush` (the kit's push/lay-back) stays in continuous sample space — it is a feel, not a
 grid position.
 
-`EighthsPerBar` is derived from the meter, not a constant. Pattern tables are still authored
-one cell per eighth; that mapping is explicit rather than assumed.
+**The tempo accumulator is now actually curved, so note LENGTHS have to read it.** The song's
+per-tick delta varies with the section's `TempoMul` and ramps over the final bars (the ending
+ritard). A duration therefore has a position: use `SpanSamples(fromTick, ticks)` /
+`SpanSeconds(fromTick, ticks)`, which measure through the accumulator. `SamplesForTicks(ticks)`
+is the *nominal*-tempo span and will cut a note short in a slowing section — it is kept for
+spans with no position. Size buffers off `Timing.TotalSamples` (the finished accumulator), never
+off `ticks × nominal`, and remember the ring-out tail is a number of seconds the ritard outruns
+(it is scaled by `RitardAmount` in `ComposePlan` for exactly that reason).
+
+---
+
+## Patterns — the rhythmic unit (`Engine/Pattern.cs`)
+
+**A rhythmic figure owns its own length.** `Pattern { LengthTicks, cells }` free-runs against the
+bar line; nothing indexes "cell for eighth *e* of the bar" any more. That one mechanism covers a
+1-bar loop (the old behaviour), a 2-bar call-and-response (the ska horns, the rock riff), a 4-bar
+phrase whose last bar varies (the punk and busy-ska bass), and a 3-eighth hemiola that does *not*
+divide the bar (the cadential regrouping). It is also why the engine is meter-agnostic enough for
+the non-4/4 row to be tractable.
+
+`Slice(from, to, anchor, feel, displace)` is the only way to read one, and every argument is a
+feature the composer needs:
+
+- **anchor** — the section's first tick, so a multi-bar figure restarts with the section rather
+  than with wherever the song happens to be.
+- **feel** — the section's half/double-time multiplier. Half time is a PATTERN RATE, not a tempo:
+  the grid is untouched and the song's length does not change.
+- **displace** — metric displacement in ticks (Biamonte's displacement dissonance). Off-kilter
+  placement no amount of note-choice variation produces, and near-free because positions are ticks.
+
+Cell values are the *voice's* vocabulary, not the pattern's: bass cells are semitone offsets plus
+`Harmony.Rest`/`Approach`, comp cells are `CompFigure.Ring/Stab/Mute/Tone(i)`, drum cells are hit
+vs `Ghost`/`Open`. A `Hit` carries `SpanTicks` (ticks to the pattern's next onset — the legato
+length) and `Vel`.
+
+---
+
+## Sections carry state (`Engine/Structure.cs`, `SongForm`)
+
+`BuildStructure(genre)` returns the genre's OWN form — a metal song and a pop song no longer share
+one hardcoded list. A `Part` carries `Energy`, `Feel`, `TempoMul`, `KeyShift`, `Displace`,
+`Hemiola` and `BarBeats`, and `RenderSection` publishes them as `_energy`/`_feel`/`_displace`/
+`_keyShift` before rendering a bar.
+
+- **Voices read the state; they never ask "am I in a verse?"** Density and level come from
+  `NoteGain(tick, vel)` = the cell's velocity × the genre's accent weight for that metric position
+  × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is how the mix got flat and mechanical in
+  the first place — route it through `NoteGain`.
+- `BarBeats` is the anomalous-measure hook (a 2/4 bar inside a 4/4 section). Bars are laid out per
+  section before anything renders, so a short bar is a length, not a special case. Sections are
+  multiples of 4 bars otherwise — including the ending, which is 4: the old 2-bar ending broke the
+  hypermeasure exactly where a clean landing was wanted.
+- **Fills are planned per section, in ticks, not "the last beat of the bar".** Length is a weighted
+  draw (a beat ≈ 55% … two bars ≈ 5%) and the ≥1-bar options are gated to boundaries that earn them
+  (into a chorus, out of a breakdown). The KIT stops where the fill starts; the melodic voices play
+  through it, the way a band does.
+- **Render order is a feature.** Where the bass follows the riff (`RiffBassChance` — metal's pedal
+  vs doubling, punk's unison), the chordal voice renders FIRST and the bass reads `_riffOnsets`.
+  Both real metal-bass modes are relational, so no table can express them.
 
 ---
 

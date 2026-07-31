@@ -138,6 +138,10 @@ public static class VibeCodec
 	public static readonly Field[] AdvancedFields =
 	{
 		F( "KitPresence", 0f, 4f, false, c => c.KitPresence, ( c, v ) => c.KitPresence = v ),
+		// How far each genre's own mix profile (GenreProfile.Mix) is taken. 1 = as designed,
+		// 0 = every genre through one neutral mix. The SHAPE of a genre's mix is character and
+		// lives in the profile; what the house retunes at runtime is how far to push it.
+		F( "GenreMix", 0f, 2f, false, c => c.GenreMix, ( c, v ) => c.GenreMix = v ),
 		F( "KickBalance", 0f, 2f, false, c => c.KickBalance, ( c, v ) => c.KickBalance = v ),
 		F( "SnareBalance", 0f, 2f, false, c => c.SnareBalance, ( c, v ) => c.SnareBalance = v ),
 		F( "TomBalance", 0f, 2f, false, c => c.TomBalance, ( c, v ) => c.TomBalance = v ),

@@ -138,6 +138,13 @@ public sealed partial class MusicGen
 		// KitPresence: drums are short transients fighting a sustained melodic bed; this baseline
 		// boost lets the kit sit in the mix at DRUMS = 1.0 (parity with the other voice sliders).
 		public float KitPresence = 2.0f;
+		// GenreMix: how strongly each genre's own mix profile (GenreProfile.Mix — metal dry and
+		// mid-scooped, pop wide and bright, country dry and centred, ska roomy) is applied.
+		// 1 = as designed, 0 = every genre through one neutral mix, 2 = exaggerated. It is ONE
+		// value rather than six genres × five trims of house config: the shape of a genre's mix is
+		// character and belongs in the profile next to its tempo band, and what the house actually
+		// needs to retune without a rebuild is how far to take it.
+		public float GenreMix = 1.0f;
 		// Kit per-voice level balance. The pieces synthesise at very different raw levels (a kick
 		// is huge, a hat is thin noise). Starting point was EQUAL PRE-MASTER PEAK (kick 0.40 /
 		// snare 0.476 / tom 0.496 / hat 0.582 / crash 0.515), then hand-tuned by ear: equal peak
