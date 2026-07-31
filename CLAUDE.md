@@ -156,6 +156,18 @@ information, never a failure to be argued with.
 JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
 only runs where the bundle has been built.
 
+**A commit that changes `wasm/Exports.cs` or `web/engine.js` MUST re-publish and re-stage
+`web/_framework` in that same commit.** `web/_framework` is committed so a checkout is runnable
+without the SDK — which makes every commit a claim that the glue and the bundle agree. Add a
+`[JSExport]`, commit the glue that calls it, and defer the rebuild "until later", and anyone who
+pulls in between gets a page that dies at boot with `E.Foo is not a function`. `make test` now
+cross-checks every export `engine.js` calls against the bundle, so this fails there rather than
+in a browser — but the discipline is what keeps intermediate commits runnable at all.
+
+Note that `make test` passing is NOT evidence that a NEW export shipped unless something
+actually calls it; the cross-check above exists precisely because the hand-written assertions
+only cover exports someone remembered to test.
+
 **What can and cannot be built on a dev host.** The web side is fully buildable — install the
 workload once with `dotnet workload install wasm-tools` and `make` does a full AOT publish and
 stages `web/_framework`, after which `make test` exercises the real JS↔wasm boundary. `make

@@ -5,6 +5,7 @@
 //   make            # publish the engine into web/_framework
 //   node test/smoke.mjs
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { dotnet } from '../web/_framework/dotnet.js';
 
 let failures = 0;
@@ -20,6 +21,19 @@ function floatChannel(channel) {
   const u8 = E.ChannelBytes(channel).slice();      // off-heap copy
   return new Float32Array(u8.buffer, u8.byteOffset, u8.byteLength / 4);
 }
+
+// ── glue vs bundle ──
+// web/_framework is COMMITTED, so a checkout is runnable without the SDK — which means every
+// commit has to keep the glue and the bundle in step. Adding a [JSExport] and forgetting to
+// re-publish leaves engine.js calling a function the bundle doesn't have, and the page dies at
+// boot with "E.Foo is not a function". Check every export the glue actually calls, so that
+// mismatch fails here instead of in a browser.
+const glue = readFileSync(new URL('../web/engine.js', import.meta.url), 'utf8');
+const called = [...new Set([...glue.matchAll(/\bE\.([A-Za-z_]\w*)\s*\(/g)].map((m) => m[1]))].sort();
+check('engine.js calls at least one export', called.length > 0, `${called.length} found`);
+const missing = called.filter((nm) => typeof E[nm] !== 'function');
+check('every export engine.js calls exists in the bundle', missing.length === 0,
+  missing.length ? `MISSING: ${missing.join(', ')} — re-publish (make) and re-stage web/_framework` : `${called.length} checked`);
 
 // ── config / vibe round-trip ──
 const cfg = E.DefaultConfig();
