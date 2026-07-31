@@ -11,18 +11,18 @@ namespace Skafinity;
 
 public sealed partial class MusicGen
 {
-	// The bass VOICE per genre. Register, oscillator, sustain and filter are the sound of the
-	// instrument, so they live next to it rather than in GenreProfile: a reggae bass is a round
-	// triangle an octave down with a long sustain, a metal bass is a driven square that tracks
-	// the riff, a pop bass is a tight synth with no ring at all.
-	(int Octave, int Osc, float Sustain, float Cutoff, float Drive) BassTone() => _genre switch
+	// The bass VOICE per genre. Oscillator, sustain and filter are the sound of the instrument, so
+	// they live next to it rather than in GenreProfile. The line's REGISTER is not here: it comes
+	// out of the pattern's own octave cells, which is where a bass player's register decisions
+	// actually live.
+	(int Osc, float Sustain, float Cutoff, float Drive) BassTone() => _genre switch
 	{
-		0 => (0, 3, 0.60f, 1.0f, 1.0f),    // ska: round, deep, legato
-		1 => (0, 3, 0.50f, 1.15f, 1.15f),  // rock: fingered, a touch brighter
-		2 => (0, 3, 0.35f, 0.95f, 0.9f),   // country: short, plummy, out of the way
-		3 => (0, 1, 0.45f, 1.45f, 1.6f),   // metal: a saw with bite, so it cuts under the riff
-		4 => (0, 1, 0.40f, 1.35f, 1.4f),   // punk: picked and clanky
-		_ => (0, 2, 0.30f, 1.25f, 1.05f),  // pop: a tight square synth sub
+		0 => (3, 0.60f, 1.0f, 1.0f),    // ska: round, deep, legato
+		1 => (3, 0.50f, 1.15f, 1.15f),  // rock: fingered, a touch brighter
+		2 => (3, 0.35f, 0.95f, 0.9f),   // country: short, plummy, out of the way
+		3 => (1, 0.45f, 1.45f, 1.6f),   // metal: a saw with bite, so it cuts under the riff
+		4 => (1, 0.40f, 1.35f, 1.4f),   // punk: picked and clanky
+		_ => (2, 0.30f, 1.25f, 1.05f),  // pop: a tight square synth sub
 	};
 
 	// ── Bass ──
@@ -119,7 +119,7 @@ public sealed partial class MusicGen
 
 	void EmitBass( int at, int dur, int midi, double decaySec, float gain, in Voicing vc )
 	{
-		var (oct, osc, sustain, cutoff, drive) = BassTone();
+		var (osc, sustain, cutoff, drive) = BassTone();
 		// Triangle body for a round, deep reggae/dub bass (saw alone read as too buzzy) — but
 		// triangle alone was too subtle, so layer a quieter square underneath for presence. The
 		// genre's own oscillator replaces the body where the genre wants bite; both layers share
@@ -142,7 +142,7 @@ public sealed partial class MusicGen
 			Drive = _c.BassDrive * drive, Pan = 0f,
 		};
 		ApplyVoicing( ref body, vc ); ApplyVoicing( ref sub, vc );
-		RenderPatch( at, dur, Midi( midi + 12 * oct ), body, mono: true );
-		RenderPatch( at, dur, Midi( midi + 12 * oct ), sub, mono: true );
+		RenderPatch( at, dur, Midi( midi ), body, mono: true );
+		RenderPatch( at, dur, Midi( midi ), sub, mono: true );
 	}
 }
