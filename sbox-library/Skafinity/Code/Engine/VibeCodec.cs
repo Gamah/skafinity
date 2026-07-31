@@ -77,7 +77,11 @@ public static class VibeCodec
 				return Choices[idx];
 			}
 			if ( Int ) return ((int)Math.Round( v )).ToString();
-			if ( Min == 0f && Max <= 1f ) return $"{(int)Math.Round( v * 100 )}%";
+			// A knob whose whole range fits in 0..2 is a proportion, not a count — rounding it to
+			// a whole number shows the same "1" across most of its travel. Read those as percents
+			// (a 0..1.5 volume, a 0.7..1.45 tempo scale); anything wider is a real quantity (Hz,
+			// cents, a drive amount) and stays a number.
+			if ( Max <= 2f ) return $"{(int)Math.Round( v * 100 )}%";
 			return ((int)Math.Round( v )).ToString();
 		}
 	}
@@ -105,8 +109,11 @@ public static class VibeCodec
 	// Shared GLOBAL knobs — the wire's global block, in order (append-only).
 	static readonly Field[] GlobalFields =
 	{
-		F( "TEMPO MIN", 60, 200, true, c => c.BpmMin, ( c, v ) => c.BpmMin = (int)v ),
-		F( "TEMPO MAX", 60, 200, true, c => c.BpmMax, ( c, v ) => c.BpmMax = (int)v ),
+		// RESERVED ×2 — were TEMPO MIN / TEMPO MAX, an absolute band every genre shared. The band
+		// is per-genre character now (GenreProfile) and the knob is the TEMPO scale appended at
+		// the end of this block.
+		null,
+		null,
 		F( "TEMPO BIAS", 0f, 1f, false, c => c.FastChance, ( c, v ) => c.FastChance = v ),
 		// RESERVED — was SWING, now per-genre character (GenreProfile). Kept as an empty slot so
 		// every later global and the whole instrument grid stay at their existing wire positions
@@ -115,6 +122,9 @@ public static class VibeCodec
 		F( "RESONANCE", 0.2f, 2f, false, c => c.Resonance, ( c, v ) => c.Resonance = v ),
 		F( "STEREO WIDTH", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
 		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
+		// Appended, so every position above keeps the place it has always had. The range is 15
+		// steps of 0.05 so the neutral 1.0 lands exactly on a level rather than a rounding of one.
+		F( "TEMPO", 0.70f, 1.45f, false, c => c.TempoScale, ( c, v ) => c.TempoScale = v ),
 	};
 
 	// ── Advanced / tuning-only knobs ──
@@ -495,9 +505,9 @@ public static class VibeCodec
 	/// Randomise the vibe knobs of <paramref name="c"/> in place.
 	///
 	/// This is the one definition of what "reroll" means, shared by every player, so the two
-	/// drivers cannot answer the question differently: a fresh genre, every knob of that genre,
-	/// and a tempo range put back in order if the two ends land crossed. Per-instrument volumes
-	/// are excluded by default — they are a local mix preference and never ride in the seed.
+	/// drivers cannot answer the question differently: a fresh genre and every knob of that
+	/// genre. Per-instrument volumes are excluded by default — they are a local mix preference
+	/// and never ride in the seed.
 	///
 	/// Randomness is the CALLER's: <paramref name="rnd"/> returns values in [0,1). A driver that
 	/// wants a throwaway roll passes a session RNG; one that wants a reproducible roll passes a
@@ -521,11 +531,6 @@ public static class VibeCodec
 			if ( !includeVolumes && IsVolume( f ) ) continue;
 			f.SetNorm( c, rnd() );
 		}
-
-		// The tempo band is two independent knobs, so a roll can land the low end above the high
-		// end. Put them back in order rather than leaving a band that means nothing.
-		if ( c.BpmMin > c.BpmMax ) (c.BpmMin, c.BpmMax) = (c.BpmMax, c.BpmMin);
-		if ( c.FastBpmMin > c.FastBpmMax ) (c.FastBpmMin, c.FastBpmMax) = (c.FastBpmMax, c.FastBpmMin);
 	}
 
 	/// <summary>

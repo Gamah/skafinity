@@ -42,6 +42,9 @@ static class Program
 		Banner( "genre feel" );
 		GenreProfileTests();
 
+		Banner( "wired knobs" );
+		WiredKnobTests();
+
 		Banner( "structure" );
 		StructureTests();
 
@@ -126,7 +129,7 @@ static class Program
 		// end of its scale table and still yield a sane pitch.
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 		{
-			var scales = Harmony.ScalesFor( g );
+			var scales = GenreProfile.For( g ).Scales;
 			Check( $"genre {g} has at least one scale", scales.Length > 0 );
 
 			bool monotonic = true, sane = true;
@@ -149,11 +152,11 @@ static class Program
 		// genre's every progression to a real pitch.
 		bool chordsSane = true;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var prog in Harmony.ProgressionsFor( g ) )
+			foreach ( var prog in GenreProfile.For( g ).Progressions )
 			{
 				chordsSane &= prog.Length > 0;
 				foreach ( var deg in prog )
-					foreach ( var scale in Harmony.ScalesFor( g ) )
+					foreach ( var scale in GenreProfile.For( g ).Scales )
 					{
 						int m = Harmony.ChordRoot( 48, scale, deg );
 						chordsSane &= m > 0 && m < 128;
@@ -161,10 +164,26 @@ static class Program
 			}
 		Check( "every progression degree resolves to a MIDI pitch", chordsSane );
 
+		// Genres drawing the SAME changes is how six genres came to sound like one. A little
+		// overlap is honest — I–IV–V belongs to everyone — but two genres sharing several
+		// progressions can produce byte-identical harmony, so cap it at one.
+		int worstPair = 0; string worstWhich = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			for ( int h = g + 1; h < VibeCodec.GenreCount; h++ )
+			{
+				int shared = 0;
+				foreach ( var a in GenreProfile.For( g ).Progressions )
+					foreach ( var b in GenreProfile.For( h ).Progressions )
+						if ( SameDegrees( a, b ) ) shared++;
+				if ( shared > worstPair ) { worstPair = shared; worstWhich = $"{g}/{h}"; }
+			}
+		Check( "no two genres share more than one progression", worstPair <= 1,
+			$"genres {worstWhich} share {worstPair}" );
+
 		// Bass patterns index a fixed 8-cell bar; a stray cell value would index off a table.
 		bool bassSane = true;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in Harmony.BassPatternsFor( g ) )
+			foreach ( var p in GenreProfile.For( g ).BassPatterns )
 				bassSane &= p.Length == 8;
 		Check( "every bass pattern is 8 cells", bassSane );
 
@@ -324,6 +343,125 @@ static class Program
 			foreach ( var f in VibeCodec.Fields( g ) )
 				noSwingKnob &= !f.Name.Equals( "SWING", StringComparison.OrdinalIgnoreCase );
 		Check( "SWING is not a vibe knob in any genre", noSwingKnob );
+
+		// ── tempo bands ──
+		// The profile covers every genre the codec offers, or a genre would draw someone else's
+		// character.
+		Check( "there is a profile for every genre", GenreProfile.Count == VibeCodec.GenreCount );
+
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			Check( $"genre {g} tempo band is ordered and playable",
+				p.BpmMin <= p.BpmMax && p.BpmMin >= 40 && p.BpmMax <= 300 );
+			Check( $"genre {g} uptempo band is ordered and playable",
+				p.FastBpmMin <= p.FastBpmMax && p.FastBpmMin >= 40 && p.FastBpmMax <= 300 );
+			Check( $"genre {g} uptempo band is not slower than its main band",
+				p.FastBpmMin >= p.BpmMin && p.FastBpmMax >= p.BpmMax );
+
+			bool inBand = true;
+			for ( int i = 0; i < 200; i++ )
+			{
+				int bpm = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), false, 1f );
+				inBand &= bpm >= p.BpmMin && bpm <= p.BpmMax;
+				int fast = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), true, 1f );
+				inBand &= fast >= p.FastBpmMin && fast <= p.FastBpmMax;
+			}
+			Check( $"genre {g} draws inside its tempo band", inBand );
+
+			Check( $"genre {g} has a harmonic rhythm of at least a bar", p.ChordBars >= 1 );
+		}
+
+		// The whole point of the row: the bands must actually separate the genres. Punk and
+		// country are the two extremes, and nothing in between may collapse them all into one
+		// shared range again.
+		Check( "punk is faster than country can reach",
+			GenreProfile.For( 4 ).BpmMin > GenreProfile.For( 2 ).BpmMax );
+		var bands = new HashSet<(int, int)>();
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			bands.Add( (GenreProfile.For( g ).BpmMin, GenreProfile.For( g ).BpmMax) );
+		Check( "genres do not share one tempo band", bands.Count >= 4, $"{bands.Count} distinct bands" );
+
+		// The TEMPO knob rides on top of the band rather than replacing it.
+		Check( "the tempo knob pushes the drawn tempo",
+			ska.DrawBpm( new Rng( "t" ), false, 1.4f ) > ska.DrawBpm( new Rng( "t" ), false, 0.7f ) );
+
+		// A genre with a fixed drum style must not consume a draw for it — that is what lets the
+		// style be a table entry rather than a roll.
+		Check( "a fixed drum style is the same whatever the stream says",
+			GenreProfile.For( 3 ).DrawDrumStyle( new Rng( "a" ), false )
+				== GenreProfile.For( 3 ).DrawDrumStyle( new Rng( "b" ), true ) );
+		bool styleSane = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			for ( int i = 0; i < 50; i++ )
+			{
+				int st = GenreProfile.For( g ).DrawDrumStyle( new Rng( $"st:{g}:{i}" ), i % 2 == 0 );
+				styleSane &= st >= 0 && st <= 4;
+			}
+		Check( "every drawn drum style is a real style", styleSane );
+
+		// Punk is the fast genre by definition, and punk/pop take a chord per bar so their
+		// four-chord loop is the four-bar hypermeasure.
+		Check( "punk always runs hot", GenreProfile.For( 4 ).AlwaysFast );
+		Check( "punk changes chord every bar", GenreProfile.For( 4 ).ChordBars == 1 );
+		Check( "pop changes chord every bar", GenreProfile.For( 5 ).ChordBars == 1 );
+		Check( "ska holds a chord for two bars", GenreProfile.For( 0 ).ChordBars == 2 );
+		Check( "ska is the horn-lead genre", GenreProfile.For( 0 ).HornLead );
+		bool oneHornLead = true;
+		for ( int g = 1; g < VibeCodec.GenreCount; g++ ) oneHornLead &= !GenreProfile.For( g ).HornLead;
+		Check( "no other genre takes the horn lead", oneHornLead );
+	}
+
+	/// <summary>Knobs that exist must do something. Each of these was a slider that rode in the
+	/// seed and changed nothing, so the check is the crude one that would have caught it: move
+	/// the knob end to end and the song must come out different.</summary>
+	static void WiredKnobTests()
+	{
+		Check( "the HORN SECTION knob changes the song",
+			!SameSamples( Knob( 0, c => c.HornSectionChance = 0f ),
+				Knob( 0, c => c.HornSectionChance = 1f ) ) );
+		Check( "the ORGAN BUBBLE knob changes the song",
+			!SameSamples( Knob( 0, c => c.OrganBubbleChance = 0f ),
+				Knob( 0, c => c.OrganBubbleChance = 1f ) ) );
+
+		// ForceInstrument and the four *Weight knobs were inert while the lead was hardcoded to
+		// the trumpet, which also meant the finished Sax/Organ/Trombone voices never played.
+		Check( "forcing a lead instrument changes the song",
+			!SameSamples( Knob( 0, c => c.ForceInstrument = 0 ),
+				Knob( 0, c => c.ForceInstrument = 3 ) ) );
+		bool everyLeadPlays = true;
+		for ( int inst = 0; inst < 4; inst++ )
+		{
+			var s = Knob( 0, c => c.ForceInstrument = inst );
+			everyLeadPlays &= s != null && s.Length > 0;
+		}
+		Check( "every lead instrument renders", everyLeadPlays );
+
+		// The lead weights must be reachable too — zeroing every one but the trombone has to
+		// give the same song as forcing the trombone outright.
+		Check( "the lead weights pick the same instrument as forcing it",
+			SameSamples( Knob( 0, c => c.ForceInstrument = 3 ),
+				Knob( 0, c =>
+				{
+					c.ForceInstrument = -1;
+					c.TrumpetWeight = c.SaxWeight = c.OrganWeight = 0f;
+					c.TromboneWeight = 1f;
+				} ) ) );
+
+		// The TEMPO knob is the replacement for the retired absolute band: slower must mean a
+		// longer song, and it must be the same song.
+		var slow = Knob( 1, c => c.TempoScale = 0.70f );
+		var quick = Knob( 1, c => c.TempoScale = 1.45f );
+		Check( "the TEMPO knob changes how long a song runs", slow.Length > quick.Length );
+	}
+
+	/// <summary>One short song, rendered at a low sample rate (these checks look at whether the
+	/// output differs, not at what it sounds like).</summary>
+	static short[] Knob( int genre, Action<MusicGen.Config> tune )
+	{
+		var cfg = new MusicGen.Config { Genre = genre, SampleRate = 16000 };
+		tune( cfg );
+		return MusicGen.GenerateSamples( "knob:0", cfg, out _ );
 	}
 
 	static void StructureTests()
@@ -429,14 +567,16 @@ static class Program
 			if ( VibeCodec.IsVolume( f ) ) volsKept &= Math.Abs( f.GetNorm( volCfg ) - 0.25f ) < 0.001f;
 		Check( "a reroll leaves per-instrument volumes alone", volsKept );
 
-		// A rolled tempo band must still be a band.
-		bool tempoOrdered = true;
+		// The tempo knob scales whatever the genre drew, so a reroll must never land it at or
+		// near zero (a song at 0 bpm is an infinite bar) or somewhere the genre's band would be
+		// unrecognisable at the other end.
+		bool tempoSane = true;
 		for ( int i = 0; i < 200; i++ )
 		{
 			var c = Rolled( "tempo", i, 0 );
-			tempoOrdered &= c.BpmMin <= c.BpmMax && c.FastBpmMin <= c.FastBpmMax;
+			tempoSane &= c.TempoScale >= 0.5f && c.TempoScale <= 2f;
 		}
-		Check( "a rolled tempo range is never inverted", tempoOrdered );
+		Check( "a rolled tempo scale stays musical", tempoSane );
 
 		// The caller owns the randomness; a degenerate generator must not index off the genre table.
 		var edge = new MusicGen.Config();
@@ -563,6 +703,13 @@ static class Program
 		var c = new MusicGen.Config { Genre = fromGenre };
 		VibeCodec.RollFrom( c, VibeCodec.VibeSeed( tag, n ) );
 		return c;
+	}
+
+	static bool SameDegrees( int[] a, int[] b )
+	{
+		if ( a.Length != b.Length ) return false;
+		for ( int i = 0; i < a.Length; i++ ) if ( a[i] != b[i] ) return false;
+		return true;
 	}
 
 	static bool SameSamples( short[] a, short[] b )

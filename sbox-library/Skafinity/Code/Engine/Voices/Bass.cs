@@ -30,8 +30,15 @@ public sealed partial class MusicGen
 			int midi;
 			if ( off == Harmony.Approach )
 			{
+				// Walk only where the harmony actually moves. The approach cell fires every bar,
+				// but with 2 bars to a chord half of those bars end on the same chord they began
+				// on — leading into a chord that isn't arriving just reads as a wrong note, so
+				// the bar sits on its root instead. The draw is consumed either way so the
+				// ornament stream downstream stays aligned.
+				bool chordMoves = nextChord != chord;
 				int target = ChordRoot( nextChord );
-				midi = target - (rng.Chance( 0.5f ) ? 1 : 2); // chromatic/step lead-in
+				int lead = target - (rng.Chance( 0.5f ) ? 1 : 2); // chromatic/step lead-in
+				midi = chordMoves ? lead : root;
 			}
 			else
 			{

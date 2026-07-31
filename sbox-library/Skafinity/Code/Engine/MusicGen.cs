@@ -97,6 +97,8 @@ public sealed partial class MusicGen
 	bool _organBubble;
 	bool _fast;
 	int _genre;              // 0 ska, 1 rock, 2 country, 3 metal, 4 punk, 5 pop
+	int _chordBars = 2;      // bars per chord — the genre's harmonic rhythm (GenreProfile.ChordBars)
+	bool _hornLead;          // the lead line is the ska horn section rather than a lead guitar
 	string _tag;             // the per-song seed string, reused to seed per-section streams
 	Timing _time;            // the song's time base: eighth length, swing, kit push (see Timing.cs)
 	float _drumTone = 0.5f;  // DrumTone 0..1 → toms↔cymbals CONTENT bias in fills/groove decoration

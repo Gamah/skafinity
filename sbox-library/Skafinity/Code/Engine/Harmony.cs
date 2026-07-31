@@ -13,7 +13,13 @@ namespace Skafinity;
 /// pitch. That is what lets a progression be any length — nothing here assumes four.
 ///
 /// Stateless by design: every entry point takes the scale it should read. MusicGen keeps thin
-/// instance wrappers that supply the song's own scale.
+/// instance wrappers that supply the song's own scale. Which table a genre draws from is
+/// <see cref="GenreProfile"/>'s business, not this file's — these are just the tables.
+///
+/// NO TWO GENRES SHARE MORE THAN ONE PROGRESSION. Sharing them is how six genres came to draw
+/// byte-identical changes (I–V–vi–IV was in four of them), so the tables are pruned to keep the
+/// genres apart and the engine test asserts it. Adding an entry means checking it against the
+/// other five.
 /// </summary>
 static class Harmony
 {
@@ -24,8 +30,9 @@ static class Harmony
 	/// offset.</summary>
 	public const int Approach = 99;
 
+	// ── Ska harmony (Genre 0) ──
 	// Major-leaning scales (Sublime / reggae sit in major & mixolydian mostly).
-	public static readonly int[][] Scales =
+	public static readonly int[][] SkaScales =
 	{
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major
 		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian
@@ -33,20 +40,23 @@ static class Harmony
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted — was dorian; ska/reggae stays bright)
 	};
 
-	public static readonly int[][] Progressions =
+	// The bright turnarounds ska keeps: the mixolydian ♭VII move and the ii–V that punk and pop
+	// never touch. The anthem loops (I–V–vi–IV, vi–IV–I–V) moved out to punk and pop, which is
+	// where they actually belong.
+	public static readonly int[][] SkaProgressions =
 	{
-		new[] { 0, 4, 5, 3 }, // I–V–vi–IV
-		new[] { 0, 3, 4, 4 }, // I–IV–V–V
-		new[] { 0, 5, 3, 4 }, // I–vi–IV–V
-		new[] { 0, 6, 3, 0 }, // I–bVII–IV–I (mixolydian)
-		new[] { 5, 3, 0, 4 }, // vi–IV–I–V
+		new[] { 0, 3, 4, 3 }, // I–IV–V–IV
+		new[] { 0, 6, 3, 0 }, // I–♭VII–IV–I (mixolydian)
+		new[] { 0, 5, 1, 4 }, // I–vi–ii–V (the 50s/rocksteady turnaround)
 		new[] { 0, 3, 0, 4 }, // I–IV–I–V
+		new[] { 5, 4, 3, 4 }, // vi–V–IV–V (the minor-tinged vamp)
+		new[] { 0, 0, 3, 4 }, // I pedal → IV–V
 	};
 
 	// Bass patterns: semitone offsets from the chord root per eighth; -99 = rest
 	// (note sustains to the next onset). Slot 7 is the "approach" → walks to the
 	// next chord. Mix of melodic / one-drop / rocking / busy ska.
-	public static readonly int[][] BassPatterns =
+	public static readonly int[][] SkaBassPatterns =
 	{
 		new[] { 0, Rest, 0, 12, Rest, 7, 5, Approach },   // sublime melodic
 		new[] { Rest, Rest, 0, Rest, 0, Rest, 7, Approach }, // one-drop spacey
@@ -72,15 +82,18 @@ static class Harmony
 		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (weighted)
 	};
 
-	// Degrees are read against the (often minor) scale, so 5 = ♭VI, 6 = ♭VII, 3 = iv, 4 = v.
+	// Degrees are read against the (often minor) scale, so 5 = ♭VI, 6 = ♭VII, 3 = iv, 4 = v,
+	// 2 = ♭III. Rock and metal both live in minor, so they had three progressions in common and
+	// could draw the identical vamp; the ♭VI/♭II-leaning ones are metal's now and rock keeps the
+	// ♭VII-driven ones.
 	public static readonly int[][] RockProgressions =
 	{
-		new[] { 0, 6, 5, 6 }, // i–♭VII–♭VI–♭VII (driving rock vamp)
 		new[] { 0, 5, 6, 0 }, // i–♭VI–♭VII–i
-		new[] { 0, 6, 3, 0 }, // i–♭VII–IV–i (mixolydian rock)
 		new[] { 0, 3, 6, 0 }, // i–iv–♭VII–i
 		new[] { 0, 0, 6, 6 }, // i / ♭VII riff vamp
-		new[] { 0, 3, 4, 0 }, // i–iv–v–i
+		new[] { 0, 6, 0, 3 }, // i–♭VII–i–iv
+		new[] { 0, 6, 3, 4 }, // i–♭VII–iv–v
+		new[] { 0, 2, 3, 6 }, // i–♭III–iv–♭VII
 	};
 
 	// Driving root/octave eighths that lock to the kick — the rock engine room, vs ska's
@@ -105,12 +118,14 @@ static class Harmony
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
 	};
 
+	// Country is the plainest of the major genres — I, IV and V and not much else — so it keeps
+	// the backbone and the two-chord vamps, and the anthem loops go to punk/pop.
 	public static readonly int[][] CountryProgressions =
 	{
 		new[] { 0, 3, 4, 0 }, // I–IV–V–I (the country backbone)
 		new[] { 0, 0, 4, 4 }, // I–V vamp
-		new[] { 0, 3, 0, 4 }, // I–IV–I–V
-		new[] { 0, 4, 5, 3 }, // I–V–vi–IV
+		new[] { 0, 4, 3, 0 }, // I–V–IV–I
+		new[] { 0, 3, 0, 3 }, // I–IV two-chord
 		new[] { 0, 4, 0, 4 }, // I–V two-chord
 	};
 
@@ -135,14 +150,17 @@ static class Harmony
 		new[] { 0, 2, 3, 5, 7, 8, 10 }, // natural minor (weighted)
 	};
 
-	// Degrees read against the (minor) scale: 5 = ♭VI, 6 = ♭VII, 1 = ♭II, 3 = iv.
+	// Degrees read against the (minor) scale: 5 = ♭VI, 6 = ♭VII, 1 = ♭II, 3 = iv. Metal takes the
+	// ♭VI and phrygian ♭II moves — the darkest of the minor turnarounds, and the ones rock does
+	// not reach for.
 	public static readonly int[][] MetalProgressions =
 	{
-		new[] { 0, 5, 6, 0 }, // i–♭VI–♭VII–i
 		new[] { 0, 6, 5, 6 }, // i–♭VII–♭VI–♭VII (driving)
 		new[] { 0, 1, 0, 6 }, // i–♭II–i–♭VII (phrygian menace)
 		new[] { 0, 0, 5, 6 }, // i pedal → ♭VI–♭VII
-		new[] { 0, 6, 3, 0 }, // i–♭VII–iv–i
+		new[] { 0, 5, 1, 0 }, // i–♭VI–♭II–i
+		new[] { 0, 0, 1, 1 }, // i / ♭II pedal riff
+		new[] { 0, 3, 5, 6 }, // i–iv–♭VI–♭VII
 	};
 
 	// Driving roots locked to the double-kick; octave pushes for the gallop.
@@ -165,14 +183,15 @@ static class Harmony
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
 	};
 
-	// Major degrees: 3 = IV, 4 = V, 5 = vi — the anthem turnarounds.
+	// Major degrees: 3 = IV, 4 = V, 5 = vi — the anthem turnarounds. Punk keeps the ones that
+	// start on the tonic and drive; pop keeps the ones that start away from it and loop.
 	public static readonly int[][] PunkProgressions =
 	{
 		new[] { 0, 4, 5, 3 }, // I–V–vi–IV (the pop-punk anthem)
-		new[] { 5, 3, 0, 4 }, // vi–IV–I–V
-		new[] { 0, 5, 3, 4 }, // I–vi–IV–V (50s changes, sped up)
 		new[] { 0, 3, 4, 4 }, // I–IV–V–V
 		new[] { 0, 4, 3, 4 }, // I–V–IV–V (three-chord drive)
+		new[] { 0, 5, 4, 3 }, // I–vi–V–IV
+		new[] { 3, 4, 0, 0 }, // IV–V–I–I (the run-up)
 	};
 
 	// Driving root/octave eighths locked to the kick — same engine room as rock, pushed harder.
@@ -195,12 +214,15 @@ static class Harmony
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major (weighted)
 	};
 
+	// Pop owns the loops that do not begin on the tonic — the "Axis" rotations, which is exactly
+	// what makes a four-chord pop loop sound endless rather than resolved.
 	public static readonly int[][] PopProgressions =
 	{
-		new[] { 0, 4, 5, 3 }, // I–V–vi–IV
 		new[] { 5, 3, 0, 4 }, // vi–IV–I–V (the "Axis" loop)
 		new[] { 0, 5, 3, 4 }, // I–vi–IV–V
-		new[] { 0, 3, 0, 4 }, // I–IV–I–V (two-chord pulse)
+		new[] { 3, 0, 4, 5 }, // IV–I–V–vi
+		new[] { 0, 3, 5, 4 }, // I–IV–vi–V
+		new[] { 5, 3, 4, 0 }, // vi–IV–V–I
 	};
 
 	// Four-on-the-floor synth bass: a steady root pulse with octave pops for bounce.
@@ -211,15 +233,6 @@ static class Harmony
 		new[] { 0, 0, 0, 0, 0, 0, 0, Approach },           // straight eighth pulse
 		new[] { 0, Rest, 0, 0, Rest, 0, 12, Approach },    // syncopated synth bass
 	};
-
-	/// <summary>The tables genre <paramref name="g"/> draws from. Each is one RNG Pick, so a
-	/// genre's draw count does not depend on the table's size.</summary>
-	public static int[][] ScalesFor( int g ) => g switch
-	{ 1 => RockScales, 2 => CountryScales, 3 => MetalScales, 4 => PunkScales, 5 => PopScales, _ => Scales };
-	public static int[][] ProgressionsFor( int g ) => g switch
-	{ 1 => RockProgressions, 2 => CountryProgressions, 3 => MetalProgressions, 4 => PunkProgressions, 5 => PopProgressions, _ => Progressions };
-	public static int[][] BassPatternsFor( int g ) => g switch
-	{ 1 => RockBassPatterns, 2 => CountryBassPatterns, 3 => MetalBassPatterns, 4 => PunkBassPatterns, 5 => PopBassPatterns, _ => BassPatterns };
 
 	/// <summary>Degree → MIDI pitch against <paramref name="scale"/>, wrapping octaves in both
 	/// directions so any degree resolves.</summary>

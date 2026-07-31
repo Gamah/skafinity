@@ -58,8 +58,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 
 	// ── Output ──
 	[Property, Group( "Output" ), Range( 8000, 48000 )] public int SampleRate { get; set; } = 32000;
-	/// <summary>Target track length; bar count adapts to tempo to hit this.</summary>
-	[Property, Group( "Output" ), Range( 30f, 180f )] public float TargetSeconds { get; set; } = 80f;
 	/// <summary>Worker threads the pitched-voice synthesis is split across (composition + drums
 	/// stay single-threaded). Keeps each worker burst under s&amp;box's ~1000ms no-yield advisory.</summary>
 	[Property, Group( "Output" ), Range( 1, 8 )] public int RenderThreads { get; set; } = 6;
@@ -78,12 +76,12 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		/// constrained targets. The seed ledger (strings only) is never pruned.</summary>
 		[Property, Group( "Crossfade" ), Range( 1, 16 )] public int PcmCacheRadius { get; set; } = 5;
 
-	// ── Tempo (main = laid-back reggae-rock; Fast = uptempo ska) ──
-	[Property, Group( "Tempo" ), Range( 60, 200 )] public int BpmMin { get; set; } = 130;
-	[Property, Group( "Tempo" ), Range( 60, 200 )] public int BpmMax { get; set; } = 185;
+	// ── Tempo ──
+	// The tempo BAND belongs to the genre (Engine/GenreProfile.cs), not to a property here.
+	// TempoScale pushes or drags whatever the genre drew; FastChance is how often a song takes
+	// the genre's uptempo band instead of its main one.
+	[Property, Group( "Tempo" ), Range( 0.7f, 1.45f )] public float TempoScale { get; set; } = 1.0f;
 	[Property, Group( "Tempo" ), Range( 0f, 1f )] public float FastChance { get; set; } = 0.30f;
-	[Property, Group( "Tempo" ), Range( 100, 220 )] public int FastBpmMin { get; set; } = 150;
-	[Property, Group( "Tempo" ), Range( 100, 220 )] public int FastBpmMax { get; set; } = 168;
 
 	// ── Mix ──
 	[Property, Group( "Mix" ), Range( 0f, 1.5f )] public float BassVol { get; set; } = 1.00f;
@@ -461,12 +459,8 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	MusicGen.Config BuildKnobConfig() => new()
 	{
 		SampleRate = SampleRate,
-		TargetSeconds = TargetSeconds,
-		BpmMin = BpmMin,
-		BpmMax = BpmMax,
+		TempoScale = TempoScale,
 		FastChance = FastChance,
-		FastBpmMin = FastBpmMin,
-		FastBpmMax = FastBpmMax,
 		BassVol = BassVol,
 		SkankVol = SkankVol,
 		OrganVol = OrganVol,
@@ -533,9 +527,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	int ConfigHash()
 	{
 		var h = new HashCode();
-		h.Add( SampleRate ); h.Add( TargetSeconds );
-		h.Add( BpmMin ); h.Add( BpmMax ); h.Add( FastChance );
-		h.Add( FastBpmMin ); h.Add( FastBpmMax );
+		h.Add( SampleRate ); h.Add( TempoScale ); h.Add( FastChance );
 		h.Add( BassVol ); h.Add( SkankVol ); h.Add( OrganVol ); h.Add( MelodyVol ); h.Add( HornVol );
 		h.Add( KickVol ); h.Add( SnareVol ); h.Add( TomVol ); h.Add( HatVol ); h.Add( CrashVol ); h.Add( DrumVol );
 		h.Add( Detune ); h.Add( BassCutoff ); h.Add( SkankCutoff ); h.Add( SkankHighpass ); h.Add( SkankChop );

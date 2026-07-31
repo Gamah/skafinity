@@ -87,11 +87,12 @@ check('rock Encode(Decode) is stable', E.EncodeVibe(E.DecodeVibe(rockVibe, cfg))
 check('a field reports a voice', (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldVoice(0, i) === 'DRUMS') return true; })() === true);
 
 // move a knob, confirm it round-trips through the vibe string
-const tempoMin = (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldName(0, i) === 'TEMPO MIN') return i; })();
-const cfg2 = E.SetVibeField(cfg, tempoMin, 0.25);
-const norm = E.GetVibeNorm(cfg2, tempoMin);
+const tempo = (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldName(0, i) === 'TEMPO') return i; })();
+check('the TEMPO knob is in the field list', tempo !== undefined);
+const cfg2 = E.SetVibeField(cfg, tempo, 0.25);
+const norm = E.GetVibeNorm(cfg2, tempo);
 check('SetVibeField/GetVibeNorm round-trip', Math.abs(norm - 0.25) < 0.04, `${norm}`);
-check('VibeDisplay renders the value', /^\d+$/.test(E.VibeDisplay(cfg2, tempoMin)), E.VibeDisplay(cfg2, tempoMin));
+check('VibeDisplay renders the value', /^\d+%$/.test(E.VibeDisplay(cfg2, tempo)), E.VibeDisplay(cfg2, tempo));
 
 // ── generation ──
 const frames = E.GenerateSong('gamah:0', cfg);

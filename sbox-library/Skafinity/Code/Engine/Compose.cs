@@ -31,34 +31,33 @@ public sealed partial class MusicGen
 		_events.Clear();
 		int beatsPerBar = 4;   // 4/4 today; Timing carries it so voices never assume
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
-		_genre = Math.Clamp( _c.Genre, 0, 5 );
+		_genre = Math.Clamp( _c.Genre, 0, GenreProfile.Count - 1 );
+		var prof = GenreProfile.For( _genre );
+		_chordBars = Math.Max( 1, prof.ChordBars );
+		_hornLead = prof.HornLead;
 		var rng = new Rng( _tag.ToLowerInvariant() );
 
 		// TEMPO BIAS — punk always runs hot (it's the fast genre); the roll still consumes one
-		// draw so every other genre's later picks stay byte-identical.
-		_fast = rng.Chance( _c.FastChance ) || _genre == 4;
-		int bpm = _fast
-			? _c.FastBpmMin + rng.Int( Math.Max( 1, _c.FastBpmMax - _c.FastBpmMin + 1 ) )
-			: _c.BpmMin + rng.Int( Math.Max( 1, _c.BpmMax - _c.BpmMin + 1 ) );
-		_scale = rng.Pick( Harmony.ScalesFor( _genre ) );
-		_prog = rng.Pick( Harmony.ProgressionsFor( _genre ) );
+		// draw so every genre pulls the same number of values here.
+		_fast = rng.Chance( _c.FastChance ) || prof.AlwaysFast;
+		int bpm = prof.DrawBpm( rng, _fast, _c.TempoScale );
+		_scale = rng.Pick( prof.Scales );
+		_prog = rng.Pick( prof.Progressions );
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
-		_lead = Instrument.Trumpet;                       // ska lead is fixed; other genres use guitar
+		// Which horn/organ voice takes the ska lead, weighted by the config. Rolled for every
+		// genre so the draw count doesn't depend on the genre; only ska reads the result (the
+		// rest route the lead to a guitar in RenderLeadNote).
+		_lead = PickInstrument( rng );
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
 		_widthScale = Math.Clamp( _c.PanAmount, 0f, 1f );
 		_drumPan = DrumPan * _widthScale;
-		_bassPat = rng.Pick( Harmony.BassPatternsFor( _genre ) );
-		_drumStyle = _genre switch                        // 0 ska rolls a style; the rest are fixed
-		{
-			1 => 2,                                       // rock: straight backbeat
-			2 => 2,                                       // country: train-beat backbeat
-			3 => 3,                                       // metal: double-kick
-			4 => 2,                                       // punk: straight backbeat (fast)
-			5 => 4,                                       // pop: four-on-the-floor
-			_ => _fast ? 2 : rng.Int( 2 ),
-		};
-		_organBubble = true;
-		_hasHorns = true;
+		_bassPat = rng.Pick( prof.BassPatterns );
+		_drumStyle = prof.DrawDrumStyle( rng, _fast );
+		// Whether this song has an organ bubbling under the skank, and whether the horn section
+		// backs the lead. Both are ska arrangement choices the ORGAN BUBBLE / HORN SECTION knobs
+		// set the odds of; rolled for every genre for the same draw-count reason as the lead.
+		_organBubble = rng.Chance( _c.OrganBubbleChance );
+		_hasHorns = rng.Chance( _c.HornSectionChance );
 		// Meter is fixed up front — the time base is built further down (it needs the song's
 		// length), so anything sized in eighths before then counts them from the meter.
 		int eighthsPerBar = beatsPerBar * Timing.TicksPerBeat / Timing.TicksPerEighth;
@@ -70,9 +69,8 @@ public sealed partial class MusicGen
 		// Every song can do both — each SECTION rolls its own choice against this preference
 		// (see RenderSection), so a song can hat the verse and ride the chorus. The lean is
 		// genre-biased (rock/metal ride more) and spread per song so some strongly prefer one.
-		// One rng.Next() (same draw count as the old single Chance), so later draws stay aligned.
-		float rideBase = _genre switch { 1 => 0.55f, 3 => 0.65f, 2 => 0.30f, 4 => 0.20f, 5 => 0.30f, _ => 0.40f };
-		_ridePref = Math.Clamp( rideBase - 0.25f + 0.5f * rng.Next(), 0f, 1f );
+		// One rng.Next(), spread around the genre's own lean (rock/metal ride more).
+		_ridePref = prof.DrawRidePref( rng );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
 		_crashBrightLeft = rng.Chance( 0.5f );
 		// This song's backbeat kick personality — which off-beat eighths the kick leans into
@@ -82,7 +80,7 @@ public sealed partial class MusicGen
 
 		// Swing is the genre's own feel, drawn per song from its band exactly the way tempo is —
 		// not a knob, so a reroll can never hand metal a shuffle.
-		float swing = GenreProfile.For( _genre ).DrawSwing( rng, _fast );
+		float swing = prof.DrawSwing( rng, _fast );
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 
@@ -154,8 +152,17 @@ public sealed partial class MusicGen
 
 		for ( int bar = 0; bar < part.Bars; bar++ )
 		{
-			int chord = (bar / 2) % _prog.Length;
-			int nextChord = ((bar / 2) + 1) % _prog.Length;
+			// Harmonic rhythm is the genre's (GenreProfile.ChordBars): 2 bars/chord is the
+			// reggae-rock norm, while punk and pop take 1 so the four-chord loop IS the four-bar
+			// hypermeasure.
+			//
+			// nextChord is the NEXT BAR's chord, not the next slot's: with 2 bars/chord the first
+			// of the pair does not change harmony, and a bass approach note walking into a chord
+			// that is still a bar away just lands wrong. Equal chords is how the bass knows to
+			// stay put (see RenderBassBar). At a section's last bar this rolls back to slot 0,
+			// which is where the next section starts.
+			int chord = (bar / _chordBars) % _prog.Length;
+			int nextChord = ((bar + 1) / _chordBars) % _prog.Length;
 			int barTick = sectionTick + bar * _time.BarTicks;
 
 			// The ending lands on a held tonic chord that rings out — the band stops on the

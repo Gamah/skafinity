@@ -19,16 +19,18 @@ public sealed partial class MusicGen
 		// 4 = Punk (lean power-pop), 5 = Pop (synth/dance). New genres append here.
 		public int Genre = 0;
 
-		// Output
+		// Output. Song length follows the structure (see BuildStructure), so there is no
+		// length knob here.
 		public int SampleRate = 44100;
-		public float TargetSeconds = 80f; // (legacy) song length now follows the structure
-		public int Bars = 64;             // fallback if TargetSeconds <= 0
 
-		// Tempo — main is laid-back reggae-rock; Fast is an uptempo ska feel.
-		public int BpmMin = 130, BpmMax = 185;
+		// Tempo. The BAND is the genre's, not a knob — a country song and a metal song sharing
+		// one 130–185 range was most of why the genres sounded alike (see GenreProfile). What
+		// stays a knob is the listener's preference on top of it:
+		//   TempoScale — push or drag the drawn tempo (1.0 = the genre's own speed).
+		//   FastChance — how often a song draws from the genre's uptempo band instead.
+		public float TempoScale = 1.0f;
 		public float FastChance = 0.30f;
-		public int FastBpmMin = 150, FastBpmMax = 168;
-		// Swing is not a Config value: it is per-genre character drawn per song (GenreProfile).
+		// Swing is not a Config value either: per-genre character drawn per song (GenreProfile).
 
 		// Mix (per-voice gain pre-master) — the six "volume" sliders are normalized:
 		// same 0..1.5 range and the same 1.0 default (flat mix), tune from there.

@@ -230,11 +230,38 @@ the matrix generically, so there's no second field table to keep in lockstep —
 Not everything per-genre is a *preference*. Some things a genre simply **is**, and exposing them
 as knobs makes a reroll able to produce nonsense — swing was the example: a global 0–0.4 slider
 meant shuffle could hand metal a 40% shuffle. `GenreProfile` holds that kind of value and draws
-it per song from the seed, the way tempo already works.
+it per song from the seed.
 
-Swing lives there now (ska 0.10–0.22 … metal 0.00–0.02) and is **not** a vibe knob. When adding
-per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a genre grid) or
-the genre's identity (`GenreProfile`). Getting it wrong is only obvious once shuffle is on.
+It now carries the swing band, the **tempo band and uptempo band**, `ChordBars` (the harmonic
+rhythm — 2 bars/chord, or 1 for punk/pop so the four-chord loop *is* the hypermeasure), the drum
+style, the ride-vs-hats lean, whether the lead is the ska horn or a guitar, and **which harmony
+tables the genre draws from**. `Harmony` is just the tables now — the old `ScalesFor`/
+`ProgressionsFor`/`BassPatternsFor` dispatchers are gone; read `GenreProfile.For(g).Progressions`.
+
+**The line the table draws:** it holds what the *composer* reads — harmony, tempo, feel, form.
+Per-voice **timbre** tables (a genre's lead distortion in `Lead.cs`, its expression propensities
+in `Expression.cs`) stay next to the voice that renders them, because those are the sound of one
+instrument rather than the identity of the genre. Don't drag them in.
+
+When adding per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a
+genre grid) or the genre's identity (`GenreProfile`). Getting it wrong is only obvious once
+shuffle is on.
+
+**Tempo follows the same rule.** The band is the genre's; the vibe knob is `TempoScale`, a
+0.70–1.45 multiplier over whatever the genre drew (`TEMPO`, 15 steps of 0.05 so the neutral 1.0
+lands exactly on a level). The old absolute `TEMPO MIN`/`TEMPO MAX` knobs — and the `BpmMin`/
+`BpmMax`/`FastBpm*` `Config` fields behind them — are gone; their two wire positions are reserved
+nulls. `FastChance` survives as `TEMPO BIAS`: how often a song takes the genre's uptempo band.
+
+**No two genres may share more than one progression.** Six genres drawing from overlapping tables
+is how they came to sound alike (I–V–vi–IV was in four of them), so the tables are pruned and the
+engine test asserts the cap. Adding an entry means checking it against the other five.
+
+**Every genre pulls the same number of values out of the song stream.** The lead-instrument pick,
+the organ-bubble roll and the horn-section roll happen for *all* genres even though only ska
+reads them, and `ForceInstrument` takes its draw before overriding the result. A knob decides
+*what* plays, never *how many* values the composer pulls — otherwise setting one quietly rewrites
+the rest of the song.
 
 Retiring a knob leaves a **reserved slot** in the wire rather than shifting positions — see the
 `VibeCodec` header. That is why the encoded vibe can be longer than the live knob count, so never

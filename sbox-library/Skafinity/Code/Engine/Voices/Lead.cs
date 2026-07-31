@@ -24,7 +24,7 @@ public sealed partial class MusicGen
 		int melBase = _rootMidi + 24;
 		int[] tones = { _prog[chord], _prog[chord] + 2, _prog[chord] + 4, _prog[chord] + 6 }; // chord tones
 		int degree = tones[rng.Int( 3 )];
-		bool guitarLead = _genre != 0;                    // ska is the only horn lead
+		bool guitarLead = !_hornLead;                     // ska is the only horn lead
 		float amp = guitarLead ? _c.LeadGtrVol * _c.LeadGtrBalance : _c.MelodyVol * _c.MelodyBalance;
 		float drive = guitarLead ? _c.LeadGtrDrive : _c.MelodyDrive;
 		// Rock lead trades fast RUNS for BENDINESS (handled via expression), so its run rate is
@@ -112,7 +112,7 @@ public sealed partial class MusicGen
 	// otherwise the ska horn (RenderLead → trumpet).
 	void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
 	{
-		if ( _genre != 0 )
+		if ( !_hornLead )
 		{
 			// Twang = a bright cutoff-envelope snap on each pick (high CutEnv, decays fast) through
 			// a resonant SVF, plus a BASE distortion under the slider so it reads as an electric
@@ -148,14 +148,18 @@ public sealed partial class MusicGen
 		RenderLead( at, dur, midi, amp, decaySec, drive, vc );
 	}
 
+	// Which voice takes the ska lead — a weighted draw, or the config's override. The draw is
+	// taken either way: a knob that decides WHAT plays must not also decide how many values the
+	// composer pulls, or overriding the instrument would quietly rewrite the rest of the song.
 	Instrument PickInstrument( Rng rng )
 	{
-		if ( _c.ForceInstrument >= 0 && _c.ForceInstrument <= 3 ) return (Instrument)_c.ForceInstrument;
 		float tw = MathF.Max( 0f, _c.TrumpetWeight ), sw = MathF.Max( 0f, _c.SaxWeight );
 		float ow = MathF.Max( 0f, _c.OrganWeight ), bw = MathF.Max( 0f, _c.TromboneWeight );
 		float sum = tw + sw + ow + bw;
-		if ( sum <= 0f ) return Instrument.Trumpet;
 		float r = rng.Next() * sum;
+
+		if ( _c.ForceInstrument >= 0 && _c.ForceInstrument <= 3 ) return (Instrument)_c.ForceInstrument;
+		if ( sum <= 0f ) return Instrument.Trumpet;
 		if ( (r -= tw) < 0f ) return Instrument.Trumpet;
 		if ( (r -= sw) < 0f ) return Instrument.Sax;
 		if ( (r -= ow) < 0f ) return Instrument.Organ;
