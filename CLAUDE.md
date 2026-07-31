@@ -168,11 +168,16 @@ Note that `make test` passing is NOT evidence that a NEW export shipped unless s
 actually calls it; the cross-check above exists precisely because the hand-written assertions
 only cover exports someone remembered to test.
 
-**What can and cannot be built on a dev host.** The web side is fully buildable — install the
-workload once with `dotnet workload install wasm-tools` and `make` does a full AOT publish and
-stages `web/_framework`, after which `make test` exercises the real JS↔wasm boundary. `make
-test` needs a modern node (the one bundled in the emscripten pack is v18 and is too old for the
-ESM `dotnet.js`); pass `make test NODE=/path/to/node` if the system node is old.
+**What can and cannot be built on a dev host.** The web side is fully buildable: `make` does a
+full AOT publish and stages `web/_framework`, then `make test` exercises the real JS↔wasm
+boundary. It needs the `wasm-tools` workload (`dotnet workload install wasm-tools`) and a modern
+node — the node bundled in the emscripten pack is v18 and too old for the ESM `dotnet.js`, and
+fails identically against a known-good bundle, so don't read that failure as a broken build.
+
+The Makefile resolves both toolchains itself, falling back to the shared
+`~/.local/share/toolchains/` copies (`dotnet10/`, `node22/`) when the host has neither on PATH —
+so the targets work on a box with no system-wide .NET or node. Override with
+`make test NODE=/path/to/node`.
 
 **The s&box side cannot.** There is no engine install here, so `Code/SkafinityPlayer.cs` and
 `Code/UI/` are verified by review and grep only. When changing engine internals, check what

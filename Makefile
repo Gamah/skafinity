@@ -34,10 +34,14 @@
 # One-time setup: Docker (for `make up`), or dotnet-sdk-10.0 + `dotnet workload install
 # wasm-tools` for the local targets.
 
-DOTNET   ?= dotnet
-# Resolve the binary (command -v skips a stale `node` *directory* an emsdk PATH may shadow it
-# with). Override with `make test NODE=/path/to/node` if needed.
-NODE     ?= $(shell command -v node)
+# Resolve the toolchains once. Both fall back to a shared ~/.local/share/toolchains/ copy when
+# the host has none on PATH, so a dev box without a system-wide .NET or node still runs the
+# targets. Override either explicitly: `make test NODE=/path/to/node`.
+DOTNET   ?= $(shell command -v dotnet || echo $(HOME)/.local/share/toolchains/dotnet10/dotnet)
+# command -v skips a stale `node` *directory* an emsdk PATH may shadow the binary with. The
+# emscripten pack also ships a node, but it is v18 and too old for the ESM dotnet.js — don't
+# reach for that one.
+NODE     ?= $(shell command -v node || ls -d $(HOME)/.local/share/toolchains/node*/bin/node 2>/dev/null | tail -1)
 PROJECT   = wasm/Skafinity.Wasm.csproj
 ENGINE_TESTS = test/engine/Skafinity.EngineTests.csproj
 PUBROOT   = wasm/bin/Release/net10.0/publish
