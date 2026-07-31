@@ -1,0 +1,29 @@
+# `make fast` — serve the CHECKED-OUT web/ with stock nginx, no build at all.
+#
+# web/_framework is committed (that's what makes a fresh clone runnable), so the bundle the
+# image would spend ~2 min compiling is already on disk. This mounts it instead: same
+# container, same loopback port, same nginx.conf as `make up`, but it starts in a second.
+#
+# Same `name:` and container_name as docker-compose.yml deliberately — the two are
+# alternatives, not a pair. Bringing one up replaces the other, and `make down`/`logs`/`ps`
+# act on whichever is running.
+name: skafinity
+
+services:
+
+  web:
+    image: nginx:1.27-alpine
+    container_name: skafinity-1
+    restart: unless-stopped
+    ports:
+      # Loopback only — see docker-compose.yml for why this must never become 0.0.0.0.
+      - "127.0.0.1:6970:80"
+    volumes:
+      # The page + the committed runtime bundle. Read-only: nginx only serves it, and a
+      # container has no business writing back into the working tree. Edits to web/*.js on
+      # the host are live on the next reload — no rebuild, no restart.
+      - ../web:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Canonical house-mix config over the staged copy, mirroring what the Dockerfile does
+      # so `fast` and `up` serve the same config even if web/config.json has gone stale.
+      - ../sbox-library/Skafinity/skafinity.config.json:/usr/share/nginx/html/config.json:ro

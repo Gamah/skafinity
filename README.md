@@ -15,11 +15,19 @@ composition code. `reference/` keeps the original C# for context (see `CLAUDE.md
 ### Docker (the deploy path — no local .NET needed)
 
 ```sh
-make up       # build the wasm bundle in Docker + serve it with nginx as skafinity-1
+make fast     # serve the committed web/ (incl. web/_framework) with stock nginx — no build
+make up       # build the wasm bundle from source in Docker first, then serve it (~2 min)
 make logs     # follow the container logs
 make rebuild  # from-scratch image rebuild (no cache) + restart
-make down     # stop and remove
+make down     # stop and remove (either flavour)
 ```
+
+`web/_framework` is committed, so **`make fast` is the everyday target** — there is nothing
+to compile and it's up in a second. It bind-mounts `web/` read-only, so host-side edits to
+the page or the glue are live on reload. Reach for `make up` when you've changed
+`MusicGen.cs` / `VibeCodec.cs` / `Exports.cs` and need the bundle rebuilt, or to prove the
+build still works. Both produce the same container (`skafinity-1`) on the same port with the
+same `nginx.conf`, so they're alternatives — bringing one up replaces the other.
 
 The container publishes on **`127.0.0.1:6970`** only. That loopback bind is the whole
 firewall story: Docker's iptables chains are evaluated *before* ufw, so a bare `6970:80`
@@ -63,7 +71,7 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 | `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export, shuffle. |
 | `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence / stereo-width knobs). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix or the width without a rebuild. |
 | `test/smoke.mjs` | Node smoke test that boots the published runtime and exercises every export. |
-| `docker/` | `Dockerfile` (SDK build stage → nginx runtime stage), `docker-compose.yml` (project `skafinity`, container `skafinity-1`, loopback 6970), `nginx.conf` (docroot + cache headers). |
+| `docker/` | `Dockerfile` (SDK build stage → nginx runtime stage), `docker-compose.yml` (`make up`: project `skafinity`, container `skafinity-1`, loopback 6970), `docker-compose.fast.yml` (`make fast`: stock nginx over the committed bundle), `nginx.conf` (docroot + cache headers). |
 
 ## Features
 

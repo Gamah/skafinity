@@ -2,10 +2,14 @@
 # workload (the same MusicGen.cs / VibeCodec.cs the s&box library ships, no port).
 #
 # ── Docker (the deploy/serve path — no local .NET needed) ──
-#   make up         → build the wasm bundle in Docker + serve it (nginx, container
-#                     skafinity-1, host 127.0.0.1:6970 — loopback so it stays behind ufw)
+#   make fast       → serve the COMMITTED web/ (incl. web/_framework) with stock nginx —
+#                     no build, starts in a second. The everyday target.
+#   make up         → build the wasm bundle from source in Docker, then serve it (~2 min).
+#                     Use after an engine change, or to prove the bundle rebuilds.
+#                     Both: nginx, container skafinity-1, host 127.0.0.1:6970 — loopback so
+#                     it stays behind ufw.
 #   make rebuild    → rebuild the image from scratch (no cache) and restart
-#   make down       → stop and remove the container
+#   make down       → stop and remove the container (either flavour)
 #   make logs       → follow the container logs
 #   make ps         → container status
 #
@@ -34,12 +38,23 @@ PUBROOT   = wasm/bin/Release/net10.0/publish
 PUBDIR    = $(PUBROOT)/wwwroot/_framework
 PORT     ?= 8000
 COMPOSE   = docker compose -f docker/docker-compose.yml
+FASTCOMP  = docker compose -f docker/docker-compose.fast.yml
 
 # Bare `make` stays the local publish (the docker targets below are first in the file but
 # are opt-in via `make up`).
 .DEFAULT_GOAL := all
 
-.PHONY: all build dev deploy stage test serve dist release clean up rebuild down logs ps
+.PHONY: all build dev deploy stage test serve dist release clean fast up rebuild down logs ps
+
+# ── Docker: serve the committed bundle as-is. web/_framework is in the repo, so there is
+# nothing to compile — stock nginx bind-mounts web/ and is up in a second. Same container,
+# port and nginx.conf as `up`; the only difference is where the bundle came from. ──
+fast:
+	@test -f web/_framework/dotnet.js || { \
+		echo "web/_framework is missing — nothing to serve." >&2; \
+		echo "Build it with 'make up' (Docker) or 'make' (local .NET SDK)." >&2; exit 1; }
+	$(FASTCOMP) up -d
+	@echo "skafinity-1 up (committed bundle, no build) — http://127.0.0.1:6970/"
 
 # ── Docker: build the wasm bundle inside the image and serve it with nginx. The container
 # is skafinity-1 and the port is loopback-bound (127.0.0.1:6970) so Docker's iptables rules

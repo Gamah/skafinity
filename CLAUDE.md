@@ -199,7 +199,22 @@ mechanism; the host Caddyfile (unversioned, not in this repo) does TLS and the h
 redirect. 6970 is skafinity's allocation on that host — `1337`, `5432`–`5436`, `6969`,
 `8080`, `8081` belong to sibling services; check the host's Caddyfile before taking a new one.
 
-The image is two-stage: `mcr.microsoft.com/dotnet/sdk:10.0` installs `wasm-tools` and
+**Two ways in, same container.** `web/_framework` is committed, so the bundle usually
+already exists on disk and there is nothing to compile:
+
+- **`make fast`** (`docker-compose.fast.yml`) — stock `nginx:1.27-alpine` bind-mounting
+  `web/` read-only. No build stage, up in a second, and host-side edits to the page/glue are
+  live on reload. **The everyday target.**
+- **`make up`** (`docker-compose.yml`) — builds the wasm bundle from source in the image
+  first (~2 min). For when `MusicGen.cs` / `VibeCodec.cs` / `Exports.cs` changed, or to prove
+  the build still works.
+
+They share the compose project, container name, port and `nginx.conf`, so they are
+alternatives rather than a pair — starting one replaces the other, and `down`/`logs`/`ps`
+act on whichever is running. `fast` guards on `web/_framework/dotnet.js` and fails with an
+instruction rather than serving a 404 page if the bundle was never built.
+
+The built image is two-stage: `mcr.microsoft.com/dotnet/sdk:10.0` installs `wasm-tools` and
 publishes the bundle, then `nginx:1.27-alpine` serves `web/` plus the freshly-built
 `_framework` — **no .NET at runtime**. `.dockerignore` excludes `web/_framework` so a stale
 committed/local bundle can never leak into the image, and the Dockerfile re-copies the
@@ -212,7 +227,7 @@ no `.env`, and no secrets.
 - No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`
   skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (a quick
   no-Docker preview — `make up` is the real nginx-parity host). `make test` → node smoke
-  test. `make up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` is a
+  test. `make fast`/`up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` is a
   deferred single-file follow-up.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched
   bundle. `web/` is self-contained (it includes `web/_framework`), so any static server can
