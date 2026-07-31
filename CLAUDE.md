@@ -78,6 +78,7 @@ skafinity/
         Rng.cs            #   xmur3 → mulberry32, the root of every musical choice
         Harmony.cs        #   per-genre scale/progression/bass tables + degree→pitch
         Structure.cs      #   Section, Part, the arrangement
+        Timing.cs         #   THE TIME BASE: ticks -> samples, tempo accumulator, swing
         Compose.cs        #   the composition pass (plan song → render sections)
         Expression.cs     #   per-note pitch shaping (vibrato/bend/glide/scoop)
         Master.cs         #   reverb, soft-clip, normalize
@@ -221,6 +222,32 @@ One JSON file tunes them for **both** targets without a rebuild:
 To add a baseline-mix knob: add the `Config` field, add a row to `VibeCodec.AdvancedFields`, add
 it to `Cfg.To`/`From` (+ bump `Cfg.Size`), and add a key to the JSON. To make something a *vibe*
 knob instead, put it in a genre grid / `GlobalFields` (see above), not here.
+
+---
+
+## The time base (`Engine/Timing.cs`)
+
+Musical positions are **integer ticks**, absolute from the song's first downbeat, at
+`TicksPerBeat = 48`. Voices take a `barTick` and ask `Timing` for samples; they never compute
+sample offsets themselves. Three rules keep it honest:
+
+- **Ticks are metrical, samples are physical.** `TickToSample(tick)` is the only bridge. 48
+  renders every subdivision in use exactly (8ths, 16ths, 8th- and 16th-note triplets) — do not
+  "simplify" to a 16th grid, that silently deletes every triplet.
+- **Grid positions shuffle; tuplets are even.** `TickToSample` applies the swing warp, for
+  notes the band lands on together. A tuplet divides its *own span* into equal parts and uses
+  `EvenSpan(startTick, spanTicks, frac)`, which warps only the endpoints. A shuffle is itself
+  a triplet feel, so a triplet must not be warped a second time on top of it.
+- **Tempo is an accumulator, not a multiply.** `Timing` walks a per-tick sample delta across
+  the song. With one tempo that equals a multiply; the point is that a per-section tempo or an
+  ending ritard is a matter of varying the delta, not a rewrite. Keep it that way.
+
+Durations are spans, not positions: `SamplesForTicks`/`SecondsForTicks` carry no swing.
+`DrumPush` (the kit's push/lay-back) stays in continuous sample space — it is a feel, not a
+grid position.
+
+`EighthsPerBar` is derived from the meter, not a constant. Pattern tables are still authored
+one cell per eighth; that mapping is explicit rather than assumed.
 
 ---
 
