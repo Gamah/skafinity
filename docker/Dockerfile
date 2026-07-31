@@ -35,4 +35,9 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY web/ /usr/share/nginx/html/
 COPY --from=builder /publish/wwwroot/_framework /usr/share/nginx/html/_framework
 
+# Overwrite web/config.json with the canonical house-mix config, exactly as `make stage`
+# does — otherwise the image would ship whatever committed/local copy the context happened
+# to hold, which can lag the canonical one.
+COPY sbox-library/Skafinity/skafinity.config.json /usr/share/nginx/html/config.json
+
 EXPOSE 80

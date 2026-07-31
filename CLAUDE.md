@@ -53,6 +53,7 @@ doubt the C# is right.
 | Glue / UI | Vanilla **JS + HTML + CSS** (no framework, no bundler) |
 | Audio | **Web Audio API** — `AudioBufferSourceNode`s scheduled with gain-ramp crossfades |
 | Distribution | A **served** bundle — the self-contained `web/` (which includes `web/_framework`). The runtime is multi-file and needs http; a single-file inline is a deferred follow-up. |
+| Deploy | Docker Compose (`make up`) — SDK build stage → nginx runtime stage; host reverse proxy (Caddy) fronts it with TLS |
 
 C# is the choice because it *is* the source — same code, two targets, zero port.
 
@@ -66,6 +67,7 @@ skafinity/
   reference/              # read-only original C# (context only)
   sbox-library/Skafinity/ # the s&box library — Code/MusicGen.cs + VibeCodec.cs are THE source
     skafinity.config.json # canonical shared house-mix config (make copies it to web/)
+  docker/                 # Dockerfile + compose (nginx on loopback 6970; external Caddy fronts it)
   wasm/
     Skafinity.Wasm.csproj # browser-wasm project; <Compile Include>s the shared .cs
     Exports.cs            # [JSExport] boundary: generate, vibe codec, WAV, config <-> double[]
@@ -180,12 +182,38 @@ button.
 
 ---
 
+## Deploy (`make up`) — loopback only, Caddy fronts it
+
+Mirrors the rotaliate/gambit/splitclicker convention: `docker/docker-compose.yml` pins the
+compose project (`name: skafinity`, container `skafinity-1`) so it can't collide with the
+other repos whose compose file also lives under `docker/`, and publishes
+
+```
+127.0.0.1:6970:80
+```
+
+**Never bind `0.0.0.0` and never `ufw allow 6970`.** Docker writes its own iptables chains
+which are evaluated *before* ufw, so a bare `6970:80` publish is internet-reachable even
+with ufw denying the port. Loopback binding + a host-side reverse proxy is the entire
+mechanism; the host Caddyfile (unversioned, not in this repo) does TLS and the http→https
+redirect. 6970 is skafinity's allocation on that host — `1337`, `5432`–`5436`, `6969`,
+`8080`, `8081` belong to sibling services; check the host's Caddyfile before taking a new one.
+
+The image is two-stage: `mcr.microsoft.com/dotnet/sdk:10.0` installs `wasm-tools` and
+publishes the bundle, then `nginx:1.27-alpine` serves `web/` plus the freshly-built
+`_framework` — **no .NET at runtime**. `.dockerignore` excludes `web/_framework` so a stale
+committed/local bundle can never leak into the image, and the Dockerfile re-copies the
+canonical `skafinity.config.json` over `web/config.json` for the same reason (it is the
+image's equivalent of `make stage`). Because everything is baked in, there are no volumes,
+no `.env`, and no secrets.
+
 ## Conventions
 
 - No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`
-  skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (the same
-  docroot you'd give nginx). `make test` → node smoke test. `make dist` is a deferred
-  single-file follow-up.
+  skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (a quick
+  no-Docker preview — `make up` is the real nginx-parity host). `make test` → node smoke
+  test. `make up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` is a
+  deferred single-file follow-up.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched
   bundle. `web/` is self-contained (it includes `web/_framework`), so any static server can
   serve it with the docroot pointed straight at `web/`. `web/_framework` is committed so a

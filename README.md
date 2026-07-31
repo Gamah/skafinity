@@ -12,6 +12,22 @@ composition code. `reference/` keeps the original C# for context (see `CLAUDE.md
 
 ## Build & run
 
+### Docker (the deploy path — no local .NET needed)
+
+```sh
+make up       # build the wasm bundle in Docker + serve it with nginx as skafinity-1
+make logs     # follow the container logs
+make rebuild  # from-scratch image rebuild (no cache) + restart
+make down     # stop and remove
+```
+
+The container publishes on **`127.0.0.1:6970`** only. That loopback bind is the whole
+firewall story: Docker's iptables chains are evaluated *before* ufw, so a bare `6970:80`
+would be internet-reachable even with `ufw deny 6970`. Front it with the host's reverse
+proxy (Caddy terminates TLS and redirects) — **never open the port**.
+
+### Local (.NET SDK on the host)
+
 One-time toolchain (machine, not vendored):
 
 ```sh
@@ -47,6 +63,7 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 | `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export, shuffle. |
 | `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence / stereo-width knobs). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix or the width without a rebuild. |
 | `test/smoke.mjs` | Node smoke test that boots the published runtime and exercises every export. |
+| `docker/` | `Dockerfile` (SDK build stage → nginx runtime stage), `docker-compose.yml` (project `skafinity`, container `skafinity-1`, loopback 6970), `nginx.conf` (docroot + cache headers). |
 
 ## Features
 
