@@ -113,6 +113,37 @@ public partial class Engine
 		return Cfg.To( c );
 	}
 
+	// ── Reroll ────────────────────────────────────────────────────────────────────────────
+	// What "reroll" means lives in VibeCodec.Roll, so the web and the s&box player cannot
+	// answer it differently. JS supplies neither the field walk nor the volume/tempo rules.
+
+	/// <summary>Roll a throwaway vibe (the 🎲 button): fresh genre + every non-volume knob,
+	/// off the runtime's own RNG. Not reproducible, and not meant to be.</summary>
+	[JSExport]
+	[return: JSMarshalAs<JSType.Array<JSType.Number>>]
+	internal static double[] RollVibe( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg,
+		bool includeGenre )
+	{
+		var c = Cfg.From( cfg );
+		var rng = new Random();
+		VibeCodec.Roll( c, () => (float)rng.NextDouble(), includeGenre );
+		return Cfg.To( c );
+	}
+
+	/// <summary>Roll song <paramref name="n"/>'s vibe from <paramref name="tag"/> — the shuffle
+	/// line. Deterministic, so the whole sequence is reproducible from the seed alone: it
+	/// survives a reload, matches on every machine, and stepping back replays exactly what was
+	/// heard without the page having to remember it.</summary>
+	[JSExport]
+	[return: JSMarshalAs<JSType.Array<JSType.Number>>]
+	internal static double[] RollVibeFor( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg,
+		string tag, int n )
+	{
+		var c = Cfg.From( cfg );
+		VibeCodec.RollFrom( c, VibeCodec.VibeSeed( tag, n ) );
+		return Cfg.To( c );
+	}
+
 	// ── Vibe fields (per genre) ───────────────────────────────────────────────────────────
 	[JSExport]
 	internal static int VibeFieldCount( int genre ) => Fields( genre ).Count;

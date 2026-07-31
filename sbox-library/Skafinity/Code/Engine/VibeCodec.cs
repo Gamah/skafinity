@@ -482,6 +482,69 @@ public static class VibeCodec
 		f.SetNorm( c, q / (float)(Levels - 1) );
 	}
 
+	/// <summary>
+	/// Randomise the vibe knobs of <paramref name="c"/> in place.
+	///
+	/// This is the one definition of what "reroll" means, shared by every player, so the two
+	/// drivers cannot answer the question differently: a fresh genre, every knob of that genre,
+	/// and a tempo range put back in order if the two ends land crossed. Per-instrument volumes
+	/// are excluded by default — they are a local mix preference and never ride in the seed.
+	///
+	/// Randomness is the CALLER's: <paramref name="rnd"/> returns values in [0,1). A driver that
+	/// wants a throwaway roll passes a session RNG; one that wants a reproducible roll passes a
+	/// seeded stream (see <see cref="RollFrom"/>). The engine stays free of any ambient RNG.
+	/// </summary>
+	public static void Roll( MusicGen.Config c, Func<float> rnd,
+		bool includeGenre = true, bool includeVolumes = false )
+	{
+		if ( c == null || rnd == null ) return;
+
+		if ( includeGenre )
+		{
+			// Guard the top of the range: a generator returning exactly 1.0 must not index off
+			// the end of the genre table.
+			int g = (int)(rnd() * GenreCount);
+			c.Genre = Math.Clamp( g, 0, GenreCount - 1 );
+		}
+
+		foreach ( var f in Fields( c.Genre ) )
+		{
+			if ( !includeVolumes && IsVolume( f ) ) continue;
+			f.SetNorm( c, rnd() );
+		}
+
+		// The tempo band is two independent knobs, so a roll can land the low end above the high
+		// end. Put them back in order rather than leaving a band that means nothing.
+		if ( c.BpmMin > c.BpmMax ) (c.BpmMin, c.BpmMax) = (c.BpmMax, c.BpmMin);
+		if ( c.FastBpmMin > c.FastBpmMax ) (c.FastBpmMin, c.FastBpmMax) = (c.FastBpmMax, c.FastBpmMin);
+	}
+
+	/// <summary>
+	/// <see cref="Roll"/> driven by a stream seeded on <paramref name="seed"/> — the same string
+	/// always produces the same vibe, on any machine and in any player.
+	///
+	/// This is what lets an endless shuffled sequence still BE its seed: a player derives song
+	/// n's vibe from <c>"{tag}:vibe:{n}"</c> rather than from session randomness, so the whole
+	/// line is reproducible, shareable and survives a reload — and stepping back to an earlier
+	/// song replays exactly what was heard without anything having to be remembered.
+	/// </summary>
+	public static void RollFrom( MusicGen.Config c, string seed,
+		bool includeGenre = true, bool includeVolumes = false )
+	{
+		var rng = new Rng( seed ?? "" );
+		Roll( c, rng.Next, includeGenre, includeVolumes );
+	}
+
+	/// <summary>The stream name song <paramref name="n"/>'s vibe is rolled from. One definition
+	/// so every player walks the same line for a given tag.</summary>
+	public static string VibeSeed( string tag, int n )
+	{
+		// Lower-cased to match how MusicGen seeds the song itself, so "Gamah" and "gamah" are one
+		// station rather than two.
+		var t = string.IsNullOrWhiteSpace( tag ) ? "rotaliate" : tag.Trim().ToLowerInvariant();
+		return $"{t}:vibe:{n}";
+	}
+
 	/// <summary>Largest possible well-formed vibe length: genre + globals + the full reserved
 	/// instrument grid.</summary>
 	public static int MaxLength => 1 + GlobalFields.Length + MaxInstruments * Columns;

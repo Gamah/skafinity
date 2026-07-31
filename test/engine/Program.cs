@@ -332,6 +332,63 @@ static class Program
 			}
 		}
 
+		// ── reroll ──
+		// One definition of "reroll" shared by every player. A seeded roll is the shuffle line,
+		// so the same tag and index must give the same vibe anywhere.
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var a = new MusicGen.Config { Genre = g };
+			var b = new MusicGen.Config { Genre = g };
+			VibeCodec.RollFrom( a, VibeCodec.VibeSeed( "gamah", 4 ) );
+			VibeCodec.RollFrom( b, VibeCodec.VibeSeed( "gamah", 4 ) );
+			Check( $"a seeded roll is reproducible (from genre {g})", VibeCodec.Encode( a ) == VibeCodec.Encode( b ) );
+
+			// …and must not depend on where it started, or the shuffle line would differ between
+			// two listeners whose live knobs differ.
+			Check( $"a seeded roll ignores the starting genre {g}",
+				VibeCodec.Encode( a ) == VibeCodec.Encode( Rolled( "gamah", 4, 0 ) ) );
+		}
+
+		Check( "stepping n gives a different vibe",
+			VibeCodec.Encode( Rolled( "gamah", 4, 0 ) ) != VibeCodec.Encode( Rolled( "gamah", 5, 0 ) ) );
+		Check( "a different tag gives a different line",
+			VibeCodec.Encode( Rolled( "gamah", 4, 0 ) ) != VibeCodec.Encode( Rolled( "skafinity", 4, 0 ) ) );
+		Check( "tag case does not fork the line",
+			VibeCodec.VibeSeed( "Gamah", 3 ) == VibeCodec.VibeSeed( "gamah", 3 ) );
+		Check( "an empty tag falls back rather than producing a bare line",
+			VibeCodec.VibeSeed( "", 0 ) == VibeCodec.VibeSeed( "rotaliate", 0 ) );
+
+		// A roll reaches every genre — a station stuck on one genre would not be a shuffle.
+		var seen = new HashSet<int>();
+		for ( int i = 0; i < 400; i++ ) seen.Add( Rolled( "gamah", i, 0 ).Genre );
+		Check( "the shuffle line reaches every genre", seen.Count == VibeCodec.GenreCount,
+			$"reached {seen.Count} of {VibeCodec.GenreCount}" );
+
+		// Volumes are a local mix preference: a reroll must leave them alone by default, or a
+		// listener's levels would be trampled on every song.
+		var volCfg = new MusicGen.Config { Genre = 0 };
+		foreach ( var f in VibeCodec.Fields( 0 ) ) if ( VibeCodec.IsVolume( f ) ) f.SetNorm( volCfg, 0.25f );
+		VibeCodec.RollFrom( volCfg, VibeCodec.VibeSeed( "gamah", 1 ), includeGenre: false );
+		bool volsKept = true;
+		foreach ( var f in VibeCodec.Fields( 0 ) )
+			if ( VibeCodec.IsVolume( f ) ) volsKept &= Math.Abs( f.GetNorm( volCfg ) - 0.25f ) < 0.001f;
+		Check( "a reroll leaves per-instrument volumes alone", volsKept );
+
+		// A rolled tempo band must still be a band.
+		bool tempoOrdered = true;
+		for ( int i = 0; i < 200; i++ )
+		{
+			var c = Rolled( "tempo", i, 0 );
+			tempoOrdered &= c.BpmMin <= c.BpmMax && c.FastBpmMin <= c.FastBpmMax;
+		}
+		Check( "a rolled tempo range is never inverted", tempoOrdered );
+
+		// The caller owns the randomness; a degenerate generator must not index off the genre table.
+		var edge = new MusicGen.Config();
+		bool edgeThrew = false;
+		try { VibeCodec.Roll( edge, () => 1f ); } catch { edgeThrew = true; }
+		Check( "a generator returning 1.0 stays in range", !edgeThrew && edge.Genre < VibeCodec.GenreCount );
+
 		// Malformed input must degrade, never throw — these strings arrive from a URL bar.
 		foreach ( var junk in new[] { "", "   ", "!!!!", "zzzzzzzzzzzzzzzzzzzz", "0!!0!!0" } )
 		{
@@ -443,6 +500,15 @@ static class Program
 	}
 
 	static string Seed( string vibe, string tag, int n ) => $"{vibe}:{tag}:{n}";
+
+	/// <summary>Song <paramref name="n"/>'s shuffle vibe, rolled from a config starting at
+	/// <paramref name="fromGenre"/> — used to show the result doesn't depend on that start.</summary>
+	static MusicGen.Config Rolled( string tag, int n, int fromGenre )
+	{
+		var c = new MusicGen.Config { Genre = fromGenre };
+		VibeCodec.RollFrom( c, VibeCodec.VibeSeed( tag, n ) );
+		return c;
+	}
 
 	static bool SameSamples( short[] a, short[] b )
 	{

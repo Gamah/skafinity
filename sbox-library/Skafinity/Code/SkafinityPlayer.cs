@@ -413,7 +413,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	{
 		if ( _ledger.TryGetValue( n, out var v ) ) return v;
 		if ( !RandomEverySong ) return VibeCodec.Encode( BuildKnobOnlyVibe() );
-		var rolled = RollVibe();
+		var rolled = RollVibe( n );
 		_ledger[n] = rolled;
 		return rolled;
 	}
@@ -427,19 +427,13 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		return cfg;
 	}
 
-	// Roll a fresh random vibe seed (genre + every non-volume knob), as a string. Volumes are a local
-	// mix preference and never ride in the seed. Mirrors RerollVibe's randomisation.
-	string RollVibe()
+	// Song n's vibe under shuffle, derived from the seed rather than session randomness, so the
+	// whole shuffled line IS the seed: it survives a reload, it is the same on every machine, and
+	// stepping back replays exactly what was heard without needing to have remembered it.
+	string RollVibe( int n )
 	{
 		var cfg = BuildKnobOnlyVibe();
-		var rng = System.Random.Shared;
-		cfg.Genre = rng.Next( VibeCodec.GenreCount );
-		foreach ( var f in VibeCodec.Fields( cfg.Genre ) )
-		{
-			if ( f.Voice != null && f.Column == 0 ) continue; // skip per-instrument volumes
-			f.SetNorm( cfg, rng.NextSingle() );
-		}
-		if ( cfg.BpmMin > cfg.BpmMax ) (cfg.BpmMin, cfg.BpmMax) = (cfg.BpmMax, cfg.BpmMin);
+		VibeCodec.RollFrom( cfg, VibeCodec.VibeSeed( Tag, n ) );
 		return VibeCodec.Encode( cfg );
 	}
 
@@ -961,18 +955,10 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	/// full shuffle. Pass <paramref name="restart"/> = false to re-voice without yanking the
 	/// playhead — the caller is then responsible for letting the change take effect (e.g. by
 	/// clearing the look-ahead so upcoming songs regenerate with the new vibe).</summary>
-	public void RerollVibe( bool includeVolumes = false, bool includeGenre = false, bool restart = true )
+	public void RerollVibe( bool includeVolumes = false, bool includeGenre = true, bool restart = true )
 	{
 		var cfg = BuildConfig();
-		var rng = System.Random.Shared;
-		if ( includeGenre )
-			cfg.Genre = rng.Next( VibeCodec.GenreCount );
-		foreach ( var f in VibeCodec.Fields( cfg.Genre ) )
-		{
-			if ( !includeVolumes && f.Voice != null && f.Column == 0 ) continue; // skip per-instrument volumes
-			f.SetNorm( cfg, rng.NextSingle() );
-		}
-		if ( cfg.BpmMin > cfg.BpmMax ) (cfg.BpmMin, cfg.BpmMax) = (cfg.BpmMax, cfg.BpmMin);
+		VibeCodec.Roll( cfg, System.Random.Shared.NextSingle, includeGenre, includeVolumes );
 		Vibe = VibeCodec.Encode( cfg );
 		if ( includeVolumes )
 		{

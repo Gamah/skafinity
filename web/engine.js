@@ -45,6 +45,10 @@ function makeMod(E) {
     genreName: (i) => E.GenreName(i),
     getGenre: (cfg) => E.GetGenre(asArray(cfg)),
     setGenre: (cfg, i) => E.SetGenre(asArray(cfg), i),
+    // Reroll lives in the engine (VibeCodec.Roll) so the web and s&box can't drift on what
+    // it means. rollVibe = throwaway 🎲; rollVibeFor = the deterministic shuffle line.
+    rollVibe: (cfg, includeGenre = true) => E.RollVibe(asArray(cfg), includeGenre),
+    rollVibeFor: (cfg, tag, n) => E.RollVibeFor(asArray(cfg), tag, n),
 
     vibeFieldCount: (genre) => E.VibeFieldCount(genre),
     vibeLevels: () => E.VibeLevels(),
