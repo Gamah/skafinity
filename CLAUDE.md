@@ -16,17 +16,21 @@ the single source of truth for both the game and this web toy**. The web build c
 
 | File | Role |
 |---|---|
-| `sbox-library/Skafinity/Code/MusicGen.cs` | The composer + subtractive synthesiser. Portable PRNG → every musical choice → interleaved stereo PCM. **The spec.** |
-| `sbox-library/Skafinity/Code/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. Also holds the `AdvancedFields` registry — the baseline-mix knobs that are config-only (NOT in the seed or the sliders). |
+| `sbox-library/Skafinity/Code/Engine/` | **The engine — the spec.** The composer + subtractive synthesiser, split one file per concern (see the tree below). `MusicGen` is a `partial class` across the folder. **This folder is the unit both targets compile**: `wasm/Skafinity.Wasm.csproj` globs `Engine/**/*.cs` and s&box globs it implicitly, so the folder boundary is the thing that keeps the s&box-only driver and UI out of the web build. |
+| `sbox-library/Skafinity/Code/Engine/MusicGen.cs` | Engine core — per-song state, constructor, public entry points (whole-song + chunked). Start here. |
+| `sbox-library/Skafinity/Code/Engine/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. Also holds the `AdvancedFields` registry — the baseline-mix knobs that are config-only (NOT in the seed or the sliders). |
+| `test/engine/` | Engine-only test harness (`make test-engine`) — compiles `Engine/**` alone into the same assembly as the tests, so it runs on a plain dev host where s&box cannot. The safety net for engine work. |
 | `sbox-library/Skafinity/skafinity.config.json` | The single shared **house-mix config** (peak balances / kit presence). Canonical here; the s&box plugin reads it at runtime and `make` copies it to `web/config.json`. Edit it to retune the baseline mix without a rebuild. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
 | `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. Re-themeable via the `.scss` variable block. |
 | `reference/*.cs` | The original Rotaliate-client copies, kept for context. **Read-only.** The `sbox-library` copies are what actually compile. |
 
-These two `.cs` are framework-free (only `System` / `System.Collections.Generic` /
-`System.Text`) — that's *why* they compile to wasm unchanged. Keep them that way: **no
-s&box (`Sandbox.*`) types and no web/Emscripten-isms in `MusicGen.cs` / `VibeCodec.cs`.**
-Anything web-specific belongs in `wasm/Exports.cs`.
+Everything under `Code/Engine/` is framework-free (only `System` / `System.Collections.Generic`
+/ `System.Text`) — that's *why* it compiles to wasm unchanged. Keep it that way: **no s&box
+(`Sandbox.*`) types and no web/Emscripten-isms anywhere in `Engine/`.** Anything web-specific
+belongs in `wasm/Exports.cs`; anything s&box-specific belongs in `Code/SkafinityPlayer.cs` or
+`Code/UI/`, which are outside the glob. Adding a file to `Engine/` is all it takes to ship it
+to both targets — there is no file list to update.
 
 If you change the engine, edit the `sbox-library` copy (both targets pick it up). When in
 doubt the C# is right.
@@ -65,8 +69,25 @@ C# is the choice because it *is* the source — same code, two targets, zero por
 skafinity/
   CLAUDE.md
   reference/              # read-only original C# (context only)
-  sbox-library/Skafinity/ # the s&box library — Code/MusicGen.cs + VibeCodec.cs are THE source
+  sbox-library/Skafinity/ # the s&box library — Code/Engine/ is THE source
     skafinity.config.json # canonical shared house-mix config (make copies it to web/)
+    Code/
+      Engine/             # ← the framework-free engine; BOTH targets compile exactly this
+        MusicGen.cs       #   core: per-song state, ctor, public entry points
+        MusicGen.Config.cs#   every knob the composer + synth read
+        Rng.cs            #   xmur3 → mulberry32, the root of every musical choice
+        Harmony.cs        #   per-genre scale/progression/bass tables + degree→pitch
+        Structure.cs      #   Section, Part, the arrangement
+        Compose.cs        #   the composition pass (plan song → render sections)
+        Expression.cs     #   per-note pitch shaping (vibrato/bend/glide/scoop)
+        Master.cs         #   reverb, soft-clip, normalize
+        Wav.cs            #   float mix → PCM, WAV container
+        VibeCodec.cs      #   seed encoding + the AdvancedFields registry
+        Voices/           #   Bass, Skank, Lead, Keys, Guitar, Horns
+        Drums/            #   Groove (patterns) + Kit (voices)
+        Synth/            #   Patch, Notes (queue), Render, Osc
+      SkafinityPlayer.cs  # s&box-only playback driver — outside the glob
+      UI/                 # s&box-only Razor panel — outside the glob
   docker/                 # Dockerfile + compose (nginx on loopback 6970; external Caddy fronts it)
   wasm/
     Skafinity.Wasm.csproj # browser-wasm project; <Compile Include>s the shared .cs
@@ -80,18 +101,29 @@ skafinity/
     style.css
     config.json           # house-mix overlay fetched at startup (make-copied from sbox-library)
     _framework/           # published runtime bundle (committed; rebuilt by `make`)
-  test/smoke.mjs          # node smoke test of the JS↔wasm boundary
+  test/
+    smoke.mjs             # node smoke test of the JS↔wasm boundary
+    engine/               # engine-only C# harness (make test-engine) — runs without s&box
   Makefile
 ```
 
 ---
 
-## Parity — now structural, not a reimplementation
+## Parity — one build, two targets
 
-Same seed ⇒ same song. Because the web compiles the *same* `MusicGen.cs`/`VibeCodec.cs` as
-the game, composition parity is **automatic** — there is no second implementation to drift.
-The old "mirror the PRNG / draw order / Config defaults in C++" rules are obsolete; don't
-reintroduce a hand-port. The only places parity can break:
+**The scope of "same seed ⇒ same song" is a single build.** Within one build the web and the
+game must agree, because they compile the *same* `MusicGen.cs`/`VibeCodec.cs` — there is no
+second implementation to drift. That is the whole parity guarantee, and it is structural: the
+old "mirror the PRNG / draw order / Config defaults in C++" rules are obsolete; don't
+reintroduce a hand-port.
+
+**Audio is NOT stable across commits, and nothing should be written as if it were.** Engine
+work is expected to change what a seed sounds like — that is the point of most of `PLAN.md`.
+There is no golden-audio contract, no back-compat shim for old seeds, and a changed render is
+not a regression. Don't add reproducibility machinery beyond what a refactor needs to prove
+itself, and don't let it creep into the docs as a promise.
+
+The places parity *within a build* can break:
 
 - **Don't fork the engine.** Edit `sbox-library/.../MusicGen.cs` once; never copy it into
   `wasm/`. The csproj references it by relative path.

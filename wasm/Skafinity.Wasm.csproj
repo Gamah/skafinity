@@ -24,9 +24,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The algorithmic source of truth, shared verbatim with the s&box library. -->
-    <Compile Include="../sbox-library/Skafinity/Code/MusicGen.cs" />
-    <Compile Include="../sbox-library/Skafinity/Code/VibeCodec.cs" />
+    <!-- The algorithmic source of truth, shared verbatim with the s&box library. The glob is
+         deliberate: Code/Engine/ is the framework-free engine and NOTHING else lives there, so
+         the folder boundary is what stops this build ever pulling in the s&box-only
+         SkafinityPlayer.cs / Code/UI/. Add an engine file, it compiles; put a Sandbox.* type in
+         Engine/ and both targets break, which is the intent. -->
+    <Compile Include="../sbox-library/Skafinity/Code/Engine/**/*.cs" />
   </ItemGroup>
 
 </Project>
