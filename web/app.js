@@ -55,12 +55,16 @@ function applyStoredVolumes() {
       cfg = mod.setVibeField(cfg, f.i, vols[f.voice]);
   }
 }
-// 🎲 Shuffle ("random every song"): each new song renders with a freshly re-rolled vibe.
-// Matches the s&box panel — re-rolls the vibe knobs only, keeping the current genre and your
-// saved per-voice volumes (volume isn't part of the seed). Each upcoming index caches its own
-// re-rolled cfg so the look-ahead renders (and the audible song) stay consistent.
+// 🎲 Shuffle ("random every song"): each new song renders with a freshly re-rolled vibe — a fresh
+// genre AND every non-volume knob (per-voice volumes are a local mix preference and never ride in
+// the seed). Each upcoming index caches its own re-rolled cfg so the look-ahead renders and the
+// audible song stay consistent.
+//
+// ON by default, matching SkafinityPlayer.RandomEverySong — endless variety out of the box, which
+// is the point of an infinite station. An explicit OFF is remembered; an absent setting means the
+// visitor has never touched it and gets the default.
 const SHUFFLE_KEY = 'skafinity.shuffle';
-let randomEverySong = (() => { try { return localStorage.getItem(SHUFFLE_KEY) === '1'; } catch (_) { return false; } })();
+let randomEverySong = (() => { try { return localStorage.getItem(SHUFFLE_KEY) !== '0'; } catch (_) { return true; } })();
 function saveShuffle() { try { localStorage.setItem(SHUFFLE_KEY, randomEverySong ? '1' : '0'); } catch (_) {} }
 // ── Navigable timeline (mirrors SkafinityPlayer's seed ledger + PCM cache, issue #14) ──
 // `ledger`: n -> the cfg song n was/will be rendered with. Under shuffle a song's vibe is rolled
