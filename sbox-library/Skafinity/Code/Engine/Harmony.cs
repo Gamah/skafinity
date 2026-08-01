@@ -42,6 +42,10 @@ static class Harmony
 	// {0,4} is the bare power chord (root + 5th). Nothing in the engine played anything but a
 	// triad or a power chord, which is why every genre's harmony read as the same primary-colour
 	// chord set even under different roots. The chordal voices draw from their genre's table.
+	/// <summary>The degree offset of a voicing's THIRD — the note that decides major or minor, and
+	/// the one a driven guitar leaves out (see MusicGen.GuitarDegrees).</summary>
+	public const int Third = 2;
+
 	public static readonly int[] Triad = { 0, 2, 4 };
 	public static readonly int[] Seventh = { 0, 2, 4, 6 };
 	public static readonly int[] Ninth = { 0, 2, 4, 6, 8 };

@@ -15,7 +15,7 @@ public sealed partial class MusicGen
 	/// duplication left in the engine — this is the seam that fixes it.</summary>
 	void RenderCompVoice( int barTick, int to, int chord, Pattern fig, Rng rng, Rng exprRng )
 	{
-		var hits = fig.Slice( barTick, to, _sectionTick, _feel, _displace );
+		var hits = fig.Slice( barTick, to, _sectionTick, _feel );
 		// Remember what the riff played: where the bass doubles it (metal, and punk's unison
 		// option) it reads these onsets rather than a table of its own.
 		_riffOnsets.AddRange( hits );
@@ -47,7 +47,7 @@ public sealed partial class MusicGen
 	/// </summary>
 	void RenderKeysVoice( int barTick, int to, int chord, Rng rng, Rng exprRng )
 	{
-		var hits = _keysFig.Slice( barTick, to, _sectionTick, _feel, _displace );
+		var hits = _keysFig.Slice( barTick, to, _sectionTick, _feel );
 		switch ( _prof.Keys )
 		{
 			case KeysStyle.HonkyTonk: RenderHonkyTonkBar( hits, chord, rng, exprRng ); break;

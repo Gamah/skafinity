@@ -260,7 +260,7 @@ public sealed partial class MusicGen
 
 		// ── the section's own state ──
 		// Everything below here reads these rather than asking "am I in a verse?": the energy
-		// contour, the half/double-time feel, the metric displacement, and the key.
+		// contour, the half/double-time feel, and the key.
 		_sectionTick = sectionTick;
 		_sectionTicks = SectionTicks( part, beatsPerBar );
 		_energy = Math.Clamp( part.Energy, 0f, 1f );
@@ -268,12 +268,6 @@ public sealed partial class MusicGen
 		_keyShift = part.KeyShift;
 		_sectionType = part.Type;
 
-		// Metric displacement, and WHO moves. Mode 0 is the design: the chordal band shifts against
-		// a kit and a melody that stay put, which is the dissonance. The other two are the two
-		// ways of not having the split — no displacement at all, or the whole band moving together.
-		int mode = Math.Clamp( _c.DisplaceMode, 0, 2 );
-		_displace = mode == 1 ? 0 : part.Displace;
-		_melodyDisplace = mode == 2 ? _displace : 0;
 
 		bool isIntro = part.Type == Section.Intro;
 		bool isEnding = part.Type == Section.Ending;
@@ -458,7 +452,10 @@ public sealed partial class MusicGen
 		int at = _time.TickToSample( tick );
 		int durSamples = samples ? dur : _time.SpanSamples( tick, dur );
 		bool ring = decay > 0.4;
-		var degs = ChordDegrees( 0 );
+		// The ending is voiced by whichever voice plays it, so a driven guitar drops its third here
+		// too (see GuitarDegrees) — a song must not land on the one chord it spent three minutes
+		// avoiding.
+		var degs = _prof.Comp is CompStyle.Skank or CompStyle.Pad ? ChordDegrees( 0 ) : GuitarDegrees( 0 );
 		// A cadence's first chord is the V; everything else lands on the tonic.
 		int shift = degree;
 
@@ -505,7 +502,8 @@ public sealed partial class MusicGen
 					};
 					break;
 			}
-			RenderPatch( at, durSamples, Midi( midi ), p );
+			// Pop's ending is the keys voice, and the keys are not double-tracked (see EmitKeys).
+			RenderPatch( at, durSamples, Midi( midi ), p, mono: _prof.Comp == CompStyle.Pad );
 		}
 	}
 

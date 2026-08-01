@@ -219,12 +219,6 @@ public partial class Engine
 	[JSExport]
 	internal static double AdvancedFieldMax( int i ) => VibeCodec.AdvancedFields[i].Max;
 
-	// Option labels for a DISCRETE advanced field (value = Min + index); empty for a continuous
-	// one. Same contract as VibeFieldChoices — the host renders a dropdown rather than a slider
-	// where this is non-empty, so a new discrete knob needs no second table in JS.
-	[JSExport]
-	[return: JSMarshalAs<JSType.Array<JSType.String>>]
-	internal static string[] AdvancedFieldChoices( int i ) => VibeCodec.AdvancedFields[i].Choices ?? Array.Empty<string>();
 
 	[JSExport]
 	internal static double GetAdvancedField( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg, int i )
@@ -248,7 +242,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 88;
+	public const int Size = 87;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -279,8 +273,6 @@ static class Cfg
 		c.WidthDelayMs, c.WidthJitterMs, c.WidthAmpVar, c.WidthCutoffVar,
 		// how far each genre's own mix profile is taken (see GenreProfile.Mix)
 		c.GenreMix,
-		// who a section's metric displacement moves (see Part.Displace)
-		c.DisplaceMode,
 	};
 
 	public static MusicGen.Config From( double[] a )
@@ -311,7 +303,6 @@ static class Cfg
 		c.DoubleTrack = (float)a[i++]; c.WidthBacking = (float)a[i++]; c.WidthLead = (float)a[i++]; c.WidthDetune = (float)a[i++];
 		c.WidthDelayMs = (float)a[i++]; c.WidthJitterMs = (float)a[i++]; c.WidthAmpVar = (float)a[i++]; c.WidthCutoffVar = (float)a[i++];
 		c.GenreMix = (float)a[i++];
-		c.DisplaceMode = (int)a[i++];
 		return c;
 	}
 }

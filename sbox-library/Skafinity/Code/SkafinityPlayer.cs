@@ -98,7 +98,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	[Property, Group( "Mix" ), Range( 0f, 1.5f )] public float DrumVol { get; set; } = 1.00f;
 
 	// ── Tone ──
-	[Property, Group( "Tone" ), Range( 0f, 40f )] public float Detune { get; set; } = 14f;
+	[Property, Group( "Tone" ), Range( 0f, 20f )] public float Detune { get; set; } = 7f;
 	[Property, Group( "Tone" ), Range( 80f, 1200f )] public float BassCutoff { get; set; } = 380f;
 	[Property, Group( "Tone" ), Range( 500f, 8000f )] public float SkankCutoff { get; set; } = 3000f;
 	[Property, Group( "Tone" ), Range( 0f, 2000f )] public float SkankHighpass { get; set; } = 500f;

@@ -74,20 +74,17 @@ for (let g = 0; g < mod.genreCount(); g++)
 for (const name of retired)
   check(`${name} is not a knob the UI would render`, !seen.has(name));
 
-// ── the displacement toggle the page puts next to the genre selector ──
-// It is an ADVANCED field (config-only, never in the seed) and it is discrete, so the page builds
-// its dropdown from the engine's own labels rather than a second table in JS.
-let displaceIdx = -1;
+// ── double-tracking width stays a width, not a tuning error ──
+// WidthDetune is house config with no listener-facing undo, so its RANGE is the safety rail:
+// a few cents between two takes reads as two performances, tens of cents reads as out of tune.
+let wdIdx = -1;
 for (let i = 0, n = mod.advancedFieldCount(); i < n; i++)
-  if (mod.advancedFieldName(i) === 'DisplaceMode') displaceIdx = i;
-check('DisplaceMode is an advanced (config-only) field', displaceIdx >= 0);
-const displaceChoices = displaceIdx >= 0 ? mod.advancedFieldChoices(displaceIdx) : [];
-check('DisplaceMode offers the page a set of labels to render',
-  displaceChoices.length === 3, displaceChoices.join(' | '));
-check('DisplaceMode round-trips through cfg',
-  mod.getAdvancedField(mod.setAdvancedField(cfg, displaceIdx, 2), displaceIdx) === 2);
-check('a continuous advanced field offers no choices',
-  mod.advancedFieldChoices(0).length === 0);
+  if (mod.advancedFieldName(i) === 'WidthDetune') wdIdx = i;
+check('WidthDetune is an advanced (config-only) field', wdIdx >= 0);
+check('WidthDetune cannot be pushed past a musical width',
+  mod.advancedFieldMax(wdIdx) <= 20, `max ${mod.advancedFieldMax(wdIdx)} cents`);
+check('WidthDetune round-trips through cfg',
+  mod.getAdvancedField(mod.setAdvancedField(cfg, wdIdx, 8), wdIdx) === 8);
 
 // ── a rolled song actually renders ──
 // The end of the whole chain: shuffle picks a vibe, the worker renders it, the page plays it.

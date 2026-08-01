@@ -19,8 +19,7 @@ namespace Skafinity;
 /// chord by chord.
 ///
 /// Because it is a Pattern it inherits everything patterns get: it anchors to the section (so a
-/// four-bar tune restarts with the chorus), it stretches under a half-time feel, and a section
-/// can displace it.
+/// four-bar tune restarts with the chorus) and it stretches under a half-time feel.
 /// </summary>
 static class Melody
 {
@@ -150,11 +149,6 @@ public sealed partial class MusicGen
 		var ex = guitarLead ? Expr( "LEAD GTR" ) : Expr( "LEAD" );
 		int prevMidi = NoPrev;
 
-		// Metric displacement is the COMP's — shifting the chordal voices against the kit is the
-		// effect, and shifting the melody with them moves the whole harmonic band off the drums at
-		// once, which reads as two bands rather than one band pushing. _melodyDisplace is 0 unless
-		// Config.DisplaceMode says otherwise (a listening toggle, not a per-song value).
-		//
 		// A SECTION SHORTER THAN THE TUNE SINGS THE TUNE'S END, not its beginning. A four-bar
 		// pre-chorus over an eight-bar tune stated the call and was cut off by the chorus before
 		// the answer ever arrived — a phrase interrupted by the next phrase, which is what "two
@@ -163,7 +157,7 @@ public sealed partial class MusicGen
 		int anchor = _sectionTicks > 0 && _sectionTicks < tune.LengthTicks
 			? _sectionTick - (tune.LengthTicks - _sectionTicks)
 			: _sectionTick;
-		foreach ( var h in tune.Slice( barTick, barTick + barTicks, anchor, _feel, _melodyDisplace ) )
+		foreach ( var h in tune.Slice( barTick, barTick + barTicks, anchor, _feel ) )
 		{
 			int degree = h.Value;
 			int len = Math.Min( h.SpanTicks, Timing.TicksPerBeat * 2 );

@@ -146,11 +146,6 @@ public static class VibeCodec
 		// 0 = every genre through one neutral mix. The SHAPE of a genre's mix is character and
 		// lives in the profile; what the house retunes at runtime is how far to push it.
 		F( "GenreMix", 0f, 2f, false, c => c.GenreMix, ( c, v ) => c.GenreMix = v ),
-		// Who a section's metric displacement moves. Config-only for the same reason the balances
-		// are: it must not ride in a shareable seed. Discrete, so it carries Choices and both hosts
-		// render it as a dropdown rather than a slider.
-		F( "DisplaceMode", 0f, 2f, true, c => c.DisplaceMode, ( c, v ) => c.DisplaceMode = (int)v,
-			choices: new[] { "COMP ONLY", "OFF", "WHOLE BAND" } ),
 		F( "KickBalance", 0f, 2f, false, c => c.KickBalance, ( c, v ) => c.KickBalance = v ),
 		F( "SnareBalance", 0f, 2f, false, c => c.SnareBalance, ( c, v ) => c.SnareBalance = v ),
 		F( "TomBalance", 0f, 2f, false, c => c.TomBalance, ( c, v ) => c.TomBalance = v ),
@@ -168,7 +163,9 @@ public static class VibeCodec
 		F( "DoubleTrack", 0f, 1f, false, c => c.DoubleTrack, ( c, v ) => c.DoubleTrack = v ),
 		F( "WidthBacking", 0f, 1f, false, c => c.WidthBacking, ( c, v ) => c.WidthBacking = v ),
 		F( "WidthLead", 0f, 1f, false, c => c.WidthLead, ( c, v ) => c.WidthLead = v ),
-		F( "WidthDetune", 0f, 50f, false, c => c.WidthDetune, ( c, v ) => c.WidthDetune = v ),
+		// Bounded at 20 cents, not 50: half a quarter-tone between two takes is not a double, it is
+		// a tuning error, and this is a house-config field with no way for a listener to undo it.
+		F( "WidthDetune", 0f, 20f, false, c => c.WidthDetune, ( c, v ) => c.WidthDetune = v ),
 		F( "WidthDelayMs", 0f, 40f, false, c => c.WidthDelayMs, ( c, v ) => c.WidthDelayMs = v ),
 		F( "WidthJitterMs", 0f, 30f, false, c => c.WidthJitterMs, ( c, v ) => c.WidthJitterMs = v ),
 		F( "WidthAmpVar", 0f, 1f, false, c => c.WidthAmpVar, ( c, v ) => c.WidthAmpVar = v ),

@@ -36,7 +36,11 @@ public sealed partial class MusicGen
 			Drive = KeysDriveFor(), Pan = 0f,
 		};
 		ApplyVoicing( ref keys, vc );
-		RenderPatch( _time.TickToSample( tick ), dur, Midi( midi ), keys );
+		// NOT double-tracked. The keys already sound their whole voicing as simultaneous notes, each
+		// a 2-voice detuned unison; doubling that put four detuned oscillators on every chord tone
+		// and the beating between them read as an out-of-tune keyboard rather than as width. A
+		// doubled part wants to be one line or a strum, not a stack of held thirds.
+		RenderPatch( _time.TickToSample( tick ), dur, Midi( midi ), keys, mono: true );
 	}
 
 	// ── Rock keys: the Charleston stab ──

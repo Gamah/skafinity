@@ -614,45 +614,6 @@ function randomizedCfg(base, randomizeGenre = true) { return mod.rollVibe(base, 
 // Randomize the live cfg in place (manual 🎲 reroll). Callers handle UI/hash/restart.
 function randomizeVibeCfg() { cfg = randomizedCfg(cfg); vibe = mod.encodeVibe(cfg); }
 
-// ── Displacement mode (a listening toggle, not part of the song) ──
-// Which voices a section's metric displacement moves. It is an ADVANCED field (config-only, see
-// VibeCodec.AdvancedFields) rather than a vibe knob, so it never rides in the shareable seed — a
-// link someone opens must sound the way it did for the person who sent it. Like the per-voice
-// volumes it is a local preference, persisted here and re-applied over web/config.json.
-const DISPLACE_KEY = 'skafinity.displace';
-let displaceIdx = -1;   // index of "DisplaceMode" in the advanced field list (-1 = not present)
-function loadDisplace() { const v = parseInt(localStorage.getItem(DISPLACE_KEY), 10); return Number.isFinite(v) ? v : null; }
-function applyStoredDisplace() {
-  if (displaceIdx < 0) return;
-  const v = loadDisplace();
-  if (v !== null) cfg = mod.setAdvancedField(cfg, displaceIdx, v);
-}
-// Build the <select> from the field's own choice labels, so the options are the engine's.
-function populateDisplace() {
-  const sel = $('displace');
-  if (!sel) return;
-  for (let i = 0, n2 = mod.advancedFieldCount(); i < n2; i++)
-    if (mod.advancedFieldName(i) === 'DisplaceMode') { displaceIdx = i; break; }
-  const choices = displaceIdx >= 0 ? mod.advancedFieldChoices(displaceIdx) : [];
-  if (!choices.length) { sel.closest('label').style.display = 'none'; return; }
-  sel.innerHTML = '';
-  choices.forEach((label, i) => {
-    const o = document.createElement('option');
-    o.value = String(i); o.textContent = label;
-    sel.append(o);
-  });
-  sel.value = String(mod.getAdvancedField(cfg, displaceIdx));
-}
-// Changing it re-renders: every cached song was rendered under the old mode.
-function setDisplace(v) {
-  if (displaceIdx < 0) return;
-  cfg = mod.setAdvancedField(cfg, displaceIdx, v);
-  try { localStorage.setItem(DISPLACE_KEY, String(v)); } catch (_) {}
-  rendered.clear();
-  ledger.clear();   // the frozen shuffle vibes are derived FROM cfg, so they carry the old mode
-  if (playing) startSequence(); else renderPlaylist();
-}
-
 // Populate the genre <select> from the wasm genre list (once).
 function populateGenres() {
   const sel = $('genre');
@@ -705,8 +666,6 @@ async function init() {
   cfg = mod.defaultConfig();
   await applyHouseConfig();   // overlay web/config.json baseline-mix tuning (no rebuild needed)
   populateGenres();
-  populateDisplace();
-  applyStoredDisplace();      // a local listening preference, on top of config.json
 
   // initial seed: a shared URL (location.hash) wins; otherwise a fresh random song —
   // random tag, random vibe, n=0 — so every plain visit lands somewhere new.
@@ -727,7 +686,6 @@ async function init() {
   }
   genre = mod.getGenre(cfg);
   $('genre').value = String(genre);
-  if ($('displace') && displaceIdx >= 0) $('displace').value = String(mod.getAdvancedField(cfg, displaceIdx));
   applyStoredVolumes();   // overlay the saved per-voice mix on top of the seed's voicing
   displayN = n;
 
@@ -753,7 +711,6 @@ async function init() {
   if ($('shuffleBtn')) $('shuffleBtn').onclick = () => toggleShuffle();
   updateShuffleBtn();
   $('genre').onchange = () => setGenre(parseInt($('genre').value, 10));
-  if ($('displace')) $('displace').onchange = () => setDisplace(parseInt($('displace').value, 10));
   $('dlBtn').onclick = () => exportWav(displayN);
   $('vol').oninput = () => { if (masterGain) masterGain.gain.value = parseFloat($('vol').value); };
   window.addEventListener('hashchange', () => {

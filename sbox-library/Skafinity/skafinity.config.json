@@ -3,7 +3,6 @@
   "advanced": {
     "KitPresence": 2.0,
     "GenreMix": 1.0,
-    "DisplaceMode": 0,
     "KickBalance": 0.8,
     "SnareBalance": 0.9,
     "TomBalance": 0.78,
@@ -14,7 +13,7 @@
     "OrganBalance": 1.237,
     "MelodyBalance": 0.896,
     "HornBalance": 1.142,
-    "KeysBalance": 1.065,
+    "KeysBalance": 1.39,
     "RhythmGtrBalance": 1.053,
     "LeadGtrBalance": 0.896,
     "DoubleTrack": 1.0,

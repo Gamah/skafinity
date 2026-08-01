@@ -102,7 +102,7 @@ public sealed partial class MusicGen
 		{
 			var p = structure[i];
 			sb.AppendLine( $"  {i,2} {p.Type,-10} {p.Bars,2} bars  energy {p.Energy:0.00}  feel {p.Feel:0.0}"
-				+ $"{(p.KeyShift != 0 ? $"  key +{p.KeyShift}" : "")}{(p.Displace != 0 ? "  displaced" : "")}"
+				+ $"{(p.KeyShift != 0 ? $"  key +{p.KeyShift}" : "")}"
 				+ $"{(p.Hemiola ? "  hemiola" : "")}{(p.BarBeats != null ? "  short bar" : "")}"
 				+ $"  tune {(TuneFor( p.Type ) != null ? "yes" : "no")}" );
 		}
@@ -255,9 +255,6 @@ public sealed partial class MusicGen
 	int _barTick;            // the current bar's first tick — the accent grid is relative to it
 	float _energy = 1f;      // 0 = as thin as the arrangement gets, 1 = full band
 	float _feel = 1f;        // pattern-rate multiplier: 0.5 half time, 2 double time
-	int _displace;           // metric displacement of the comp, in ticks
-	int _melodyDisplace;     // and of the melody + the horns that answer it. Normally 0 (see
-	                         // Config.DisplaceMode) — the split IS the effect.
 	int _keyShift;           // semitones this section is transposed by (the final-chorus lift)
 	Section _sectionType;    // which kind of section is playing — voices that must not double the
 	                         // tune (the ska horn section) ask TuneFor() about it

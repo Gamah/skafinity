@@ -29,6 +29,36 @@ public sealed partial class MusicGen
 		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1400f, 0.8f, 0.50f),        // rock riff
 	};
 
+	/// <summary>Effective drive at which the rhythm guitar stops playing thirds. Rock reaches this
+	/// a notch above its DISTORTION minimum, punk and metal are always past it, and country's clean
+	/// strum never is — which is the line a real player draws too.</summary>
+	const float DirtyChord = 3f;
+
+	/// <summary>The chord the RHYTHM GUITAR plays: the song's voicing, minus the third once the amp
+	/// is driven.
+	///
+	/// A THIRD THROUGH HEAVY GAIN IS NOT A CHORD, IT IS A BEAT NOTE. Distortion is a non-linearity,
+	/// so it generates sum and difference tones between everything fed into it; a root and a fifth
+	/// are a simple enough ratio to survive that, and a third is not. This is the whole reason
+	/// electric guitarists play power chords through a driven amp and full triads through a clean
+	/// one, and playing a rock triad at DISTORTION 4 read exactly the way it reads on a real amp —
+	/// "something is out of tune".
+	///
+	/// The SONG's voicing is untouched (every chordal voice still agrees what the chord IS — see
+	/// ComposePlan): this drops a note on the way out of one voice. A sus4 or a power chord has no
+	/// third and passes through whole, which is why those voicings work driven in the first place.
+	/// The keys keep the third, so the band still states the quality — guitar on the fifths,
+	/// keyboard on the colour, which is how the parts are actually divided.</summary>
+	int[] GuitarDegrees( int chord )
+	{
+		var degs = ChordDegrees( chord );
+		if ( RhythmGtrTone().Drive < DirtyChord ) return degs;
+		var keep = new List<int>( degs.Length );
+		for ( int i = 0; i < degs.Length && i < _voicing.Length; i++ )
+			if ( _voicing[i] != Harmony.Third ) keep.Add( degs[i] );
+		return keep.Count > 0 ? keep.ToArray() : degs;
+	}
+
 	/// <summary>One guitar note. Everything above funnels through here so the accent/energy
 	/// scaling (and the genre's mix trim) is applied in exactly one place.</summary>
 	/// <param name="nudgeMs">A sub-musical offset in MILLISECONDS, for the strum spread. It is not
@@ -61,7 +91,7 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord ) + 12;               // chunky register, an octave up
-		var degs = ChordDegrees( chord );
+		var degs = GuitarDegrees( chord );
 		int triBase = _rootMidi + _keyShift + 12;
 		foreach ( var h in hits )
 		{
@@ -86,7 +116,7 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int triBase = _rootMidi + _keyShift + 12;
-		var degs = ChordDegrees( chord );
+		var degs = GuitarDegrees( chord );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.7f - 0.4f * chug)) );
@@ -106,7 +136,7 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord ) + 12;
-		var degs = ChordDegrees( chord );
+		var degs = GuitarDegrees( chord );
 		int triBase = _rootMidi + _keyShift + 12;
 		foreach ( var h in hits )
 		{
@@ -123,7 +153,7 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord );                    // low, chunky — no octave bump
-		var degs = ChordDegrees( chord );
+		var degs = GuitarDegrees( chord );
 		int triBase = _rootMidi + _keyShift;
 		foreach ( var h in hits )
 		{

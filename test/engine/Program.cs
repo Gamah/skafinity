@@ -707,17 +707,17 @@ static class Program
 			foreach ( var p in MusicGen.BuildStructure( g ) ) halfTime |= p.Feel < 1f;
 		Check( "some genre drops into half time", halfTime );
 
-		// The final-chorus lift, and the metric displacement the transitional sections carry.
-		bool lift = false, displaced = false, hemiola = false;
+		// The final-chorus lift, and the hemiola the transitional sections regroup into. A constant
+		// per-section displacement used to live here too; it is gone deliberately (see SongForm) and
+		// the hemiola is the metric device that survives, because it re-converges.
+		bool lift = false, hemiola = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 			foreach ( var p in MusicGen.BuildStructure( g ) )
 			{
 				lift |= p.KeyShift != 0;
-				displaced |= p.Displace != 0;
 				hemiola |= p.Hemiola;
 			}
 		Check( "some genre lifts a section into a new key", lift );
-		Check( "some section displaces its comp against the bar", displaced );
 		Check( "some section regroups into a hemiola", hemiola );
 
 		// The anomalous (short) bar. No FORM uses one today — dropping a beat under a melody reads
@@ -813,12 +813,9 @@ static class Program
 		bool drifts = b1.Count != b2.Count || b1[0].Tick % bar != b2[0].Tick % bar;
 		Check( "a hemiola lands differently in the next bar", drifts );
 
-		// Half time stretches the figure without touching the grid; displacement moves it late.
+		// Half time stretches the figure without touching the grid.
 		var half = oneBar.Slice( 0, bar * 2, 0, 0.5f );
 		Check( "half time stretches a figure over two bars", half.Count == 4 );
-		var moved = oneBar.Slice( 0, bar, 0, 1f, Timing.TicksPerEighth );
-		Check( "displacement pushes every onset late",
-			moved[0].Tick == oneBar.Slice( 0, bar )[0].Tick + Timing.TicksPerEighth );
 
 		// The anchor is the section, so a multi-bar figure restarts with the section rather than
 		// wherever the song happens to be.
