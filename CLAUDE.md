@@ -751,6 +751,21 @@ bundle-matches-glue rule as ever, except Pages makes forgetting it *invisible* r
 the site keeps serving the old engine while `master` claims the new one. Page-only edits
 (`index.html`, `app.js`, `style.css`, `config.json`) need no publish; push and the site follows.
 
+**The stale-bundle gate.** Because the deploy packages rather than compiles, an engine commit
+that forgets to re-stage `web/_framework` breaks nothing visibly — no 404, no failing test, just
+the old engine playing under a `master` that claims otherwise. `make stage` therefore writes
+`web/.bundle-stamp` (`<kind> <sha256>` over every `.cs` the wasm build compiles, plus the csproj
+and `runtimeconfig.template.json`), and `make check-bundle` recomputes it. Both the CI workflow
+and the Pages deploy run that check first, so a stale bundle fails the merge and never reaches
+the site. `kind` exists because `make dev` stages an interpreted runtime — fresh but slow in a
+browser — so the check demands `aot` and a `dev` stamp fails too. **Both `stage` and
+`check-bundle` call the same `tools/bundle-stamp.sh`**, which is the point: two implementations
+of "what counts as a source" would drift and the gate would quietly stop gating. Add a compiled
+input (a new `Engine/` subfolder, another glob in the csproj) and it goes in `compute()` there.
+What the stamp proves is that the bundle was staged from these sources; it is a guard against
+forgetting, not against tampering, since it sits beside the bundle rather than being derived
+from its bytes.
+
 Two properties are load-bearing and easy to undo by accident. The runner must stay
 `ubuntu-latest`: standard runners are free on a public repo, **larger runners are billed even
 there**. And Pages must stay on the *Actions* source rather than branch-deploy — with branch-deploy

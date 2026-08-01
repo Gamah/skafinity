@@ -38,6 +38,9 @@
 #   make dist       → package for handing out: dist/ (a GitHub-Pages-ready static site)
 #                     plus dist/skafinity.html (ONE self-contained file, runtime inlined)
 #   make test-dist  → build dist/ and boot the single file's inlined runtime under node
+#   make check-bundle→ is the committed web/_framework built from the current engine? The
+#                     Pages deploy packages it rather than compiling it, so a stale bundle
+#                     serves the old engine silently. CI gates on this.
 #   make clean
 #
 # One-time setup: Docker (for `make up`), or dotnet-sdk-10.0 + `dotnet workload install
@@ -56,6 +59,9 @@ ENGINE_TESTS = test/engine/Skafinity.EngineTests.csproj
 PUBROOT   = wasm/bin/Release/net10.0/publish
 PUBDIR    = $(PUBROOT)/wwwroot/_framework
 PORT     ?= 8000
+# Which kind of publish staged the bundle. `dev` stages an interpreted runtime, which
+# check-bundle rejects for a commit — see tools/bundle-stamp.sh.
+STAMP_KIND ?= aot
 COMPOSE   = docker compose -f docker/docker-compose.yml
 FASTCOMP  = docker compose -f docker/docker-compose.fast.yml
 
@@ -63,7 +69,7 @@ FASTCOMP  = docker compose -f docker/docker-compose.fast.yml
 # are opt-in via `make up`).
 .DEFAULT_GOAL := all
 
-.PHONY: all build dev deploy stage test test-engine test-engine-bless test-dist serve dist release clean fast up rebuild down logs ps
+.PHONY: all build dev deploy stage check-bundle test test-engine test-engine-bless test-dist serve dist release clean fast up rebuild down logs ps
 
 # ── Docker: serve the committed bundle as-is. web/_framework is in the repo, so there is
 # nothing to compile — stock nginx bind-mounts web/ and is up in a second. Same container,
@@ -117,7 +123,7 @@ build:
 dev:
 	rm -rf $(PUBROOT)
 	$(DOTNET) publish $(PROJECT) -c Release -p:RunAOTCompilation=false
-	@$(MAKE) --no-print-directory stage
+	@$(MAKE) --no-print-directory stage STAMP_KIND=dev
 
 # Ship build: a full from-scratch rebuild + smoke test. `all` already wipes the publish dir
 # so the staged bundle is cruft-free on every build; `deploy` goes further and clears
@@ -135,7 +141,15 @@ stage:
 	rm -rf web/_framework
 	cp -r $(PUBDIR) web/_framework
 	cp sbox-library/Skafinity/skafinity.config.json web/config.json
+	@sh tools/bundle-stamp.sh write $(STAMP_KIND)
 	@echo "staged web/_framework ($$(ls web/_framework | wc -l) files) + web/config.json"
+
+# Does the committed bundle match the engine it is supposed to be built from? The Pages deploy
+# packages web/_framework rather than compiling it, so a stale bundle is not a build failure —
+# the site just quietly serves the OLD engine. This is what notices. CI runs it before every
+# deploy; run it yourself before pushing an engine change.
+check-bundle:
+	@sh tools/bundle-stamp.sh check
 
 # Two halves: smoke.mjs checks the raw [JSExport] boundary; page.mjs checks the surface the
 # PAGE uses (the `mod` object engine.js returns, against every call app.js/worker.js make).
@@ -219,4 +233,4 @@ release:
 	@echo "publish with: gh release create vX.Y.Z $(RELEASE_TARBALL) --title ... --notes ..."
 
 clean:
-	rm -rf web/_framework wasm/bin wasm/obj
+	rm -rf web/_framework wasm/bin wasm/obj web/.bundle-stamp

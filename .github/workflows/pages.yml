@@ -44,6 +44,13 @@ jobs:
         with:
           node-version: '22'
 
+      # The gate. Because this job packages web/_framework instead of building it, a bundle
+      # left stale by an engine commit does not fail anything — the site just serves the old
+      # engine. Fail the deploy instead, so the live site stays consistent with the last good
+      # push rather than silently misrepresenting master.
+      - name: Is the committed bundle built from the current engine?
+        run: make check-bundle
+
       # `make dist` is the same target used locally, so the deployed tree cannot drift from
       # what `make dist` produces on a dev box. It stages the page, re-copies the canonical
       # skafinity.config.json, drops the .br/.gz duplicates, writes .nojekyll, and builds
