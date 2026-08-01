@@ -735,6 +735,28 @@ for a data: URL. A browser evaluates neither branch. **Untested without a browse
 blob-URL `Worker`, `AudioContext` playback, the DOM wiring in `app.js` (the bundle is only
 parse-checked), and any actual GitHub Pages deploy.
 
+## Pages (`.github/workflows/pages.yml`) — the live site
+
+`https://gamah.github.io/skafinity/`, deployed by Actions on every push to `master`. The workflow
+runs `make dist` and `test/dist-single.mjs` on a stock runner and publishes `dist/`, so the live
+tree cannot drift from what `make dist` builds on a dev box, and a single-file bundle that fails to
+boot fails the job instead of being served.
+
+**The job does not compile the engine, and that is the thing to remember.** A Pages runner has no
+.NET and no `wasm-tools` workload; installing them would add ~2 min per deploy and would put audio
+on the site that came from a build nobody listened to. It consumes the **committed**
+`web/_framework`. So a change to `Code/Engine/**`, `wasm/Exports.cs` or `web/engine.js` is live only
+once you have run a full local publish and committed the re-staged bundle — the same
+bundle-matches-glue rule as ever, except Pages makes forgetting it *invisible* rather than loud:
+the site keeps serving the old engine while `master` claims the new one. Page-only edits
+(`index.html`, `app.js`, `style.css`, `config.json`) need no publish; push and the site follows.
+
+Two properties are load-bearing and easy to undo by accident. The runner must stay
+`ubuntu-latest`: standard runners are free on a public repo, **larger runners are billed even
+there**. And Pages must stay on the *Actions* source rather than branch-deploy — with branch-deploy
+GitHub only serves a branch's root or `/docs`, never `web/`, and it would run Jekyll over the tree
+(see the `.nojekyll` trap above). `dist/` is generated and gitignored; nothing built is committed.
+
 ## Conventions
 
 - No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`

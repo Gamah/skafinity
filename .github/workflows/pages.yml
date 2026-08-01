@@ -1,0 +1,71 @@
+# Publish the toy to GitHub Pages.
+#
+# This job deliberately does NOT compile the engine. A Pages runner has no .NET and no
+# wasm-tools workload, and installing them would add ~2 min per deploy AND mean the audio
+# on the live site came from a build nobody listened to. It consumes the COMMITTED
+# web/_framework instead, which makes the deploy a packaging step: node runs
+# tools/bundle-single.mjs, and `make dist` assembles the rest.
+#
+# The rule that falls out of that: a change to Code/Engine/**, wasm/Exports.cs or
+# web/engine.js is only live once you have published locally and committed the re-staged
+# web/_framework. That is the repo's existing bundle-matches-glue rule (see CLAUDE.md);
+# Pages just makes forgetting it visible, because the site would keep serving the old
+# engine while master claims the new one. `make dist` guards on the bundle existing, so a
+# missing one fails the job rather than deploying a page that dies at boot.
+#
+# Standard GitHub-hosted runners are free on public repositories, including for Pages.
+# Keep this on ubuntu-latest: larger runners are billed even on a public repo.
+name: Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+# GITHUB_TOKEN needs pages:write and id-token:write for deploy-pages' OIDC handshake.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one midway — a half-finished deploy would leave
+# the live site inconsistent. Queued pushes coalesce onto the newest commit.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # `make dist` is the same target used locally, so the deployed tree cannot drift from
+      # what `make dist` produces on a dev box. It stages the page, re-copies the canonical
+      # skafinity.config.json, drops the .br/.gz duplicates, writes .nojekyll, and builds
+      # dist/skafinity.html (the single self-contained file, which rides along as a download).
+      - name: Assemble dist/
+        run: make dist
+
+      # Proves the generated single file's inlined runtime actually boots and renders,
+      # before it is published rather than after someone downloads it.
+      - name: Check the single-file bundle
+        run: node test/dist-single.mjs
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

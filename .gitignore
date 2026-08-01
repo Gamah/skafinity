@@ -19,3 +19,6 @@ skafinity-web.tar.gz
 # `make dist` output: the GH-Pages site tree + the ~10 MB single-file build. Both are
 # derived from web/ on demand — the target is committed, never the artifacts.
 dist/
+
+# Agent worktrees and local session state.
+.claude/
