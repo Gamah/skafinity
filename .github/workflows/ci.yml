@@ -1,0 +1,44 @@
+# The checks that can run without a .NET SDK — which is all of them that matter for what
+# ships, because web/_framework is committed and the Pages deploy packages it rather than
+# building it. Runs on every PR and every branch push, so the answer arrives before a merge
+# rather than after a deploy.
+#
+# The engine's own C# tests (`make test-engine`) are deliberately NOT here: they need the SDK,
+# they take ~25 s of pure synthesis, and they assert on composition rather than on what the
+# site serves. Run them locally after an engine change — the render digests are a listening
+# aid, not a merge gate.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [master]   # master is covered by the Pages workflow, which gates on the same check
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # The one failure that is otherwise silent: an engine change committed without
+      # re-staging web/_framework. Nothing 404s and no test fails — the site would just serve
+      # the old engine. This is the gate, and it is first because it is the cheapest.
+      - name: Is the committed bundle built from the current engine?
+        run: make check-bundle
+
+      # Boots the published wasm under node: the raw [JSExport] boundary, then every call the
+      # page actually makes against the `mod` object engine.js returns.
+      - name: JS/wasm boundary
+        run: make test
+
+      # Builds both dist artifacts and boots the single file's inlined runtime, so a change to
+      # the page or the bundler cannot break the handout without failing here.
+      - name: Packaging
+        run: make test-dist
