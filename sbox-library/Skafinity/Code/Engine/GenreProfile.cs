@@ -120,6 +120,22 @@ sealed class GenreProfile
 	/// <summary>Always draw from the fast band — the genre has no laid-back mode.</summary>
 	public bool AlwaysFast { get; init; }
 
+	/// <summary>Where the listener's TEMPO knob SATURATES for this genre — the slowest and fastest
+	/// this music is still itself.
+	///
+	/// The knob is one global 0.70–1.45 multiplier over whatever the genre drew, and a symmetric
+	/// range chosen against no band in particular put its ends outside every genre at once: ska
+	/// 268, metal 290 and punk 290 at the top, metal 63 and country 67 at the bottom. None of
+	/// those are tempos these genres are, so the usable part of the slider was its middle.
+	///
+	/// Narrowing the knob would have been one number, but it takes headroom off punk and ska that
+	/// they can genuinely use. The band is the genre's and the knob is the preference riding on
+	/// top — so the knob keeps its full travel in the UI and each genre stops where it stops
+	/// being itself. These are ceilings for the KNOB: the drawn band must sit inside them, so at
+	/// neutral nothing is ever clamped.</summary>
+	public int TempoFloor { get; init; }
+	public int TempoCeil { get; init; }
+
 	/// <summary>Bars per chord — the harmonic rhythm. 2 is the reggae/rock norm; 1 makes the
 	/// four-chord loop itself the four-bar hypermeasure, which is what punk and pop do.</summary>
 	public int ChordBars { get; init; } = 2;
@@ -153,6 +169,7 @@ sealed class GenreProfile
 	/// <summary>The comp figures of the genre's main chordal voice, and how to play them.</summary>
 	public Pattern[] CompFigures { get; init; }
 	public CompStyle Comp { get; init; }
+
 
 	/// <summary>The second chordal voice — the keys/piano/synth layer, where the genre has one.
 	/// </summary>
@@ -206,6 +223,7 @@ sealed class GenreProfile
 		{
 			SwingMin = 0.10f, SwingMax = 0.22f, ShuffleChance = 0.22f,
 			BpmMin = 130, BpmMax = 175, FastBpmMin = 155, FastBpmMax = 185,
+			TempoFloor = 112, TempoCeil = 200,
 			ChordBars = 2, RideLean = 0.40f, HornLead = true,
 			Endings = new[] { EndingStyle.Ring, EndingStyle.Cadence, EndingStyle.Fall },
 			EndingWeights = new[] { 3, 2, 1 },
@@ -225,6 +243,7 @@ sealed class GenreProfile
 		{
 			SwingMin = 0f, SwingMax = 0.08f,
 			BpmMin = 110, BpmMax = 160, FastBpmMin = 150, FastBpmMax = 175,
+			TempoFloor = 88, TempoCeil = 185,
 			ChordBars = 2, RideLean = 0.55f,
 			Endings = new[] { EndingStyle.Ring, EndingStyle.StopHit, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
@@ -245,6 +264,7 @@ sealed class GenreProfile
 		{
 			SwingMin = 0.04f, SwingMax = 0.16f, ShuffleChance = 0.18f,
 			BpmMin = 95, BpmMax = 130, FastBpmMin = 130, FastBpmMax = 150,
+			TempoFloor = 78, TempoCeil = 162,
 			ChordBars = 2, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Cadence, EndingStyle.Ring, EndingStyle.Fall },
 			EndingWeights = new[] { 3, 2, 1 },
@@ -265,6 +285,7 @@ sealed class GenreProfile
 		{
 			SwingMin = 0f, SwingMax = 0.02f,
 			BpmMin = 90, BpmMax = 160, FastBpmMin = 160, FastBpmMax = 200,
+			TempoFloor = 70, TempoCeil = 210,
 			ChordBars = 2, RideLean = 0.65f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 4, 2 },
@@ -285,6 +306,7 @@ sealed class GenreProfile
 		{
 			SwingMin = 0f, SwingMax = 0.03f,
 			BpmMin = 165, BpmMax = 200, FastBpmMin = 165, FastBpmMax = 200, AlwaysFast = true,
+			TempoFloor = 130, TempoCeil = 225,
 			ChordBars = 1, RideLean = 0.20f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 5, 1 },
@@ -305,6 +327,7 @@ sealed class GenreProfile
 		{
 			SwingMin = 0f, SwingMax = 0.05f,
 			BpmMin = 100, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
+			TempoFloor = 84, TempoCeil = 152,
 			ChordBars = 1, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Fall, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
@@ -343,12 +366,17 @@ sealed class GenreProfile
 	/// <summary>This song's tempo, drawn from the genre's band (its uptempo band when
 	/// <paramref name="fast"/>) and then scaled by the listener's TEMPO knob. The band is the
 	/// genre's; the knob is the preference riding on top, so a song can be pushed or dragged
-	/// without a country song ever ending up at metal's tempo.</summary>
+	/// without a country song ever ending up at metal's tempo.
+	///
+	/// The knob SATURATES at the genre's own <see cref="TempoFloor"/>/<see cref="TempoCeil"/>
+	/// rather than at one shared 40–300. A single symmetric 0.70–1.45 multiplier cannot be right
+	/// for six bands at once: its ends were ska 268, metal 290 and country 67, so the ends of the
+	/// slider were unplayable everywhere and only its middle was usable.</summary>
 	public int DrawBpm( Rng rng, bool fast, float tempoScale )
 	{
 		int lo = fast ? FastBpmMin : BpmMin, hi = fast ? FastBpmMax : BpmMax;
 		int bpm = lo + rng.Int( Math.Max( 1, hi - lo + 1 ) );
-		return Math.Clamp( (int)MathF.Round( bpm * tempoScale ), 40, 300 );
+		return Math.Clamp( (int)MathF.Round( bpm * tempoScale ), TempoFloor, TempoCeil );
 	}
 
 	/// <summary>This song's groove, drawn from the genre's own table — one weighted draw, never

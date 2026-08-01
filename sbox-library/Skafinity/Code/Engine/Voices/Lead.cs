@@ -108,22 +108,37 @@ public sealed partial class MusicGen
 		}
 	}
 
-	/// <summary>Metal: scalar shred. Runs of sixteenths straight up and down the mode across the
-	/// whole register — not the sung line's chord-tone hops with a triplet ornament on top.</summary>
+	/// <summary>Metal: scalar shred. Runs straight up and down the mode across the whole register —
+	/// not the sung line's chord-tone hops with a triplet ornament on top.
+	///
+	/// The run is sixteenths, with BURSTS of thirty-seconds inside it — which is what a run
+	/// actually is on a fretboard. A player does not pick every note of a fast line: they pick one
+	/// and hammer-on or pull-off the next, or sweep across strings, so a burst costs the hand far
+	/// less than its note count suggests and is over before it runs out. That is why the burst is
+	/// short and the surrounding line is not, and it is why nothing here gates on the tempo: the
+	/// gesture is a handful of notes wherever it lands.</summary>
 	void RenderShredPhrase( int barTick, int span, int chord, Rng rng, Rng exprRng )
 	{
 		int melBase = LeadBase();
 		float amp = _c.LeadGtrVol * _c.LeadGtrBalance * _midMul;
 		var ex = Expr( "LEAD GTR" );
 		int prevMidi = NoPrev;
-		int step = Timing.TicksPerEighth / 2;                       // sixteenths
+		int sixteenth = Timing.TicksPerEighth / 2, thirtySecond = Timing.TicksPerEighth / 4;
 		int degree = _prog[chord];
 		int dir = rng.Chance( 0.5f ) ? 1 : -1;
+		int burst = 0;                                    // notes left in the current 32nd flurry
 
-		for ( int t = barTick; t < barTick + span; t += step )
+		for ( int t = barTick; t < barTick + span; )
 		{
+			// This note's value: inside a flurry it is a 32nd, otherwise a 16th — and a flurry
+			// always STARTS on a 16th, four to eight notes long, so it reads as an acceleration
+			// out of the line rather than as a second tempo.
+			int step = burst > 0 ? thirtySecond : sixteenth;
+			if ( burst > 0 ) burst--;
+			else if ( rng.Chance( 0.18f ) ) burst = 4 + 2 * rng.Int( 3 );
+
 			// A run breathes at the phrase's seams, and turns around when it runs out of register.
-			if ( rng.Chance( 0.12f ) ) { dir = -dir; continue; }
+			if ( rng.Chance( 0.12f ) ) { dir = -dir; t += step; continue; }
 			degree += dir;
 			if ( degree > _prog[chord] + 14 || degree < _prog[chord] - 7 ) { dir = -dir; degree += 2 * dir; }
 			int midi = ScaleMidi( melBase, degree );
@@ -132,6 +147,7 @@ public sealed partial class MusicGen
 				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, step ) * 0.8,
 				_c.LeadGtrDrive, vc );
 			prevMidi = midi;
+			t += step;
 		}
 	}
 
