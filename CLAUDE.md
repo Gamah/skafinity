@@ -340,6 +340,23 @@ must still agree what the chord IS — this drops a note on the way out of ONE v
 keep the third and the band still states the quality. Guitar on the fifths, keyboard on the
 colour, which is how the parts divide in a real band.
 
+**A chord change must not move the whole comp in parallel.** Built upward from its degree, a
+chord's register is wherever that degree falls, so the same shape slides: a progression that steps
+a third moved every voice most of an octave, with no common tone, every time the change came round
+— which is the "it jumped" that reads loudest when a chord change lands on a section boundary.
+`Harmony.PlanVoiceLeading` octave-shifts each voice to the inversion nearest the chord before it,
+once per song, and `ChordMidis`/`ChordToneMidi` apply it — so **every chordal voice inverts the
+same way** and the guitar and the keys agree on the inversion as much as on the chord. Three things
+it deliberately does not do: the **bass is not voice-led** (it plays roots, and an inverted root is
+a different chord); the ending's `VoicedMidis` is root position on purpose (a song lands where the
+genre voices it, not where the last change left the register); and no voice is reassigned between
+chord tones, so a stepwise root move still moves the shape a step — that is a guitarist barring the
+same shape, not the defect. A progression is a **cycle**, so the last chord back to the first is a
+change like any other: walking the cycle greedily either parks every leap on that seam or
+oscillates and never settles, so each voice is solved exactly over the three octaves it may take
+(cheap — three options, four chords, voices independent). Ties go to the octave nearer root
+position, or the comp walks itself out of register over a few laps.
+
 When adding per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a
 genre grid) or the genre's identity (`GenreProfile`). Getting it wrong is only obvious once
 shuffle is on.

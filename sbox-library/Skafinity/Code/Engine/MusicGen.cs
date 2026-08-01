@@ -88,6 +88,12 @@ public sealed partial class MusicGen
 			+ $"{(_time.Swing >= _prof.ShuffleMin && _prof.ShuffleChance > 0 ? " — SHUFFLE" : "")}" );
 		sb.AppendLine( $"key       root midi {_rootMidi}, scale [{string.Join( " ", _scale )}]" );
 		sb.AppendLine( $"changes   [{string.Join( " ", _prog )}] at {_chordBars} bar(s)/chord, voicing [{string.Join( " ", _voicing )}]" );
+		// What each chord's inversion cost the voices: the octave each one was shifted so the chord
+		// lands near the one before it. All zeros means the changes needed no re-voicing.
+		var vl = new string[_vlShift.Length];
+		for ( int c = 0; c < _vlShift.Length; c++ )
+			vl[c] = $"[{string.Join( " ", _vlShift[c] )}]";
+		sb.AppendLine( $"voicelead {string.Join( " ", vl )} (semitones per voice, per chord)" );
 		sb.AppendLine( $"groove    {_groove.Name}, ride pref {_ridePref:0.00}" );
 		sb.AppendLine( $"parts     comp {_songComp.LengthTicks / _time.BarTicks} bar(s), bass {_songBass.LengthTicks / _time.BarTicks} bar(s)"
 			+ $"{(_songKeys != null ? $", keys {_songKeys.LengthTicks / _time.BarTicks} bar(s)" : "")}"
@@ -211,6 +217,8 @@ public sealed partial class MusicGen
 	GenreProfile _prof;      // the genre's character table — every per-genre decision reads this
 	int[] _scale, _prog;
 	int[] _voicing;          // the song's chord voicing, in scale-degree offsets (Harmony)
+	int[][] _vlShift;        // per chord of _prog, the octave offset each voice takes so the chord
+	                         // sits near the one before it (Harmony.PlanVoiceLeading)
 	int _rootMidi;
 	Instrument _lead;
 	float _leadPan;

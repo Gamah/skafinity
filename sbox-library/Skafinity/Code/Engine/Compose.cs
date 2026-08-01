@@ -52,6 +52,10 @@ public sealed partial class MusicGen
 		// voice reads this one voicing, so the guitar and the keys agree about what the chord IS
 		// while still playing different rhythms.
 		_voicing = rng.PickWeighted( prof.Voicings, prof.VoicingWeights );
+		// How each chord inverts to stay near the one before it. A property of the changes and
+		// the voicing, so it is decided once and every chordal voice reads the same table — the
+		// guitar and the keys must agree on the inversion as much as on the chord. Costs no draw.
+		_vlShift = Harmony.PlanVoiceLeading( _scale, _prog, _voicing );
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
 		// Which horn/organ voice takes the ska lead, weighted by the config. Rolled for every
 		// genre so the draw count doesn't depend on the genre; only ska reads the result (the
