@@ -135,9 +135,13 @@ public sealed partial class MusicGen
 		}
 	}
 
-	/// <summary>Country: pentatonic double-stops. Two notes a third apart, bent into — the
-	/// Telecaster move, and the reason country's lead reads as country even over the same changes.
-	/// </summary>
+	/// <summary>Country: a single-note line with double-stops as punctuation — the Telecaster move,
+	/// and the reason country's lead reads as country even over the same changes.
+	///
+	/// PUNCTUATION, not the voice. Harmonising every note in parallel thirds is not a guitar part:
+	/// two pitches, held the same length, bent and vibratoed together, is a two-tone horn, and it
+	/// leaves no single line for the ear to follow. <see cref="DoubleStopChance"/> is what makes it
+	/// a lick.</summary>
 	void RenderDoubleStopPhrase( int barTick, int span, int chord, Rng rng, Rng exprRng )
 	{
 		int melBase = LeadBase();
@@ -153,22 +157,40 @@ public sealed partial class MusicGen
 			if ( t + len > barTick + span ) len = barTick + span - t;
 			if ( rng.Chance( 0.25f ) ) { t += len; continue; }       // country leaves space
 
-			int lower = ScaleMidi( melBase, degree );
-			int upper = ScaleMidi( melBase, degree + 2 );            // the third above, in the mode
-			var vc = Roll( ex, lower, prevMidi, exprRng );
-			int dur = _time.SpanSamples( t, len * 0.9 );
-			double dec = _time.SpanSeconds( t, len ) * 0.75;
-			RenderLeadNote( _time.TickToSample( t ), dur, lower, amp * 0.75f * NoteGain( t, 1f ),
-				dec, _c.LeadGtrDrive, vc );
-			RenderLeadNote( _time.TickToSample( t ), dur, upper, amp * 0.75f * NoteGain( t, 1f ),
-				dec, _c.LeadGtrDrive, vc );
-			prevMidi = lower;
+			int midi = ScaleMidi( melBase, degree );
+			var vc = Roll( ex, midi, prevMidi, exprRng );
+			float gain = amp * NoteGain( t, 1f );
+			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi, gain,
+				_time.SpanSeconds( t, len ) * 0.75, _c.LeadGtrDrive, vc );
+			if ( rng.Chance( DoubleStopChance ) ) EmitDoubleStop( t, len, degree, gain );
+			prevMidi = midi;
 
 			degree = rng.Chance( 0.5f ) ? NearestChordTone( tones, degree + (rng.Chance( 0.5f ) ? 2 : -2) )
 				: degree + (rng.Chance( 0.5f ) ? 1 : -1);
+			// Held inside the phrase's own register. The walk had no bound at all, so a long solo
+			// wandered off the top or the bottom of the line it started on and never came back —
+			// which is the same "where is the melody" the parallel thirds caused.
+			degree = Math.Clamp( degree, _prog[chord] - 3, _prog[chord] + 10 );
 			t += Math.Max( Timing.TicksPerEighth, len );
 		}
 	}
+
+	/// <summary>How often a country lead note is picked as a double-stop rather than played alone.
+	/// It is an ornament: on every note it stops being one, and the line stops being a line.</summary>
+	const float DoubleStopChance = 0.35f;
+
+	/// <summary>The harmony note of a country double-stop: the diatonic third UNDER the melody
+	/// note, picked with it and left to fall away.
+	///
+	/// UNDER, because the melody has to stay the top line — harmonising above makes the ornament
+	/// the highest voice, and the ear follows the top, so the line a listener hears is the harmony
+	/// rather than the tune. DRY, because the melody note's bend/scoop/vibrato is a fretting hand
+	/// working ONE string: sliding both notes of a dyad in parallel is the horn. And SHORTER,
+	/// because it is picked with the melody note, not held alongside it.</summary>
+	void EmitDoubleStop( int tick, int lenTicks, int degree, float gain )
+		=> RenderLeadNote( _time.TickToSample( tick ), _time.SpanSamples( tick, lenTicks * 0.6 ),
+			ScaleMidi( LeadBase(), degree - 2 ), gain * 0.55f,
+			_time.SpanSeconds( tick, lenTicks ) * 0.45, _c.LeadGtrDrive, default );
 
 	/// <summary>Punk: unison. When the lead plays at all it doubles the riff an octave up, which
 	/// is what a second guitarist in a three-piece actually does. Falls silent when there is no
@@ -246,7 +268,7 @@ public sealed partial class MusicGen
 	{
 		0 => 0.83f,   // ska horn
 		1 => 0.86f,   // rock
-		2 => 0.67f,   // country: doubled in thirds, so two notes per melody note
+		2 => 0.77f,   // country: one note, with the odd double-stop under it
 		3 => 1.24f,   // metal: it is supposed to be on top
 		4 => 0.64f,   // punk: it doubles the guitar, and two of everything is loud
 		_ => 1.21f,   // pop: the hook IS the song

@@ -357,6 +357,115 @@ static class Harmony
 		if ( offset == Fifth ) return root + 7;
 		return ScaleMidi( baseMidi, scale, rootDegree + offset );
 	}
+
+	/// <summary>How far one voice may be octave-shifted to stay near the chord before it. An
+	/// octave is what an INVERSION is; more than that moves the part into another register
+	/// rather than re-voicing the chord.</summary>
+	public const int MaxVoiceLead = 12;
+
+	/// <summary>
+	/// VOICE LEADING: per chord of <paramref name="prog"/>, the octave offset each voice of
+	/// <paramref name="voicing"/> takes so the chord sits near the one before it.
+	///
+	/// Built upward from its root degree, a chord's register is wherever that degree happens to
+	/// fall and the same shape simply slides — so a progression that steps a third moves every
+	/// voice a tenth, with no common tone, every time the change comes round. That is what reads
+	/// as "it jumped" (and it is loudest when a chord change lands on a section boundary). A
+	/// player inverts instead: keep the register, keep the common tones, move the voices that
+	/// have to move.
+	///
+	/// Each voice is octave-shifted to whichever octave sits nearest its OWN previous pitch (ties
+	/// going to the octave nearer root position, so the comp cannot walk itself out of register
+	/// over a few laps of the progression), so
+	/// the chord's identity is untouched — same degrees, same spelling, different inversion. The
+	/// result is a table because it is a property of the SONG (progression × voicing × scale),
+	/// not of a voice: every chordal voice reads the same shifts and therefore agrees on the
+	/// inversion, whatever register it plays in. The bass is deliberately NOT in here — it plays
+	/// roots, and a root that inverts is a different chord.
+	///
+	/// A PROGRESSION IS A CYCLE, and the choice is made as one: the last chord going back round to
+	/// the first is a change like any other, so a greedy walk anchored at the first chord parks
+	/// every leap the other three avoided on that one seam. Relaxing the walk round and round does
+	/// not fix it either — the cycle is what makes it oscillate rather than settle, and an
+	/// unsettled seam is a leap of a seventh sitting in the middle of a fixed table. So each voice
+	/// is solved EXACTLY, by a walk over the three octaves it may take at each chord that closes
+	/// the loop (voices are independent, three options each, four chords: it is a handful of
+	/// additions, done once per song). Ties go to the octave nearer root position, so the comp
+	/// cannot walk itself out of register.
+	///
+	/// Pitches are measured over a base of 0 — the shift is base-independent — and a voice may dip
+	/// a little under that base but no further (<see cref="VoiceLeadFloor"/>).
+	/// </summary>
+	public static int[][] PlanVoiceLeading( int[] scale, int[] prog, int[] voicing )
+	{
+		int n = voicing.Length, np = prog.Length;
+		var shift = new int[np][];
+		for ( int c = 0; c < np; c++ ) shift[c] = new int[n];
+
+		int k = 2 * (MaxVoiceLead / 12) + 1;              // the octaves on offer: −1, 0, +1
+		var raw = new int[np];
+		var cost = new int[np, k];
+		var from = new int[np, k];
+		var chain = new int[np];
+
+		for ( int v = 0; v < n; v++ )
+		{
+			for ( int c = 0; c < np; c++ ) raw[c] = VoicedTone( 0, scale, prog[c], voicing[v] );
+
+			int bestTotal = int.MaxValue;
+			for ( int start = 0; start < k; start++ )     // the loop has to close on what it opened
+			{
+				if ( Pitch( raw[0], start ) < VoiceLeadFloor ) continue;
+				for ( int c = 0; c < np; c++ )
+					for ( int o = 0; o < k; o++ ) { cost[c, o] = Unreachable; from[c, o] = 0; }
+				cost[0, start] = Home( start );
+
+				for ( int c = 1; c < np; c++ )
+					for ( int o = 0; o < k; o++ )
+					{
+						if ( Pitch( raw[c], o ) < VoiceLeadFloor ) continue;
+						for ( int p = 0; p < k; p++ )
+						{
+							if ( cost[c - 1, p] >= Unreachable ) continue;
+							int t = cost[c - 1, p] + Move( raw[c - 1], p, raw[c], o ) + Home( o );
+							if ( t >= cost[c, o] ) continue;
+							cost[c, o] = t;
+							from[c, o] = p;
+						}
+					}
+
+				for ( int last = 0; last < k; last++ )
+				{
+					if ( cost[np - 1, last] >= Unreachable ) continue;
+					int total = cost[np - 1, last]
+						+ (np > 1 ? Move( raw[np - 1], last, raw[0], start ) : 0);
+					if ( total >= bestTotal ) continue;
+					bestTotal = total;
+					for ( int c = np - 1, o = last; c >= 0; c-- ) { chain[c] = o; o = from[c, o]; }
+				}
+			}
+			for ( int c = 0; c < np; c++ ) shift[c][v] = 12 * (chain[c] - MaxVoiceLead / 12);
+		}
+		return shift;
+
+		int Pitch( int r, int o ) => r + 12 * (o - MaxVoiceLead / 12);
+		// Motion is weighted so it always outranks the pull toward root position: an octave of
+		// register is worth having, but never at the price of a semitone of extra movement.
+		int Move( int ra, int a, int rb, int b ) => 2 * Math.Abs( Pitch( rb, b ) - Pitch( ra, a ) );
+		int Home( int o ) => Math.Abs( o - MaxVoiceLead / 12 );
+	}
+
+	/// <summary>How far under its own base a voice may be led, relative to the base the chord is
+	/// voiced up from. A chord whose root is the scale's seventh degree sits eleven semitones up in
+	/// root position and one semitone DOWN inverted, and the inverted one is the whole point — a
+	/// floor at the base exactly forbids the move that helps most. Half an octave under is where
+	/// "inverted" turns into "an octave lower", and metal's comp is based at the bass's own
+	/// register, so there is no room below that.</summary>
+	public const int VoiceLeadFloor = -6;
+
+	/// <summary>Cost of a path that does not exist — larger than any real one, and small enough to
+	/// add to another without overflowing.</summary>
+	const int Unreachable = 1 << 20;
 }
 
 public sealed partial class MusicGen
@@ -390,11 +499,23 @@ public sealed partial class MusicGen
 	/// <summary>Every note of the chord as MIDI pitches over <paramref name="baseMidi"/> — what a
 	/// chordal voice actually plays. Use this rather than <c>ScaleMidi</c> over
 	/// <see cref="ChordDegrees"/>: see <see cref="Harmony.VoicedTone"/> for why the difference
-	/// matters on one degree of every scale.</summary>
-	int[] ChordMidis( int baseMidi, int chord ) => VoicedMidis( baseMidi, _prog[chord] );
+	/// matters on one degree of every scale.
+	///
+	/// This is also where the song's VOICE LEADING lands (<see cref="Harmony.PlanVoiceLeading"/>),
+	/// so the chord arrives in the inversion nearest the one before it instead of sliding a tenth.
+	/// Voice i keeps its index — the array stays aligned with <c>_voicing</c>, which is what lets
+	/// the driven guitar drop the third by position.</summary>
+	int[] ChordMidis( int baseMidi, int chord )
+	{
+		var m = VoicedMidis( baseMidi, _prog[chord] );
+		var s = _vlShift[chord];
+		for ( int i = 0; i < m.Length; i++ ) m[i] += s[i];
+		return m;
+	}
 
-	/// <summary>As <see cref="ChordMidis"/>, for a chord whose root degree is given directly (the
-	/// ending's cadence builds its V that way).</summary>
+	/// <summary>As <see cref="ChordMidis"/> but in ROOT POSITION, for a chord whose root degree is
+	/// given directly — the ending's cadence builds its V that way, and a final chord lands where
+	/// the genre voices it rather than where the last change left the register.</summary>
 	int[] VoicedMidis( int baseMidi, int rootDegree )
 	{
 		var m = new int[_voicing.Length];
@@ -410,6 +531,8 @@ public sealed partial class MusicGen
 	{
 		int n = _voicing.Length;
 		int oct = (int)Math.Floor( i / (double)n );
-		return Harmony.VoicedTone( baseMidi, _scale, _prog[chord], _voicing[i - oct * n] ) + 12 * oct;
+		int v = i - oct * n;
+		return Harmony.VoicedTone( baseMidi, _scale, _prog[chord], _voicing[v] )
+			+ _vlShift[chord][v] + 12 * oct;
 	}
 }

@@ -184,6 +184,77 @@ static class Program
 					- Harmony.ScaleMidi( 48, scale, deg ) != 7;
 		Check( "a diatonic fifth really is diminished on some degree", diatonicBreaks );
 
+		// ── voice leading: a chord change must not move the whole comp in parallel ──
+		// Built upward from its root degree, a chord's register is wherever that degree falls, so
+		// a progression that steps a third slides every voice a tenth with no common tone — the
+		// "it jumped" that reads loudest when a change lands on a section boundary.
+		// Harmony.PlanVoiceLeading octave-shifts each voice to the inversion nearest the chord
+		// before it. The progression is a CYCLE, so the wrap from the last chord back to the first
+		// is checked like any other change: an anchored chain would just park every leap there.
+		bool led = true, spelled = true, floored = true, anchored = true;
+		int worstLed = 0, worstRoot = 0;
+		long movedLed = 0, movedRoot = 0, bigLed = 0, bigRoot = 0;
+		string leapAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			foreach ( var scale in prof.Scales )
+				foreach ( var voicing in prof.Voicings )
+					foreach ( var prog in prof.Progressions )
+					{
+						var shift = Harmony.PlanVoiceLeading( scale, prog, voicing );
+						for ( int c = 0; c < prog.Length; c++ )
+						{
+							int p = (c + prog.Length - 1) % prog.Length;
+							for ( int i = 0; i < voicing.Length; i++ )
+							{
+								int raw = Harmony.VoicedTone( 0, scale, prog[c], voicing[i] );
+								int rawPrev = Harmony.VoicedTone( 0, scale, prog[p], voicing[i] );
+								int now = raw + shift[c][i], before = rawPrev + shift[p][i];
+								// The chord is re-voiced, never re-spelled: same note, other octave.
+								spelled &= (now - raw) % 12 == 0;
+								floored &= now >= Harmony.VoiceLeadFloor;
+								anchored &= Math.Abs( shift[c][i] ) <= Harmony.MaxVoiceLead;
+								int move = Math.Abs( now - before ), rootMove = Math.Abs( raw - rawPrev );
+								movedLed += move;
+								movedRoot += rootMove;
+								if ( move > 6 ) bigLed++;
+								if ( rootMove > 6 ) bigRoot++;
+								worstRoot = Math.Max( worstRoot, rootMove );
+								if ( move > worstLed )
+								{
+									worstLed = move;
+									leapAt = $"genre {g} prog [{string.Join( " ", prog )}] voicing "
+										+ $"[{string.Join( " ", voicing )}] chord {c} voice {i}: "
+										+ $"{before} → {now} (root position {rawPrev} → {raw})";
+								}
+								if ( move >= 12 ) led = false;
+							}
+						}
+					}
+		}
+		Check( "no voice leaps an octave or more between chords", led,
+			$"worst {worstLed} semitones at {leapAt}" );
+		Check( "voice leading re-voices the chord, never re-spells it", spelled );
+		Check( "no voice is led below the register the chord is voiced up from", floored );
+		Check( "a voice is shifted at most one octave", anchored );
+		// …and the unled spelling really does leap, or the checks above are vacuous. A root degree
+		// resolves inside one octave, so the worst PARALLEL leap the old spelling could make is a
+		// major seventh — which is what "no common tone, the whole comp moved" was.
+		Check( "root-position spelling really does leap a seventh somewhere", worstRoot >= 10,
+			$"worst unled leap {worstRoot} semitones" );
+		// The claim is TOTAL motion, not the single worst leap: a voice already led under its floor
+		// may still have to jump back up, and one voice jumping while the others hold is a
+		// re-voicing rather than the whole comp sliding. The total can only fall so far — a root
+		// move of a fourth is under a tritone already and octave-shifting leaves it alone — so the
+		// sharper measure is how many changes still throw a voice more than a tritone.
+		Check( "voice leading moves the comp less than root position", movedLed * 5 < movedRoot * 4,
+			$"led {movedLed} vs root-position {movedRoot} semitones over all changes" );
+		// The ones that survive are the price of closing the cycle: a single wider move that buys
+		// smaller ones on the other three changes is the solution, not a failure of it.
+		Check( "voice leading removes most of the big leaps", bigLed * 3 < bigRoot,
+			$"{bigLed} led vs {bigRoot} root-position moves over a tritone; worst {leapAt}" );
+
 		// ScaleMidi wraps octaves rather than clamping, so a progression may run off either
 		// end of its scale table and still yield a sane pitch.
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
