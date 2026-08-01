@@ -15,3 +15,7 @@ node_modules/
 
 # Release artifact (built by `make release`, uploaded to GitHub releases)
 skafinity-web.tar.gz
+
+# `make dist` output: the GH-Pages site tree + the ~10 MB single-file build. Both are
+# derived from web/ on demand — the target is committed, never the artifacts.
+dist/

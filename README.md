@@ -52,14 +52,36 @@ make          # publish the engine → web/_framework  (AOT; ~2 min)
 make dev      # same but skip AOT — much faster to build, identical composition
 make test     # node smoke test of the JS↔wasm boundary (needs web/_framework/)
 make serve    # static server rooted at web/; open http://localhost:8000/
+make dist     # package it: dist/ (a GitHub-Pages-ready site) + dist/skafinity.html (one file)
 ```
 
-> The page must be **served** (the .NET runtime is a bundle fetched over http) — opening
-> `web/index.html` via `file://` won't work. `web/` is self-contained (it includes
-> `web/_framework`), so deploy it by pointing any static server's docroot straight at `web/`.
-> `web/_framework` is committed so a fresh clone is testable with just `make serve`; rebuild
-> it with `make`. A single
-> self-contained `.html` (inlining the runtime) is a deferred follow-up — `make dist`.
+> The page must be **served** (over http) — opening it via `file://` won't work, and that is
+> true of the single-file build too. `web/` is self-contained (it includes `web/_framework`),
+> so deploy it by pointing any static server's docroot straight at `web/`. `web/_framework` is
+> committed so a fresh clone is testable with just `make serve`; rebuild it with `make`.
+
+### Handing it out — `make dist`
+
+`make dist` turns the built `web/` into two artifacts:
+
+- **`dist/`** — a static site ready to publish as a GitHub Pages branch/folder root (~7 MB).
+  Every path in the page is relative, so a project page's `/<repo>/` subpath needs no
+  rewriting. Three things make it more than `cp -r web dist`: it drops the `*.br`/`*.gz`
+  duplicates a plain static host never serves, it re-copies `config.json` from the canonical
+  `sbox-library/Skafinity/skafinity.config.json` (so a hand-edited `web/config.json` can't
+  ship), and it writes a zero-byte **`.nojekyll`**.
+  > **The `.nojekyll` is not optional.** GitHub Pages runs Jekyll over the published tree, and
+  > Jekyll excludes directories whose name begins with an underscore — which is exactly
+  > `_framework/`. Without that file the runtime is silently dropped from the deployed site and
+  > the page dies at boot on a 404 for `dotnet.js`.
+- **`dist/skafinity.html`** — ONE file (~9.5 MiB) with the page, the glue and the whole .NET
+  runtime inlined: base64 for the wasm, `data:` URLs for the two runtime js modules, and a
+  blob-URL module for the generation workers. Hand it to someone and it needs nothing else —
+  but it still has to be **served over http**, not opened from disk. It sits inside `dist/`, so
+  a deployed site also offers the standalone as a download.
+
+`make test-dist` builds both and boots the single file's inlined runtime under node, rendering
+a song through the same `loadBootResource` path a browser takes.
 
 ## What's here
 
@@ -72,7 +94,8 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 | `web/engine.js` | Boots the .NET runtime and adapts the exports to the small `mod` API the app uses. |
 | `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export, shuffle. |
 | `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence / stereo-width knobs). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix or the width without a rebuild. |
-| `test/smoke.mjs` · `test/page.mjs` | Node tests: the raw `[JSExport]` boundary, and the surface the page actually calls. |
+| `tools/bundle-single.mjs` | Builds `dist/skafinity.html` — inlines the runtime behind `dotnet.withResourceLoader`. Every rewrite is anchored on an exact source pattern and hard-fails if it stops matching. |
+| `test/smoke.mjs` · `test/page.mjs` · `test/dist-single.mjs` | Node tests: the raw `[JSExport]` boundary, the surface the page actually calls, and the single-file artifact booting its inlined runtime. |
 | `test/engine/` | The engine-only C# harness (`make test-engine`) — composition, harmony, patterns, melody, form, mix balance, render digests. The check that runs without a browser. |
 | `docker/` | `Dockerfile` (SDK build stage → nginx runtime stage), `docker-compose.yml` (`make up`: project `skafinity`, container `skafinity-1`, loopback 6970), `docker-compose.fast.yml` (`make fast`: stock nginx over the committed bundle), `nginx.conf` (docroot + cache headers). |
 
