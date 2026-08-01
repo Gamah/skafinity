@@ -108,6 +108,12 @@ public sealed partial class MusicGen
 	// The bass plays the riff's onsets on the chord root — an octave below the guitar, ignoring
 	// the guitar's chord tones, which is what makes it read as a doubling rather than a second
 	// guitar. Muted chug cells are kept: they ARE the riff's rhythm.
+	//
+	// A doubling stops at the SIXTEENTH, whatever the guitar is doing. Where the riff runs at the
+	// thirty-second the bass plays its accents — the chord statements — and leaves the tremolo to
+	// the guitar, which is what a player does under one: four low notes a beat is mud, not a part.
+	// The cut is metrical rather than physical, so it is a tick length: a sixteenth gallop's cells
+	// already span a sixteenth and are untouched.
 	void RenderBassFromRiff( int chord, Rng exprRng )
 	{
 		int root = ChordRoot( chord );
@@ -115,6 +121,7 @@ public sealed partial class MusicGen
 		int prev = NoPrev;
 		foreach ( var h in _riffOnsets )
 		{
+			if ( h.SpanTicks < Timing.TicksPerEighth / 2 && h.Value != CompFigure.Ring ) continue;
 			var vc = Roll( ex, root, prev, exprRng );
 			prev = root;
 			EmitBass( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.95 ),

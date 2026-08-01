@@ -45,7 +45,7 @@ public sealed partial class MusicGen
 		// TEMPO BIAS — punk always runs hot (it's the fast genre); the roll still consumes one
 		// draw so every genre pulls the same number of values here.
 		_fast = rng.Chance( _c.FastChance ) || prof.AlwaysFast;
-		int bpm = prof.DrawBpm( rng, _fast, _c.TempoScale );
+		int bpm = _bpm = prof.DrawBpm( rng, _fast, _c.TempoScale );
 		_scale = rng.PickWeighted( prof.Scales, prof.ScaleWeights );
 		_prog = rng.Pick( prof.Progressions );
 		// The song's chord vocabulary — a triad, a 7th, a sus, a bare power chord. Every chordal

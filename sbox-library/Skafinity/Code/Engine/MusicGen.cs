@@ -84,8 +84,15 @@ public sealed partial class MusicGen
 	internal string Explain()
 	{
 		var sb = new System.Text.StringBuilder();
-		sb.AppendLine( $"tempo     {60.0 / (_time.SecPerEighth * 2):0} bpm{(_fast ? " (uptempo band)" : "")}, swing {_time.Swing:0.00}"
-			+ $"{(_time.Swing >= _prof.ShuffleMin && _prof.ShuffleChance > 0 ? " — SHUFFLE" : "")}" );
+		// The genre's saturation points ride along, because the TEMPO knob's ends clamp there —
+		// a swept knob that stops moving the tempo is the knob working, not the seed misreading.
+		// The DRAWN tempo, not the first section's. They differ by that section's TempoMul, and the
+		// drawn one is the number every tempo decision reads — the band, the knob's saturation and
+		// whether the guitar may play thirty-seconds.
+		sb.AppendLine( $"tempo     {_bpm} bpm{(_fast ? " (uptempo band)" : "")}, swing {_time.Swing:0.00}"
+			+ $"{(_time.Swing >= _prof.ShuffleMin && _prof.ShuffleChance > 0 ? " — SHUFFLE" : "")}"
+			+ $" [genre plays {_prof.TempoFloor}–{_prof.TempoCeil}"
+			+ $"{(_bpm <= _prof.TempoFloor || _bpm >= _prof.TempoCeil ? ", KNOB SATURATED" : "")}]" );
 		sb.AppendLine( $"key       root midi {_rootMidi}, scale [{string.Join( " ", _scale )}]" );
 		sb.AppendLine( $"changes   [{string.Join( " ", _prog )}] at {_chordBars} bar(s)/chord, voicing [{string.Join( " ", _voicing )}]" );
 		// What each chord's inversion cost the voices: the octave each one was shifted so the chord
@@ -243,6 +250,7 @@ public sealed partial class MusicGen
 	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
 	bool _organBubble;
 	bool _fast;
+	int _bpm;                // the song's drawn tempo, after the TEMPO knob and the genre's own saturation
 	int _genre;              // 0 ska, 1 rock, 2 country, 3 metal, 4 punk, 5 pop
 	int _chordBars = 2;      // bars per chord — the genre's harmonic rhythm (GenreProfile.ChordBars)
 	bool _hornLead;          // the lead line is the ska horn section rather than a lead guitar

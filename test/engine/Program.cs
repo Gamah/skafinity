@@ -603,8 +603,36 @@ static class Program
 			}
 			Check( $"genre {g} draws inside its tempo band", inBand );
 
+			// The knob's saturation points. A single symmetric 0.70–1.45 multiplier put the ends of
+			// the slider outside every genre at once (ska 268, metal 290, country 67), so each genre
+			// says where it stops being itself and the knob keeps its full travel in the UI.
+			Check( $"genre {g} saturation contains its own bands",
+				p.TempoFloor <= p.BpmMin && p.TempoCeil >= p.FastBpmMax,
+				$"{p.TempoFloor}–{p.TempoCeil} vs {p.BpmMin}–{p.FastBpmMax}" );
+
+			bool playable = true;
+			for ( int i = 0; i < 200; i++ )
+				foreach ( var scale in new[] { 0.70f, 0.85f, 1f, 1.2f, 1.45f } )
+				{
+					int b = p.DrawBpm( new Rng( $"knob:{g}:{i}" ), i % 2 == 0, scale );
+					playable &= b >= p.TempoFloor && b <= p.TempoCeil;
+				}
+			Check( $"genre {g} stays playable across the whole TEMPO knob", playable );
+
 			Check( $"genre {g} has a harmonic rhythm of at least a bar", p.ChordBars >= 1 );
 		}
+
+		// …and the saturation is not vacuous: the knob's ends must actually be clamped somewhere,
+		// or these are six numbers that do nothing.
+		bool everSaturates = false;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			for ( int i = 0; i < 50; i++ )
+				everSaturates |= p.DrawBpm( new Rng( $"sat:{g}:{i}" ), true, 1.45f ) == p.TempoCeil
+					|| p.DrawBpm( new Rng( $"sat:{g}:{i}" ), false, 0.70f ) == p.TempoFloor;
+		}
+		Check( "the TEMPO knob saturates at the genre's bound", everSaturates );
 
 		// The whole point of the row: the bands must actually separate the genres. Punk and
 		// country are the two extremes, and nothing in between may collapse them all into one
@@ -657,6 +685,41 @@ static class Program
 			for ( int i = 0; i < 50; i++ )
 				grooveDrawn &= GenreProfile.For( g ).DrawGroove( new Rng( $"gr:{g}:{i}" ) ) != null;
 		Check( "every genre draws a real groove", grooveDrawn );
+
+		// ── the thirty-second ──
+		// TicksPerBeat = 48, so a 32nd is exactly 6 ticks — the same clean division that gives a
+		// sixteenth 12 — and it lands on the 1-tick grid the voices are measured against.
+		var t32 = Pattern.ThirtySeconds( 0, 0, 0, 0, 0, 0, 0, 0 );
+		Check( "a thirty-second is 6 ticks and divides the beat",
+			Timing.TicksPerBeat % (Timing.TicksPerEighth / 4) == 0
+			&& t32.LengthTicks == Timing.TicksPerBeat && t32.Count == 8 );
+
+		// The subdivision is an ALLOWANCE, not a genre's property. There is deliberately no rule
+		// here that the kit stays coarser than the guitar, or that a genre must be slow to reach a
+		// 32nd: a roll, a drag, a grace note and a flurry are ordinary vocabulary in every genre,
+		// and what makes them playable is that they are a handful of notes rather than a bar of
+		// them. So what is asserted is that the engine CAN express it and that something does —
+		// where each table spends it is an authoring call.
+		int thirtySecond = Timing.TicksPerEighth / 4;
+		bool anyFine = false;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			foreach ( var f in p.CompFigures ) anyFine |= MinSpan( f ) <= thirtySecond;
+			foreach ( var f in p.BassPatterns ) anyFine |= MinSpan( f ) <= thirtySecond;
+			if ( p.KeysFigures == null ) continue;
+			foreach ( var f in p.KeysFigures ) anyFine |= MinSpan( f ) <= thirtySecond;
+		}
+		Check( "some authored figure reaches the thirty-second", anyFine );
+
+		// A figure that fine still has to land on the grid the voices are measured against — the
+		// per-voice grid checks below cover the rendered result, this covers the table.
+		bool fineOnGrid = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			foreach ( var f in GenreProfile.For( g ).CompFigures )
+				foreach ( var h in f.Slice( 0, f.LengthTicks ) )
+					fineOnGrid &= h.Tick % thirtySecond == 0 || h.Tick % (Timing.TicksPerBeat / 6) == 0;
+		Check( "every comp onset sits on a 32nd or a triplet division", fineOnGrid );
 
 		// Punk is the fast genre by definition, and punk/pop take a chord per bar so their
 		// four-chord loop is the four-bar hypermeasure.
@@ -1144,8 +1207,20 @@ static class Program
 		{
 			double drums = mix[g].Drums, comp = mix[g].Comp, lead = mix[g].Lead, bass = mix[g].Bass;
 
-			Check( $"genre {g} comp sits under the kit", comp < drums * 0.85,
-				$"comp {Db( comp, drums ):0.0} dB" );
+			// The detail names all three chordal voices, not just the loudest: "the comp is hot"
+			// is not actionable until you know whether it is the guitar, the keys or the skank.
+			//
+			// THIS IS ONE SEED, and a genre's comp/kit ratio varies several dB across seeds — rock
+			// averages about −4.5 dB (`--levels`, which measures the genre rather than a song) and
+			// this seed sits near 0. So the bar is "not louder than the kit", which still catches
+			// the regression this check exists for (the comp measured +5 dB OVER the kit once the
+			// figures were rewritten and the peak-tuned balances went stale), without failing every
+			// time a figure table grows: adding an entry re-rolls which figure each SECTION draws,
+			// so an unrelated table edit moves this number by dB. If it is the average you want to
+			// hold, `--levels` is the tool — this is a tripwire, not a mix measurement.
+			Check( $"genre {g} comp sits under the kit", comp < drums,
+				$"comp {Db( comp, drums ):0.0} dB — gtr {Db( solo[g][1], drums ):0.0}, "
+				+ $"keys {Db( solo[g][2], drums ):0.0}, skank {Db( solo[g][3], drums ):0.0}" );
 			// The lead is the MELODY and its target is +2 dB over the kit (see LeadLevel), not
 			// level with it. This ceiling is that target plus the ~4 dB a single seed varies
 			// around it — it catches a lead that has become the whole record, not one that is
@@ -1645,6 +1720,15 @@ static class Program
 		var c = new MusicGen.Config { Genre = fromGenre };
 		VibeCodec.RollFrom( c, VibeCodec.VibeSeed( tag, n ) );
 		return c;
+	}
+
+	/// <summary>The finest gap in a figure, in ticks — how subdivided it actually is. A pattern's
+	/// span already wraps around its own loop, so this reads the figure as it repeats.</summary>
+	static int MinSpan( Pattern p )
+	{
+		int min = p.LengthTicks;
+		foreach ( var h in p.Slice( 0, p.LengthTicks ) ) min = Math.Min( min, h.SpanTicks );
+		return min;
 	}
 
 	static bool SameDegrees( int[] a, int[] b )

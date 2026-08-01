@@ -290,8 +290,18 @@ public sealed partial class MusicGen
 		int span = toTick - fromTick;
 		if ( span <= 0 ) return;
 		// One subdivision per beat, so a longer fill is more notes rather than slower ones.
+		//
+		// A fill is where the THIRTY-SECOND lives, in every genre. A roll is ornament vocabulary
+		// everyone owns — a buzz roll, a drag into the downbeat, the flurry that hands over to the
+		// chorus — and it is not a metal thing or a fast thing: a drummer plays a fill finer than
+		// the groove precisely because a fill is a moment rather than a bar. The short fills are
+		// the ones that take it: two beats of unbroken 32nds is a different gesture (and a longer
+		// fill is already more notes, by the line above).
 		int beats = Math.Max( 1, span / Timing.TicksPerBeat );
-		int per = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6) : 4;
+		// Both branches take two draws, and the roll comes before the length test — a fill's
+		// subdivision must not change how many values the fill stream pulls.
+		int per = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6)
+			: rng.Chance( 0.3f ) && beats <= 2 ? 8 : 4;
 		float[] toms = { 260f, 215f, 175f, 145f, 120f, 100f };
 
 		for ( int b = 0; b < beats; b++ )

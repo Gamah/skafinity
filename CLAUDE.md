@@ -386,6 +386,20 @@ lands exactly on a level). The old absolute `TEMPO MIN`/`TEMPO MAX` knobs — an
 `BpmMax`/`FastBpm*` `Config` fields behind them — are gone; their two wire positions are reserved
 nulls. `FastChance` survives as `TEMPO BIAS`: how often a song takes the genre's uptempo band.
 
+**The knob saturates per genre, and the ends of a genre's band are a hits-per-second budget.** One
+symmetric 0.70–1.45 multiplier cannot be right for six bands at once — its ends were ska 268, metal
+290 and country 67, so only the middle of the slider was usable. `GenreProfile.TempoFloor`/
+`TempoCeil` are where each genre stops being itself, `DrawBpm` clamps there instead of at a shared
+40–300, and the knob keeps its full travel in the UI. **These twelve numbers are a listening call
+and nothing else** — the suite asserts the mechanism (a genre's own bands sit inside its
+saturation, the knob's ends never leave it, and the clamp is not vacuous), never that a particular
+bpm is correct. Sweep the knob at a fixed seed per genre; `--seed` prints the drawn tempo, the
+genre's range and whether the knob saturated.
+
+**When something reads as too dense, suspect the tempo before you thin a part.** The knob is the
+usual culprit, and a genre's own band is the next one. Adding a gate somewhere is almost always the
+wrong repair — it makes a genre's identity out of a number that belongs to the song.
+
 **No two genres may share more than one progression — or more than one scale.** Six genres drawing
 from overlapping tables is how they came to sound alike (I–V–vi–IV was in four progression tables;
 major was in four scale tables), so both are pruned and the engine test asserts the cap on each.
@@ -511,6 +525,39 @@ Cell values are the *voice's* vocabulary, not the pattern's: bass cells are semi
 `Harmony.Rest`/`Approach`, comp cells are `CompFigure.Ring/Stab/Mute/Tone(i)`, drum cells are hit
 vs `Ghost`/`Open`. A `Hit` carries `SpanTicks` (ticks to the pattern's next onset — the legato
 length) and `Vel`.
+
+**The thirty-second is available to every genre and every voice, and nothing gates it.**
+`Pattern.ThirtySeconds` sits beside `Sixteenths` — `TicksPerBeat = 48` makes a 32nd exactly 6
+ticks, the same clean division that gives a sixteenth 12 and a sixteenth-triplet 8, so `Timing`
+needed nothing and `MusicGen.GridSamples()` (one entry per TICK) already measures against it.
+
+Two things this deliberately is NOT. It is **not a metal feature**: a buzz or press roll, a drag
+into a downbeat, a grace note, a trill, a hi-hat flurry, a chicken-pickin' lick, a gospel run —
+32nds are ordinary ornament vocabulary in every genre, and metal's continuous tremolo is the
+outlier rather than the model. And it is **not gated on tempo**, which was tried and was wrong:
+notes-per-second arithmetic (32nds/s = bpm × 2/15) assumes every note is picked, and a player
+hammers on, pulls off, sweeps and buzzes precisely so a fast passage costs the hand less than its
+note count. A gate would also have made "how fast a genre is" decide "how fine it may play", which
+is two different things.
+
+**What keeps it playable is the GESTURE, not a limit.** 32nds are authored as *bursts* — a handful
+of notes accelerating out of a coarser line and resolving into the next beat — and a burst is as
+playable at the top of a genre's band as at the bottom. A bar of unbroken 32nds is not; that is the
+thing to avoid, and it is an authoring judgement rather than something the engine forbids. **An
+ornament REPLACES a note rather than joining it** — a figure that adds four notes to a bar is
+louder as well as busier, and the comp is the bed: the engine suite's single-seed balance check
+catches exactly that, and it caught it here. Where
+they live today: `RenderFill` may run a short fill at 8 per beat, `RenderShredPhrase` breaks its
+sixteenth run into 4–8-note flurries, and **every genre's chordal table has one figure carrying the
+gesture in its own idiom** — the ska flick off the last chop, the rock riff's pickup into the
+downbeat, country's chicken-pickin' pull-off after the chick, metal's tremolo into the bar line,
+punk's turnaround flurry, the pop arp's run home. Note also `Expression.cs` is a *different* axis —
+a bend or vibrato is continuous pitch across one note, not a rhythmic position — so the two are
+additive, and a 32nd cannot be "folded into" a bend.
+
+One consequence worth keeping: **a doubling bass stops at the sixteenth.** Under a riff finer than
+that, `RenderBassFromRiff` plays the `Ring` accents only — four low notes to a beat is mud rather
+than a part, and a bassist under a tremolo riff plays the chord statements.
 
 ---
 

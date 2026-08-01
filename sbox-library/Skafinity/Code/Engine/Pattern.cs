@@ -103,10 +103,21 @@ sealed class Pattern
 
 	/// <summary>Build from sixteenth cells — the resolution the metal gallop and the country train
 	/// beat are actually authored at.</summary>
-	public static Pattern Sixteenths( params int[] cells )
+	public static Pattern Sixteenths( params int[] cells ) => Grid( Timing.TicksPerEighth / 2, cells );
+
+	/// <summary>Build from THIRTY-SECOND cells — a tremolo-picked riff or a double-kick run.
+	///
+	/// <see cref="Timing.TicksPerBeat"/> is 48, so a 32nd is exactly 6 ticks: the same clean
+	/// division that gives a sixteenth 12 and a sixteenth-triplet 8, and it sits on the grid the
+	/// suite measures against. WHERE a figure this fine may be played is a tempo question, not a
+	/// genre one — 32nds/second is bpm × 2/15, so 200 bpm asks 27 notes a second of a picking hand
+	/// and 110 bpm asks 15, which is about the real ceiling. See <c>GenreProfile.DenseBpmMax</c>.
+	/// </summary>
+	public static Pattern ThirtySeconds( params int[] cells ) => Grid( Timing.TicksPerEighth / 4, cells );
+
+	static Pattern Grid( int step, int[] cells )
 	{
 		var t = new List<int>(); var v = new List<int>();
-		int step = Timing.TicksPerEighth / 2;
 		for ( int s = 0; s < cells.Length; s++ )
 		{
 			if ( cells[s] == Rest ) continue;
