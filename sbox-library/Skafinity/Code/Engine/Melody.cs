@@ -176,14 +176,14 @@ public sealed partial class MusicGen
 				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, len ) * 0.8,
 				drive, vc );
 
-			// The genre's own hand on the same tune: country harmonises it in double-stops, metal
-			// runs between its notes. The line is the same either way — this is ornament, not a
-			// different melody, which is the difference between a genre playing a song and a
-			// genre having its own song.
-			if ( _prof.Lead == LeadStyle.DoubleStop && len >= Timing.TicksPerEighth * 2 )
-				RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, len * 0.92 ),
-					ScaleMidi( melBase, degree + 2 ), amp * 0.7f * NoteGain( h.Tick, h.Vel ),
-					_time.SpanSeconds( h.Tick, len ) * 0.8, drive, vc );
+			// The genre's own hand on the same tune: country punctuates it with double-stops, metal
+			// runs between its notes. The line is the same either way — this is ORNAMENT, not a
+			// different melody, which is the difference between a genre playing a song and a genre
+			// having its own song. Ornament also means occasional: harmonising every long note in
+			// parallel thirds replaces the melody with a two-note chord (see EmitDoubleStop).
+			if ( _prof.Lead == LeadStyle.DoubleStop && len >= Timing.TicksPerEighth * 2
+				&& rng.Chance( DoubleStopChance ) )
+				EmitDoubleStop( h.Tick, len, degree, amp * NoteGain( h.Tick, h.Vel ) );
 			else if ( _prof.Lead == LeadStyle.Shred && len >= Timing.TicksPerBeat && rng.Chance( 0.18f ) )
 				for ( int k = 1; k <= 3; k++ )
 				{

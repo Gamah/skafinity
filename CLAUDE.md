@@ -514,8 +514,14 @@ hum. Every genre now draws two tunes per song, off their own streams (`{tag}:tun
   Verses get their own, sparser tune. `TuneFor(section)` returns null where a section is not a
   place for one — a solo is where the genre's `LeadStyle` grammar improvises, an intro is a
   build-in, the ending has resolved. Metal is the one riff-led genre: chorus tune only.
-- The genre's hand shows in ORNAMENT, not in a different melody: country harmonises the tune in
+- The genre's hand shows in ORNAMENT, not in a different melody: country punctuates the tune with
   double-stops, metal runs between its notes. `LeadStyle` still owns the improvised sections.
+  **Ornament means occasional, and it means underneath.** Country harmonised EVERY long note a
+  third above, both notes the same length off the same rolled expression — so the pair bent,
+  scooped and vibratoed in parallel, which is a two-tone horn rather than a guitar, and the top
+  line the ear followed was the harmony rather than the tune. `EmitDoubleStop` puts the third
+  BELOW the melody, dry (a fretting hand bends ONE string) and shorter, at `DoubleStopChance`.
+  A second voice that fires on every note is not an ornament, it is the instrument.
 
 The ska skank is one comp style among six, not the model for the others — the chordal voice is the
 bed under the tune in every genre, including ska.
