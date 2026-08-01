@@ -81,6 +81,8 @@ public sealed partial class MusicGen
 		_ridePref = prof.DrawRidePref( rng );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
 		_crashBrightLeft = rng.Chance( 0.5f );
+		// How the song lands. Every song used to end on the same fixed pad, whatever the genre.
+		_ending = rng.PickWeighted( prof.Endings, prof.EndingWeights );
 
 		// The song's TUNE — the thing a listener hums back. Drawn off its own streams, so a song
 		// having a melody shifts nothing else in the composition.
@@ -310,7 +312,7 @@ public sealed partial class MusicGen
 			// "one", it doesn't roll forward as if looping. The bar before it fills to lead in.
 			if ( isEnding && bar == part.Bars - 1 )
 			{
-				RenderEnding( barTick, noise );
+				RenderEnding( barTick, barTicks, noise );
 				break;
 			}
 
@@ -373,50 +375,124 @@ public sealed partial class MusicGen
 			RenderKeysVoice( barTick, to, chord, keysRng, exprRng );
 	}
 
-	// The song's final downbeat. The whole band resolves home to the tonic on the "one" and
-	// lets the chord ring out into the tail RingOutTail reserved — a landing, not a turnaround.
-	// The previous bar's fill leads in and its terminal crash lands right here, so the ending
-	// itself only adds the kick + the sustained, decaying chord.
-	void RenderEnding( int barTick, Rng noise )
+	// ── the ending ──
+	// The song's last bar, played by the band that played the rest of it. This used to be a fixed
+	// pad — one oscillator, one envelope, one length, the same in every genre and every song — so
+	// however different two songs were, they ended identically. It is the genre's own comp voice,
+	// its own bass and its own kit now, and WHICH ending is a per-song draw (see EndingStyle).
+	void RenderEnding( int barTick, int barTicks, Rng noise )
 	{
 		int at = _time.TickToSample( barTick );
-		RenderKick( at, noise );
+		int beat = Timing.TicksPerBeat;
+		double tail = RingOutTail * 0.92;
 
-		// Resolve to the progression's tonic (slot 0) wherever the chord cycle happened to
-		// land, and ring it with a natural exponential tail (Sustained = false). The voicing is
-		// the song's own, so a ska song ends on its 9th and a metal song on a bare fifth.
-		int dur = (int)(_sr * RingOutTail * 0.92f);
-		int baseMidi = _rootMidi + _keyShift + 19;
-		// The final chord is the CHORDAL VOICE's last note, so it tracks that voice's level. It
-		// used to carry a hardcoded amplitude, which meant a listener who had muted every
-		// instrument still got a chord at the end of the song.
-		float padAmp = _prof.Comp switch
+		switch ( _ending )
 		{
-			CompStyle.Skank => _c.SkankVol * _c.SkankBalance,
-			CompStyle.Pad => _c.KeysVol * _c.KeysBalance,
-			_ => _c.RhythmGtrVol * _c.RhythmGtrBalance,
-		};
-		foreach ( var d in _voicing )
-		{
-			var pad = new Patch
-			{
-				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = 0.7f * padAmp / _voicing.Length * _midMul, Attack = 0.006f, Decay = 1.2,
-				Sustain = 0f, Sustained = false,
-				Cutoff = _c.SkankCutoff, CutEnv = 700f, Reso = 0.8f,
-				Drive = _genre == 3 ? 3.5f : 1.3f, Pan = 0f,
-			};
-			RenderPatch( at, dur, Midi( ScaleMidi( baseMidi, _prog[0] + d ) ), pad );
+			case EndingStyle.StopHit:
+				// Everything at once, short, then nothing. A punk song does not ring out.
+				RenderKick( at, noise );
+				RenderCrash( at, noise, false );
+				EndingChord( barTick, beat / 2, 0.35, 1f );
+				EmitBass( at, _time.SpanSamples( barTick, beat / 2 ), ChordRoot( 0 ), 0.3,
+					NoteGain( barTick, 1f ), default );
+				break;
+
+			case EndingStyle.Cadence:
+				// V, then home on beat 3 — an actual cadence rather than a single held chord.
+				EndingChord( barTick, beat, 0.5, 0.8f, degree: 4 );
+				EmitBass( at, _time.SpanSamples( barTick, beat ), ChordRoot4(), 0.45,
+					NoteGain( barTick, 0.85f ), default );
+				RenderKick( at, noise );
+				int land = barTick + 2 * beat;
+				RenderKick( _time.TickToSample( land ), noise );
+				RenderCrash( _time.TickToSample( land ), noise, false );
+				EndingChord( land, (int)(_sr * tail), tail, 1f, samples: true );
+				EmitBass( _time.TickToSample( land ), (int)(_sr * tail), ChordRoot( 0 ), tail,
+					NoteGain( land, 1f ), default );
+				break;
+
+			case EndingStyle.Fall:
+				// The figure keeps going and falls away — four hits, each quieter, no final crash.
+				for ( int i = 0; i < 4; i++ )
+				{
+					int t = barTick + i * beat;
+					float v = 1f - i * 0.22f;
+					EndingChord( t, beat, 0.4, v );
+					if ( i % 2 == 0 ) RenderKick( _time.TickToSample( t ), noise );
+					EmitBass( _time.TickToSample( t ), _time.SpanSamples( t, beat ), ChordRoot( 0 ),
+						0.4, NoteGain( t, v ), default );
+				}
+				break;
+
+			default: // Ring — the band hits the tonic together and lets it decay into the tail.
+				RenderKick( at, noise );
+				EndingChord( barTick, (int)(_sr * tail), tail, 1f, samples: true );
+				EmitBass( at, (int)(_sr * tail), ChordRoot( 0 ), tail * 1.1, NoteGain( barTick, 1f ), default );
+				break;
 		}
-		var low = new Patch
+	}
+
+	/// <summary>The fifth of the key — the chord a cadence leans on before it lands.</summary>
+	int ChordRoot4() => Harmony.ScaleMidi( _rootMidi + _keyShift, _scale, 4 );
+
+	/// <summary>The final chord, voiced and TIMBRED as the genre's own chordal voice: a ska song
+	/// ends on horns, a metal song on the riff guitar, a pop song on the synth. The song's own
+	/// voicing carries too, so a ska ending lands on its 9th and a metal one on a bare fifth.
+	/// </summary>
+	void EndingChord( int tick, int dur, double decay, float vel, int degree = 0, bool samples = false )
+	{
+		int at = _time.TickToSample( tick );
+		int durSamples = samples ? dur : _time.SpanSamples( tick, dur );
+		bool ring = decay > 0.4;
+		var degs = ChordDegrees( 0 );
+		// A cadence's first chord is the V; everything else lands on the tonic.
+		int shift = degree;
+
+		foreach ( var d in degs )
 		{
-			Osc = 3, Voices = 2, Detune = _c.Detune * 0.4f,
-			Amp = _c.BassVol * _c.BassBalance * MixTrim( _prof.Mix.Low ), Attack = 0.004f, Decay = 1.4,
-			Sustain = 0f, Sustained = false,
-			Cutoff = _c.BassCutoff, CutEnv = 350f, Reso = 0.9f,
-			Drive = _c.BassDrive, Pan = 0f,
-		};
-		RenderPatch( at, dur, Midi( ChordRoot( 0 ) ), low, mono: true );
+			int midi;
+			Patch p;
+			switch ( _prof.Comp )
+			{
+				case CompStyle.Skank:   // ska: the horn section holds the last chord
+					midi = ScaleMidi( _rootMidi + _keyShift + 19, _prog[0] + d + shift );
+					p = new Patch
+					{
+						Osc = 1, Voices = 3, Detune = _c.Detune,
+						Amp = _c.HornVol * _c.HornBalance * _midMul / degs.Length * NoteGain( tick, vel ),
+						Attack = 0.01f, Decay = decay, Sustain = ring ? 0.35f : 0f, Sustained = false,
+						Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f, Drive = _c.HornDrive,
+						Pan = 0f, Vibrato = _c.MelodyVibrato,
+					};
+					break;
+				case CompStyle.Pad:     // pop: the synth
+					midi = ScaleMidi( _rootMidi + _keyShift + 24, _prog[0] + d + shift );
+					p = new Patch
+					{
+						Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
+						Amp = _c.KeysVol * _c.KeysBalance * KeysLevel() * _midMul / degs.Length
+							* NoteGain( tick, vel ),
+						Attack = 0.004f, Decay = decay, Sustain = ring ? 0.5f : 0f, Sustained = false,
+						Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f, Drive = KeysDriveFor(),
+						Pan = 0f,
+					};
+					break;
+				default:                // the guitar genres, through their own tone
+					var (drive, cutEnv, reso, level) = RhythmGtrTone();
+					midi = ScaleMidi( _rootMidi + _keyShift + 12, _prog[0] + d + shift );
+					p = new Patch
+					{
+						Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
+						Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / degs.Length
+							* NoteGain( tick, vel ),
+						Attack = 0.002f, Decay = decay, Sustain = ring ? 0.4f : 0f, Sustained = false,
+						Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso, Drive = drive,
+						Pan = 0f,
+					};
+					break;
+			}
+			RenderPatch( at, durSamples, Midi( midi ), p );
+		}
 	}
 
 	// ── dynamics ──

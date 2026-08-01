@@ -52,6 +52,22 @@ enum LeadStyle
 	Hook,
 }
 
+/// <summary>How a song lands. Every song used to end on the identical fixed pad — same
+/// oscillator, same envelope, same length, whatever the genre and whatever the song — which is
+/// why the last four seconds of every track sounded like the same track.</summary>
+enum EndingStyle
+{
+	/// <summary>The band hits the tonic together and lets it ring out.</summary>
+	Ring,
+	/// <summary>A short, hard unison stab and then nothing. Punk and metal stop; they do not fade.
+	/// </summary>
+	StopHit,
+	/// <summary>A real cadence: the V chord, then the tonic landing on beat 3.</summary>
+	Cadence,
+	/// <summary>The figure keeps going and falls away — the pop fade, without the fade-out.</summary>
+	Fall,
+}
+
 /// <summary>Per-genre mix trim. Not a knob and not a per-song draw: a genre's records simply
 /// sound like this. Scaled globally by <c>Config.GenreMix</c> so the house can dial the whole
 /// effect back at runtime without a rebuild.</summary>
@@ -171,6 +187,11 @@ sealed class GenreProfile
 	/// <summary>The genre's mix trim.</summary>
 	public MixProfile Mix { get; init; }
 
+	/// <summary>How this genre's songs land, drawn per song. One weighted draw, like everything
+	/// else here, so the ending costs the same single value in every genre.</summary>
+	public EndingStyle[] Endings { get; init; }
+	public int[] EndingWeights { get; init; }
+
 	// Swing is a genre's identity, not a preference. Ska lives on a pushed offbeat; metal and
 	// punk are machine-straight and any shuffle at all reads as sloppy; rock and pop sit near
 	// straight with a touch of human push; country keeps a light shuffle under the train beat.
@@ -186,6 +207,8 @@ sealed class GenreProfile
 			SwingMin = 0.10f, SwingMax = 0.22f, ShuffleChance = 0.22f,
 			BpmMin = 130, BpmMax = 175, FastBpmMin = 155, FastBpmMax = 185,
 			ChordBars = 2, RideLean = 0.40f, HornLead = true,
+			Endings = new[] { EndingStyle.Ring, EndingStyle.Cadence, EndingStyle.Fall },
+			EndingWeights = new[] { 3, 2, 1 },
 			Form = SongForm.Ska,
 			Scales = Harmony.SkaScales, ScaleWeights = Harmony.SkaScaleWeights,
 			Progressions = Harmony.SkaProgressions,
@@ -203,6 +226,8 @@ sealed class GenreProfile
 			SwingMin = 0f, SwingMax = 0.08f,
 			BpmMin = 110, BpmMax = 160, FastBpmMin = 150, FastBpmMax = 175,
 			ChordBars = 2, RideLean = 0.55f,
+			Endings = new[] { EndingStyle.Ring, EndingStyle.StopHit, EndingStyle.Cadence },
+			EndingWeights = new[] { 3, 2, 1 },
 			Form = SongForm.Rock,
 			Scales = Harmony.RockScales, ScaleWeights = Harmony.RockScaleWeights,
 			Progressions = Harmony.RockProgressions,
@@ -221,6 +246,8 @@ sealed class GenreProfile
 			SwingMin = 0.04f, SwingMax = 0.16f, ShuffleChance = 0.18f,
 			BpmMin = 95, BpmMax = 130, FastBpmMin = 130, FastBpmMax = 150,
 			ChordBars = 2, RideLean = 0.30f,
+			Endings = new[] { EndingStyle.Cadence, EndingStyle.Ring, EndingStyle.Fall },
+			EndingWeights = new[] { 3, 2, 1 },
 			Form = SongForm.Country,
 			Scales = Harmony.CountryScales, ScaleWeights = Harmony.CountryScaleWeights,
 			Progressions = Harmony.CountryProgressions,
@@ -239,6 +266,8 @@ sealed class GenreProfile
 			SwingMin = 0f, SwingMax = 0.02f,
 			BpmMin = 90, BpmMax = 160, FastBpmMin = 160, FastBpmMax = 200,
 			ChordBars = 2, RideLean = 0.65f,
+			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
+			EndingWeights = new[] { 4, 2 },
 			Form = SongForm.Metal,
 			Scales = Harmony.MetalScales, ScaleWeights = Harmony.MetalScaleWeights,
 			Progressions = Harmony.MetalProgressions,
@@ -246,7 +275,7 @@ sealed class GenreProfile
 			BassPatterns = Harmony.MetalBass,
 			CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
 			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2 },
-			Lead = LeadStyle.Shred, LeadPhraseBars = 4, LeadSilence = 0.30f,
+			Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
 			RiffBassChance = 0.75f,
 			AccentDown = 1f, AccentBack = 1f, AccentOff = 0.95f,    // deliberately flat: it's a wall
 			Mix = new MixProfile( 0.45f, 1f, 1.05f, 0.85f, 1.05f ), // dry, mid-scooped
@@ -257,6 +286,8 @@ sealed class GenreProfile
 			SwingMin = 0f, SwingMax = 0.03f,
 			BpmMin = 165, BpmMax = 200, FastBpmMin = 165, FastBpmMax = 200, AlwaysFast = true,
 			ChordBars = 1, RideLean = 0.20f,
+			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
+			EndingWeights = new[] { 5, 1 },
 			Form = SongForm.Punk,
 			Scales = Harmony.PunkScales, ScaleWeights = Harmony.PunkScaleWeights,
 			Progressions = Harmony.PunkProgressions,
@@ -275,6 +306,8 @@ sealed class GenreProfile
 			SwingMin = 0f, SwingMax = 0.05f,
 			BpmMin = 100, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
 			ChordBars = 1, RideLean = 0.30f,
+			Endings = new[] { EndingStyle.Fall, EndingStyle.Ring, EndingStyle.Cadence },
+			EndingWeights = new[] { 3, 2, 1 },
 			Form = SongForm.Pop,
 			Scales = Harmony.PopScales, ScaleWeights = Harmony.PopScaleWeights,
 			Progressions = Harmony.PopProgressions,

@@ -5,7 +5,11 @@ using static Skafinity.Osc;
 namespace Skafinity;
 
 /// <summary>
-/// Procedural ska / reggae-rock track generator.
+/// Procedural song generator — ska, rock, country, metal, punk and pop.
+///
+/// The project is named for where it started (ska + infinity) and ska is still genre 0, but the
+/// engine composes six genres and none of them is the default case: what a genre plays comes out
+/// of its own GenreProfile (form, comp figures, grooves, harmony tables, lead grammar).
 ///
 /// A seed string ("{tag}:{n}") seeds a portable PRNG (xmur3 → mulberry32); the PRNG drives
 /// every musical choice — tempo, key, progression, bass / skank / organ / lead / drum
@@ -74,6 +78,37 @@ public sealed partial class MusicGen
 	/// <see cref="RenderPitchedRange"/> window has finished.</summary>
 	public short[] FinishStereo() => ToShorts( Master() );
 
+	/// <summary>What this song's composer decided — one line per choice, plus the form. Written
+	/// for the "this seed sounds wrong" case: reading the decisions beats inferring them from the
+	/// audio. Call after <see cref="BeginPlan"/>.</summary>
+	internal string Explain()
+	{
+		var sb = new System.Text.StringBuilder();
+		sb.AppendLine( $"tempo     {60.0 / (_time.SecPerEighth * 2):0} bpm{(_fast ? " (uptempo band)" : "")}, swing {_time.Swing:0.00}"
+			+ $"{(_time.Swing >= _prof.ShuffleMin && _prof.ShuffleChance > 0 ? " — SHUFFLE" : "")}" );
+		sb.AppendLine( $"key       root midi {_rootMidi}, scale [{string.Join( " ", _scale )}]" );
+		sb.AppendLine( $"changes   [{string.Join( " ", _prog )}] at {_chordBars} bar(s)/chord, voicing [{string.Join( " ", _voicing )}]" );
+		sb.AppendLine( $"groove    {_groove.Name}, ride pref {_ridePref:0.00}" );
+		sb.AppendLine( $"parts     comp {_songComp.LengthTicks / _time.BarTicks} bar(s), bass {_songBass.LengthTicks / _time.BarTicks} bar(s)"
+			+ $"{(_songKeys != null ? $", keys {_songKeys.LengthTicks / _time.BarTicks} bar(s)" : "")}"
+			+ $"{(_riffBass ? ", bass doubles the riff" : "")}" );
+		sb.AppendLine( $"tunes     chorus {(_chorusTune == null ? "—" : $"{_chorusTune.LengthTicks / _time.BarTicks} bars, {_chorusTune.Count} notes")}"
+			+ $" | verse {(_verseTune == null ? "—" : $"{_verseTune.LengthTicks / _time.BarTicks} bars, {_verseTune.Count} notes")}" );
+		sb.AppendLine( $"ending    {_ending}" );
+		sb.AppendLine( $"ska bits  horns {_hasHorns}, organ {_organBubble}, lead voice {_lead}" );
+		sb.AppendLine( "form" );
+		var structure = BuildStructure( _genre );
+		for ( int i = 0; i < structure.Count; i++ )
+		{
+			var p = structure[i];
+			sb.AppendLine( $"  {i,2} {p.Type,-10} {p.Bars,2} bars  energy {p.Energy:0.00}  feel {p.Feel:0.0}"
+				+ $"{(p.KeyShift != 0 ? $"  key +{p.KeyShift}" : "")}{(p.Displace != 0 ? "  displaced" : "")}"
+				+ $"{(p.Hemiola ? "  hemiola" : "")}{(p.BarBeats != null ? "  short bar" : "")}"
+				+ $"  tune {(TuneFor( p.Type ) != null ? "yes" : "no")}" );
+		}
+		return sb.ToString();
+	}
+
 	/// <summary>
 	/// The rendered mix's level BEFORE the master bus — peak, and RMS over everything above
 	/// silence.
@@ -84,6 +119,54 @@ public sealed partial class MusicGen
 	/// back normalized to the same peak. Measure here, between the render and the master.
 	/// Call after <see cref="RenderPitchedRange"/>, instead of <see cref="FinishStereo"/>.
 	/// </summary>
+	/// <summary>Every pitched onset this song emitted, as sample positions, with the bar grid to
+	/// measure them against. Solo a voice (mute the rest) and these are that voice's onsets —
+	/// which is how "some parts are not sharing the downbeat" gets diagnosed as a number instead
+	/// of argued about by ear. Drums are not here: they are synthesised straight into the buffer.
+	/// </summary>
+	internal (int[] Starts, int[] BarLines) Onsets()
+	{
+		// Silent events are skipped, so muting every voice but one really does isolate that voice
+		// (the mix mutes by amplitude — the notes are still composed).
+		var starts = new List<int>();
+		foreach ( var e in _events ) if ( e.P.Amp > 0f ) starts.Add( e.Start );
+		starts.Sort();
+
+		var bars = new List<int>();
+		var structure = BuildStructure( _genre );
+		int tick = 0;
+		foreach ( var part in structure )
+			for ( int bar = 0; bar < part.Bars; bar++ )
+			{
+				bars.Add( _time.TickToSample( tick ) );
+				tick += BarBeats( part, bar, _time.BeatsPerBar ) * Timing.TicksPerBeat;
+			}
+		return (starts.ToArray(), bars.ToArray());
+	}
+
+	/// <summary>Every position on the song's TICK grid, in samples, with the swing warp and the
+	/// tempo curve already applied — i.e. exactly where a note is allowed to land. Compare onsets
+	/// against this and a part that has drifted is a number, not an argument.
+	///
+	/// The tick grid, not the sixteenth grid: 48 ticks to the beat is what makes 8ths, 16ths and
+	/// both triplet rates exact (see Timing), so a triplet ornament is ON the grid and a
+	/// sixteenth-only ruler would flag it as drift.</summary>
+	internal int[] GridSamples()
+	{
+		var grid = new List<int>();
+		var structure = BuildStructure( _genre );
+		int tick = 0;
+		const int step = 1;
+		foreach ( var part in structure )
+			for ( int bar = 0; bar < part.Bars; bar++ )
+			{
+				int len = BarBeats( part, bar, _time.BeatsPerBar ) * Timing.TicksPerBeat;
+				for ( int t = 0; t < len; t += step ) grid.Add( _time.TickToSample( tick + t ) );
+				tick += len;
+			}
+		return grid.ToArray();
+	}
+
 	internal (float Peak, double Rms) RawLevels()
 	{
 		float peak = 0; double sum = 0; int n = 0;
@@ -116,6 +199,7 @@ public sealed partial class MusicGen
 	Pattern _songComp, _songKeys, _songBass;
 	DrumGroove _groove;      // the song's groove — per-genre tables, not a shared switch default
 	bool _riffBass;          // the bass reads the riff's onsets instead of playing its own pattern
+	EndingStyle _ending;     // how this song lands (see EndingStyle) — a per-song draw, not a fixed pad
 	readonly List<Hit> _riffOnsets = new(); // this bar's riff, for the bass to double
 	bool _ride;              // per-SECTION: ride cymbal drives the eighth pulse instead of closed hats (set in RenderSection from _ridePref)
 	float _ridePref;         // per-song lean toward riding the ride vs the hats; each section rolls its own _ride against this

@@ -1,7 +1,7 @@
 # skafinity
 
-*ska + infinity* — an endless, deterministic procedural ska / reggae-rock track that's
-generated entirely in your browser from a short shareable seed. No server, no audio
+*ska + infinity* — endless, deterministic procedural songs across six genres (ska, rock,
+country, metal, punk and pop), generated entirely in your browser from a short shareable seed. No server, no audio
 assets: the music is synthesised from scratch in C# (compiled to WebAssembly) and
 scheduled through the Web Audio API. The whole song is a URL — `…/web/#vibe:tag:n`.
 
@@ -63,14 +63,15 @@ make serve    # static server rooted at web/; open http://localhost:8000/
 
 | Path | Role |
 |---|---|
-| `sbox-library/Skafinity/Code/MusicGen.cs` | Composition (fixed RNG draw order) + subtractive synth — the algorithmic source of truth, shared with the s&box library. |
-| `sbox-library/Skafinity/Code/VibeCodec.cs` | Base-36 vibe encode/apply + field metadata (append-only wire format). |
+| `sbox-library/Skafinity/Code/Engine/` | The engine — composer + subtractive synth, one file per concern. The algorithmic source of truth, compiled by BOTH targets. `GenreProfile.cs` is what makes a genre a genre; `Pattern.cs` and `Melody.cs` are the rhythmic and melodic units. |
+| `sbox-library/Skafinity/Code/Engine/VibeCodec.cs` | Base-36 vibe encode/apply + field metadata (append-only wire format). |
 | `wasm/Exports.cs` | The `[JSExport]` boundary (generate, vibe codec, WAV, config) — the only web-specific code. |
 | `wasm/Skafinity.Wasm.csproj` | `browser-wasm` project that `<Compile Include>`s the shared `.cs` and builds the runtime. |
 | `web/engine.js` | Boots the .NET runtime and adapts the exports to the small `mod` API the app uses. |
 | `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export, shuffle. |
 | `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence / stereo-width knobs). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix or the width without a rebuild. |
-| `test/smoke.mjs` | Node smoke test that boots the published runtime and exercises every export. |
+| `test/smoke.mjs` · `test/page.mjs` | Node tests: the raw `[JSExport]` boundary, and the surface the page actually calls. |
+| `test/engine/` | The engine-only C# harness (`make test-engine`) — composition, harmony, patterns, melody, form, mix balance, render digests. The check that runs without a browser. |
 | `docker/` | `Dockerfile` (SDK build stage → nginx runtime stage), `docker-compose.yml` (`make up`: project `skafinity`, container `skafinity-1`, loopback 6970), `docker-compose.fast.yml` (`make fast`: stock nginx over the committed bundle), `nginx.conf` (docroot + cache headers). |
 
 ## Features
@@ -128,7 +129,7 @@ The other rows' character/extra columns differ by genre:
 
 | Instrument | Character | Extra |
 |---|---|---|
-| DRUMS | `BUSY` | `DRIVE` — straight backbeat, per-song kick accents |
+| DRUMS | `BUSY` | `DRIVE` — backbeat or driving eighths |
 | BASS | `DRIVE` (overdrive) | `OCTAVE POP` |
 | KEYS | `DISTORTION` | `CHUG` |
 | LEAD GTR | `DISTORTION` | `BENDINESS` |
@@ -138,7 +139,7 @@ The other rows' character/extra columns differ by genre:
 
 | Instrument | Character | Extra |
 |---|---|---|
-| DRUMS | `BUSY` | `DRIVE` — train-beat backbeat, per-song kick accents |
+| DRUMS | `BUSY` | `DRIVE` — the train beat, or a two-beat feel |
 | BASS | `DRIVE` (overdrive) | `OCTAVE POP` |
 | RHYTHM GTR | `DISTORTION` | `CHUG` |
 | KEYS | `DISTORTION` | `CHUG` |
@@ -159,13 +160,19 @@ piano, strummed open chords, twangy telecaster leads with heavy `BENDINESS`).
 Same columns again, but a heavy base distortion: palm-muted gallop rhythm (`CHUG`) and fast
 shredding leads.
 
-> The straight backbeat (Rock, Country, and fast Ska) picks a per-song **kick accent**
-> personality — which off-beats the kick leans into beyond beats 1 & 3 — and rolls each accent
-> per bar, so the groove breathes instead of stamping one mechanical pattern every bar.
+> **Every genre draws its groove from its own table** — there is no shared "straight backbeat"
+> default any more. `KICK SYNC` still humanises whichever groove is drawn: a stray extra kick
+> pushing into the following beat, rolled per bar, so the pattern breathes rather than stamping.
+
+> **Songs have a tune.** Each one draws a chorus melody (repeated identically every chorus —
+> that is what makes a chorus) and a sparser verse melody, as long as the harmonic cycle they
+> sit over. Solos and intros are where the genre's own lead grammar improvises instead.
 
 ## Parity
 
-Same seed ⇒ same song — and because the web toy compiles the *same* `MusicGen.cs` as the
-s&box library, a seed shared from one plays identically in the other (no port to drift).
+Same seed ⇒ same song **within a build** — and because the web toy compiles the *same*
+`Code/Engine/` as the s&box library, a seed shared from one plays identically in the other (no
+port to drift). Across commits the audio is expected to change whenever the engine does; there
+is no golden-audio contract and old seeds are not preserved.
 `make test` boots the published runtime under node and checks generation, vibe round-trip,
 determinism, and WAV output.

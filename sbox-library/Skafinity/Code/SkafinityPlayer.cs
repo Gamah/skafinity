@@ -5,7 +5,8 @@ using Sandbox;
 namespace Skafinity;
 
 /// <summary>
-/// Streams an endless, deterministic procedural ska / reggae-rock track (see
+/// Streams an endless, deterministic procedural song sequence — ska, rock, country, metal,
+/// punk or pop, per the seed's genre (see
 /// <see cref="MusicGen"/>) through Web Audio-style scheduling over a <see cref="SoundStream"/>.
 ///
 /// Drop this <see cref="Component"/> on any GameObject. It generates a ~80s loop from the

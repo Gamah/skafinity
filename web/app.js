@@ -7,7 +7,11 @@ import Skafinity from './engine.js';
 // Songs now have an intro→…→ending structure, so each plays once start-to-end (no internal
 // loop) and crossfades into the next.
 const LOOPS_PER_SONG = 1;
-const CROSSFADE = 3.75;       // seconds; also the first song's fade-in
+// Crossfade length, in seconds. This is a CEILING, not the value used: the real fade is capped
+// to the song's ring-out tail (mod.ringOutSeconds()), because a fade longer than the tail starts
+// the next song before the current one's final chord has landed — two songs, two tempos and two
+// downbeats playing at once. It is also the first song's fade-in.
+const CROSSFADE = 3.75;
 const AHEAD_COUNT = 4;        // songs kept pre-rendered
 const SCHEDULE_HORIZON = 12;  // seconds: schedule the next song once it's within this
 // Pool of generation workers. Each boots its own .NET runtime (memory cost — hence the cap),
@@ -17,6 +21,9 @@ const SCHEDULE_HORIZON = 12;  // seconds: schedule the next song once it's withi
 const POOL_SIZE = 3;
 
 let mod = null;               // main-thread WASM (vibe/codec/export — light calls)
+// Seconds of ring-out a song reserves past its last bar; read from the engine at boot (see
+// CROSSFADE). The fallback only covers the window before the runtime is up.
+let tailSeconds = 2.5;
 let pool = [];                // [{ worker, busy, n }]
 const pending = [];           // queue of song indices waiting for a free worker
 
@@ -208,9 +215,12 @@ function scheduleOneSong(buffer, songN, startTime) {
   src.connect(g).connect(masterGain);
 
   const songPlay = buffer.duration * LOOPS_PER_SONG;
-  // Fade length: never more than (just under) half the play time, so the fade-in and
-  // fade-out curves can't overlap (Web Audio forbids overlapping automation curves).
-  const cf = Math.max(0, Math.min(CROSSFADE, songPlay / 2 - 0.05));
+  // Fade length. Three bounds, and the tail is the one that matters musically:
+  //   * the song's ring-out tail — fade over the decay, never over the ending itself;
+  //   * CROSSFADE, the ceiling;
+  //   * just under half the play time, so the fade-in and fade-out curves cannot overlap
+  //     (Web Audio forbids overlapping automation curves).
+  const cf = Math.max(0, Math.min(tailSeconds, CROSSFADE, songPlay / 2 - 0.05));
 
   if (cf > 0.001) {
     // equal-power fade in; the curve's final value (1) persists as the "hold"; then fade
@@ -650,6 +660,7 @@ function updateShuffleBtn() {
 // ── Wire up ──
 async function init() {
   mod = await Skafinity();
+  if (mod.ringOutSeconds) tailSeconds = mod.ringOutSeconds();
   for (let i = 0; i < POOL_SIZE; i++) makeWorker(i);
 
   cfg = mod.defaultConfig();

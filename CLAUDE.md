@@ -1,7 +1,7 @@
 # CLAUDE.md — skafinity
 
 **skafinity** = *ska* + *infinity*. A web toy that streams an **endless, deterministic
-procedural ska / reggae-rock track** generated entirely in the browser from a short
+song** — ska, rock, country, metal, punk or pop — generated entirely in the browser from a short
 shareable seed. No server, no audio assets — the music is synthesised from scratch in
 WebAssembly and scheduled through the Web Audio API.
 
@@ -154,6 +154,18 @@ a tripwire for refactors that are *meant* to be pure, not a golden-audio contrac
 `make test-engine-bless` before a mechanical change, `make test-engine` after, and expect
 silence. **Any deliberate audible change re-blesses in the same commit** — a digest diff is
 information, never a failure to be argued with.
+
+**Two diagnostics answer "why does this song sound wrong", and both beat arguing by ear:**
+
+- `-- --seed vibe:tag:n` prints what the composer decided for that seed: the decoded knobs, the
+  tempo and swing (flagging a shuffle), key, changes, voicing, groove, figure lengths, tune
+  lengths, ending style, and the form with each section's energy/feel/key/displacement.
+- `-- --grid [genre]` prints, per voice, how often it lands on a bar line and how far its onsets
+  sit from the song's own sixteenth grid (swing and tempo curve included). **A gesture written in
+  TICKS scales with tempo** — country's strum spread was "a couple of ticks per string", which is
+  5 ms at metal tempo and 75 ms at country's, i.e. a guitar audibly out of time. Anything physical
+  rather than musical (a strum spread, the kit's push/lay-back) belongs in milliseconds/samples;
+  the suite asserts every voice stays on the grid.
 
 **Balancing the mix is a measurement, not a guess.** `dotnet run --project test/engine -c Release
 -- --levels` renders every genre with one voice soloed and prints its level in dB relative to that
@@ -414,6 +426,13 @@ hum. Every genre now draws two tunes per song, off their own streams (`{tag}:tun
 
 The ska skank is one comp style among six, not the model for the others — the chordal voice is the
 bed under the tune in every genre, including ska.
+
+**The tune is as long as the harmonic cycle** (`ChordBars × progression length`, capped at 8 bars).
+A four-bar tune over an eight-bar cycle states itself twice and the second statement lands over
+different chords than it was drawn against — same notes, different harmony, which is what "the lead
+clashes with the backing" actually is. And **displacement is the comp's alone**: the melody and the
+horns that answer it stay on the grid, because shifting the whole harmonic band off the drums at
+once reads as two bands playing rather than one band pushing.
 
 ---
 

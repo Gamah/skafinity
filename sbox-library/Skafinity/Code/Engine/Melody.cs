@@ -107,8 +107,9 @@ public sealed partial class MusicGen
 		_ => null,
 	};
 
-	/// <summary>Draw the song's tunes. Metal is the one genre that stays riff-led — its chorus
-	/// gets a line, its verses are left to the riff and the shred grammar.</summary>
+	/// <summary>Draw the song's tunes — one for choruses, a sparser one for verses. Every genre
+	/// gets both: "riff-led" does not mean melody-free, and metal verses with no tune left four
+	/// and eight bar holes where the lead simply did not play.</summary>
 	void DrawTunes( int barTicks )
 	{
 		float density = _prof.Lead switch
@@ -128,8 +129,7 @@ public sealed partial class MusicGen
 		// repetition sits over the changes it was drawn for.
 		int cycle = Math.Clamp( _chordBars * _prog.Length, 2, 8 );
 		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:chorus" ), cycle, barTicks, density, leap );
-		_verseTune = _genre == 3 ? null
-			: Melody.Draw( new Rng( $"{_tag}:tune:verse" ), cycle, barTicks, density * 0.8f, leap );
+		_verseTune = Melody.Draw( new Rng( $"{_tag}:tune:verse" ), cycle, barTicks, density * 0.8f, leap );
 	}
 
 	/// <summary>Play one bar of the section's tune.
@@ -150,7 +150,11 @@ public sealed partial class MusicGen
 		var ex = guitarLead ? Expr( "LEAD GTR" ) : Expr( "LEAD" );
 		int prevMidi = NoPrev;
 
-		foreach ( var h in tune.Slice( barTick, barTick + barTicks, _sectionTick, _feel, _displace ) )
+		// NOTE: no _displace here. Metric displacement is the COMP's — shifting the chordal
+		// voices against the kit is the effect. Shifting the melody with them moves the whole
+		// harmonic band off the drums at once, and a listener hears that as two bands playing at
+		// the same time rather than as one band pushing.
+		foreach ( var h in tune.Slice( barTick, barTick + barTicks, _sectionTick, _feel ) )
 		{
 			int degree = h.Value;
 			int len = Math.Min( h.SpanTicks, Timing.TicksPerBeat * 2 );

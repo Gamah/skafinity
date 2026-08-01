@@ -78,6 +78,11 @@ public partial class Engine
 	[JSExport]
 	internal static int ConfigSize() => Cfg.Size;
 
+	// Seconds of ring-out every song reserves past its last bar. The page fades over THIS (see
+	// app.js): a longer crossfade overlaps two songs' music rather than their tails.
+	[JSExport]
+	internal static double RingOutSeconds() => MusicGen.RingOutSeconds;
+
 	[JSExport]
 	internal static string EncodeVibe( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg )
 		=> VibeCodec.Encode( Cfg.From( cfg ) );

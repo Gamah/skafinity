@@ -25,6 +25,8 @@ function makeMod(E) {
   return {
     defaultConfig: () => E.DefaultConfig(),
     configSize: () => E.ConfigSize(),
+    // Seconds of ring-out a song reserves past its last bar — the window a crossfade may use.
+    ringOutSeconds: () => E.RingOutSeconds(),
 
     generateSong(seed, cfg) {
       const frames = E.GenerateSong(seed, asArray(cfg));

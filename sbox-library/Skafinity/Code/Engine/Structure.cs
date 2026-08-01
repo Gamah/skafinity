@@ -184,6 +184,15 @@ public sealed partial class MusicGen
 	// (see ComposePlan) rather than being a constant that the slowdown outruns.
 	const float RingOutTail = 2.4f;
 
+	/// <summary>How many seconds of ring-out every song reserves past its last bar — the tail the
+	/// final chord and the reverb decay into.
+	///
+	/// PUBLISHED because a player has to know it. A crossfade is meant to overlap this tail; a
+	/// player that guesses a longer fade starts the next song BEFORE the current one's final
+	/// chord has even landed, and two songs at two tempos with two downbeats play at once. The
+	/// ritard stretches the last bars, so the tail is scaled to match it (see ComposePlan).</summary>
+	public static float RingOutSeconds => RingOutTail * (1f + (float)RitardAmount);
+
 	/// <summary>The genre's section map — its form, not a shared list. Non-lead voices are seeded
 	/// by section TYPE so every chorus plays identical backing; the lead folds in the verse index
 	/// so it evolves; the section-end fill is seeded by absolute index so no two fills repeat.

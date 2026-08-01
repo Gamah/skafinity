@@ -31,12 +31,19 @@ public sealed partial class MusicGen
 
 	/// <summary>One guitar note. Everything above funnels through here so the accent/energy
 	/// scaling (and the genre's mix trim) is applied in exactly one place.</summary>
-	void EmitGuitar( int tick, int durTicks, int midi, float vel, bool ring, int voices )
+	/// <param name="nudgeMs">A sub-musical offset in MILLISECONDS, for the strum spread. It is not
+	/// a tick offset: a tick is a musical unit and scales with tempo, so a "couple of ticks per
+	/// string" is 5 ms at metal tempo and 25 ms at country's — which is a guitar audibly out of
+	/// time, not a strum. Anything that is a physical gesture rather than a musical position
+	/// belongs in real time (the kit's push/lay-back is in samples for the same reason).</param>
+	void EmitGuitar( int tick, int durTicks, int midi, float vel, bool ring, int voices,
+		float nudgeMs = 0f )
 	{
 		var (drive, cutEnv, reso, level) = RhythmGtrTone();
 		int dur = _time.SpanSamples( tick, durTicks );
 		double dec = _time.SpanSeconds( tick, durTicks ) * (ring ? 0.8 : 0.3);
-		RenderPatch( _time.TickToSample( tick ), dur, Midi( midi ), new Patch
+		int at = _time.TickToSample( tick ) + (int)(nudgeMs * 0.001f * _sr);
+		RenderPatch( at, dur, Midi( midi ), new Patch
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / Math.Max( 1, voices )
@@ -83,10 +90,12 @@ public sealed partial class MusicGen
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.7f - 0.4f * chug)) );
-			// A strum is not a block chord: the strings sound in sequence. A couple of ticks per
-			// string is enough for the ear to hear a pick moving across them.
+			// A strum is not a block chord: the strings sound in sequence. ~4 ms per string is a
+			// pick crossing them — enough for the ear to hear the gesture, short enough that the
+			// chord still lands on the beat.
 			for ( int i = 0; i < degs.Length; i++ )
-				EmitGuitar( h.Tick + i * 2, len, ScaleMidi( triBase, degs[i] ), h.Vel, true, degs.Length );
+				EmitGuitar( h.Tick, len, ScaleMidi( triBase, degs[i] ), h.Vel, true, degs.Length,
+					nudgeMs: i * 4f );
 		}
 	}
 

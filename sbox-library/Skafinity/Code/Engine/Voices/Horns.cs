@@ -65,7 +65,8 @@ public sealed partial class MusicGen
 		// belongs to the melody; the horns take the answer bar, quieter.
 		bool answerOnly = TuneFor( _sectionType ) != null;
 
-		foreach ( var h in _hornFig.Slice( barTick, barTick + barTicks, _sectionTick, _feel, _displace ) )
+		// Un-displaced, like the melody they answer (see RenderTune).
+		foreach ( var h in _hornFig.Slice( barTick, barTick + barTicks, _sectionTick, _feel ) )
 		{
 			if ( answerOnly && ((h.Tick - _sectionTick) / barTicks) % 2 == 0 ) continue;
 			int at = _time.TickToSample( h.Tick );

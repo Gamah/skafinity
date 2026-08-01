@@ -30,6 +30,10 @@ static class Program
 	{
 		bool bless = Array.IndexOf( args, "--bless" ) >= 0;
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
+		int gi = Array.IndexOf( args, "--grid" );
+		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }
+		int si = Array.IndexOf( args, "--seed" );
+		if ( si >= 0 && si + 1 < args.Length ) { Explain( args[si + 1] ); return 0; }
 
 		Banner( "prng + determinism" );
 		DeterminismTests();
@@ -960,6 +964,41 @@ static class Program
 			Check( $"genre {g} is not clipped to a square wave", clipped < pcm.Length / 100 );
 		}
 
+		// ── are the parts playing together? ──
+		// Every onset must land on the song's own TICK grid (swing and tempo curve included) — the
+		// grid that makes 8ths, 16ths and both triplet rates exact, so an ornament is not drift.
+		// This catches the class of bug that reads as "the band isn't sharing a downbeat": a
+		// gesture written in TICKS rather than milliseconds scales with tempo, and country's strum
+		// spread — two ticks per string — smeared a chord across 75 ms at country's tempo while
+		// looking fine at metal's. Double-tracking offsets the second take ~9 ms by design, so the
+		// bar is set above that and well under a 32nd note.
+		// Diagnose failures with `dotnet run --project test/engine -- --grid [genre]`.
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			foreach ( var (name, solo) in Voices )
+			{
+				if ( name == "DRUMS" ) continue;             // written into the buffer, not events
+				var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
+				cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
+					cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
+				solo( cfg );
+				var mg = MusicGen.BeginPlan( $"grid:{g}", cfg );
+				var (starts, _) = mg.Onsets();
+				if ( starts.Length < 20 ) continue;          // a voice this genre barely plays
+				var grid = mg.GridSamples();
+
+				double sum = 0; int n = 0, bad = 0;
+				foreach ( var st in starts )
+				{
+					int i = NearestBar( grid, st );
+					double d = Math.Abs( st - grid[i] ) / 22.05;
+					if ( i + 1 < grid.Length ) d = Math.Min( d, Math.Abs( st - grid[i + 1] ) / 22.05 );
+					sum += d; n++;
+					if ( d > 25 ) bad++;
+				}
+				Check( $"genre {g} {name} plays on the grid", sum / n < 15 && bad * 100.0 / n < 5,
+					$"mean {sum / n:0.0} ms, {bad * 100.0 / n:0.0}% over 25 ms" );
+			}
+
 		// ── the balance of the mix ──
 		// The comp is the BED. It measured 5 dB over the kit after the figures were rewritten —
 		// the balances had been peak-tuned for parts the engine no longer plays — and a loud
@@ -1055,6 +1094,105 @@ static class Program
 	}
 
 	static double Db( double a, double b ) => 20 * Math.Log10( Math.Max( 1e-9, a ) / Math.Max( 1e-9, b ) );
+
+	/// <summary>Explain one seed: what the vibe decodes to and what the composer did with it.
+	/// The tool for "this seed sounds wrong" — it is far easier to read the decisions than to
+	/// infer them from the audio. Usage: <c>-- --seed vibe:tag:n</c>.</summary>
+	static void Explain( string seed )
+	{
+		var bits = seed.Split( ':' );
+		string vibe = bits.Length >= 3 ? bits[0] : "";
+		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
+		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
+
+		var cfg = new MusicGen.Config { SampleRate = 22050 };
+		VibeCodec.Apply( vibe, cfg );
+		Console.WriteLine( $"seed      {seed}" );
+		Console.WriteLine( $"genre     {cfg.Genre} ({VibeCodec.Genres[cfg.Genre]})" );
+		Console.WriteLine( $"prng seed \"{tag}:{n}\"" );
+		Console.WriteLine( $"re-encode {VibeCodec.Encode( cfg )}" );
+
+		Console.WriteLine();
+		Console.WriteLine( "knobs off the wire:" );
+		foreach ( var f in VibeCodec.Fields( cfg.Genre ) )
+			Console.WriteLine( $"  {f.Voice ?? "GLOBAL",-10} {f.Name,-12} {f.Display( cfg )}" );
+
+		var g = MusicGen.BeginPlan( $"{tag}:{n}", cfg );
+		Console.WriteLine();
+		Console.WriteLine( g.Explain() );
+	}
+
+	/// <summary>Are the parts playing together?
+	///
+	/// For each voice: how often it puts a note ON a bar line, and how far off it sits when it
+	/// does. Measured against the bar lines themselves, so a tempo curve, a short bar and the
+	/// swing warp (which leaves downbeats anchored) cannot skew it. A voice that has drifted
+	/// against the rest of the band shows up as a nonzero mean offset; one that never lands on a
+	/// downbeat at all shows up as a low hit rate. Usage: <c>-- --grid [genre]</c>.</summary>
+	static void Grid( int only = -1 )
+	{
+		Console.WriteLine( "downbeat agreement, and distance from the song's own tick grid" );
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			if ( only >= 0 && g != only ) continue;
+			Console.WriteLine();
+			Console.WriteLine( $"── genre {g} ({VibeCodec.Genres[g]}) ──" );
+			foreach ( var (name, solo) in Voices )
+			{
+				if ( name == "DRUMS" ) continue;      // synthesised into the buffer, not events
+				var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
+				cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
+					cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
+				solo( cfg );
+				var mg = MusicGen.BeginPlan( $"grid:{g}", cfg );
+				var (starts, bars) = mg.Onsets();
+				if ( starts.Length == 0 ) continue;
+
+				// How far each onset sits from the nearest legal grid position (a tick, warped by the
+				// swing and the tempo curve). Double-tracking offsets the second take by ~9 ms by
+				// design, so a few ms of mean is the width, not a drift.
+				var grid = mg.GridSamples();
+				double gsum = 0, gworst = 0; int gn = 0, gbad = 0;
+				foreach ( var st in starts )
+				{
+					int i = NearestBar( grid, st );
+					double d = Math.Abs( st - grid[i] ) / 22.05;
+					if ( i + 1 < grid.Length ) d = Math.Min( d, Math.Abs( st - grid[i + 1] ) / 22.05 );
+					gsum += d; gn++; gworst = Math.Max( gworst, d );
+					if ( d > 25 ) gbad++;
+				}
+
+				int landed = 0; double sum = 0, worst = 0;
+				for ( int b = 0; b + 1 < bars.Length; b++ )
+				{
+					double window = (bars[b + 1] - bars[b]) / 8.0;   // half an eighth either side
+					int best = int.MaxValue;
+					foreach ( var st in starts )
+					{
+						int d = st - bars[b];
+						if ( Math.Abs( d ) < Math.Abs( best ) ) best = d;
+						if ( d > window ) break;
+					}
+					if ( Math.Abs( best ) > window ) continue;
+					landed++; sum += best / 22.05; worst = Math.Max( worst, Math.Abs( best / 22.05 ) );
+				}
+				Console.WriteLine( $"  {name,-9} {starts.Length,5} onsets   downbeat {landed * 100.0 / (bars.Length - 1),3:0}%"
+					+ $" ({(landed > 0 ? sum / landed : 0),5:0.0} ms)   off-grid: mean {gsum / Math.Max( 1, gn ),4:0.0} ms,"
+					+ $" worst {gworst,5:0.0} ms, {gbad * 100.0 / Math.Max( 1, gn ),4:0.0}% over 25 ms" );
+			}
+		}
+	}
+
+	static int NearestBar( int[] bars, int sample )
+	{
+		int lo = 0, hi = bars.Length - 1;
+		while ( lo < hi )
+		{
+			int mid = (lo + hi + 1) / 2;
+			if ( bars[mid] <= sample ) lo = mid; else hi = mid - 1;
+		}
+		return lo;
+	}
 
 	static void Levels()
 	{
