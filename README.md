@@ -2,8 +2,7 @@
 
 ### ▶ Play it: **https://gamah.github.io/skafinity/**
 
-*(also mirrored at [skafinity.notadomain.lol](https://skafinity.notadomain.lol) — same build,
-self-hosted. Prefer one file over a site? Grab
+*(Prefer one file over a site? Grab
 [skafinity.html](https://gamah.github.io/skafinity/skafinity.html) — the whole toy, runtime
 included, in a single ~9.5 MiB page.)*
 
