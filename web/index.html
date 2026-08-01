@@ -35,6 +35,10 @@
       <section class="panel">
         <h2>vibe
           <label class="genre">Genre: <select id="genre"></select></label>
+          <!-- Listening toggle for who a section's metric displacement moves. Config-only, not
+               in the seed (see MusicGen.Config.DisplaceMode) — a shared link must not depend on
+               it, so it is a local preference like the per-voice volumes. -->
+          <label class="genre" title="Who a section's metric displacement moves">Displace: <select id="displace"></select></label>
           <button id="rerollBtn" class="reroll" title="Randomize every knob but the volumes">🎲 reroll vibe</button>
           <button id="shuffleBtn" class="reroll toggle on" title="Re-roll genre + every knob for each new song (keeps your volumes)">🎲 every song: ON</button>
         </h2>

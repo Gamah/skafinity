@@ -119,7 +119,11 @@ public static class VibeCodec
 		// every later global and the whole instrument grid stay at their existing wire positions
 		// and previously shared vibes still decode. A future global knob can claim it.
 		null,
-		F( "RESONANCE", 0.2f, 2f, false, c => c.Resonance, ( c, v ) => c.Resonance = v ),
+		// RESERVED — was RESONANCE. It set a Config field no voice ever read, so the slider was
+		// inert; every patch names its own SVF damping next to the voice it belongs to, which is
+		// where a timbre value belongs. Kept as an empty slot so every later global and the whole
+		// instrument grid stay at their existing wire positions.
+		null,
 		F( "STEREO WIDTH", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
 		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
 		// Appended, so every position above keeps the place it has always had. The range is 15
@@ -142,6 +146,11 @@ public static class VibeCodec
 		// 0 = every genre through one neutral mix. The SHAPE of a genre's mix is character and
 		// lives in the profile; what the house retunes at runtime is how far to push it.
 		F( "GenreMix", 0f, 2f, false, c => c.GenreMix, ( c, v ) => c.GenreMix = v ),
+		// Who a section's metric displacement moves. Config-only for the same reason the balances
+		// are: it must not ride in a shareable seed. Discrete, so it carries Choices and both hosts
+		// render it as a dropdown rather than a slider.
+		F( "DisplaceMode", 0f, 2f, true, c => c.DisplaceMode, ( c, v ) => c.DisplaceMode = (int)v,
+			choices: new[] { "COMP ONLY", "COMP, 16TH CAP", "WHOLE BAND" } ),
 		F( "KickBalance", 0f, 2f, false, c => c.KickBalance, ( c, v ) => c.KickBalance = v ),
 		F( "SnareBalance", 0f, 2f, false, c => c.SnareBalance, ( c, v ) => c.SnareBalance = v ),
 		F( "TomBalance", 0f, 2f, false, c => c.TomBalance, ( c, v ) => c.TomBalance = v ),

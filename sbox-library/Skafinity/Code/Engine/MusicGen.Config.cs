@@ -85,7 +85,8 @@ public sealed partial class MusicGen
 		public float OrganCutoff = 1400f; // Hz low-pass on the organ bubble
 		public float OrganVibrato = 5.5f; // organ bubble vibrato depth
 		public float HornCutoff = 3200f;  // Hz low-pass on the backing horns
-		public float Resonance = 1.0f;    // SVF damping (lower = more resonant)
+		// SVF damping is not a Config value: it is part of a voice's timbre and is named on the
+		// Patch next to the voice that renders it (see Patch.Reso).
 		public float BassDrive = 1.5f;
 		public float SkankDrive = 1.3f;
 		public float MelodyDrive = 1.3f;
@@ -145,6 +146,14 @@ public sealed partial class MusicGen
 		// character and belongs in the profile next to its tempo band, and what the house actually
 		// needs to retune without a rebuild is how far to take it.
 		public float GenreMix = 1.0f;
+		// DisplaceMode: WHO a section's metric displacement moves (see Part.Displace). A listening
+		// toggle rather than a mix value — it changes what the arrangement does, so it is not in
+		// the seed either: a song's identity must not depend on a debug switch.
+		//   0 = comp only (the design: the chordal band shifts against a kit and a melody that
+		//       stay put — the displacement dissonance)
+		//   1 = comp only, capped at a 16th (a push rather than a separation)
+		//   2 = whole band (melody and horns shift with the comp — no split at all)
+		public int DisplaceMode = 0;
 		// Kit per-voice level balance. The pieces synthesise at very different raw levels (a kick
 		// is huge, a hat is thin noise). Starting point was EQUAL PRE-MASTER PEAK (kick 0.40 /
 		// snare 0.476 / tom 0.496 / hat 0.582 / crash 0.515), then hand-tuned by ear: equal peak

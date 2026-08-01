@@ -221,10 +221,14 @@ public sealed partial class MusicGen
 	// a verse?" (see Part). This is what makes a chorus a chorus rather than a repeat.
 	int[] _sectionStart = Array.Empty<int>(); // first tick of each section
 	int _sectionTick;        // the current section's first tick — patterns loop from here
+	int _sectionTicks;       // its length in ticks — a section shorter than the tune sings the
+	                         // tune's resolving half rather than being cut off mid-phrase
 	int _barTick;            // the current bar's first tick — the accent grid is relative to it
 	float _energy = 1f;      // 0 = as thin as the arrangement gets, 1 = full band
 	float _feel = 1f;        // pattern-rate multiplier: 0.5 half time, 2 double time
 	int _displace;           // metric displacement of the comp, in ticks
+	int _melodyDisplace;     // and of the melody + the horns that answer it. Normally 0 (see
+	                         // Config.DisplaceMode) — the split IS the effect.
 	int _keyShift;           // semitones this section is transposed by (the final-chorus lift)
 	Section _sectionType;    // which kind of section is playing — voices that must not double the
 	                         // tune (the ska horn section) ask TuneFor() about it

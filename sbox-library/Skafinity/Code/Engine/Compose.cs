@@ -152,7 +152,7 @@ public sealed partial class MusicGen
 	const double RitardAmount = 0.22;
 
 	/// <summary>Length of a section in ticks, honouring any anomalous (short) bars.</summary>
-	static int SectionTicks( in Part p, int beatsPerBar )
+	internal static int SectionTicks( in Part p, int beatsPerBar )
 	{
 		int ticks = 0;
 		for ( int bar = 0; bar < p.Bars; bar++ )
@@ -255,11 +255,19 @@ public sealed partial class MusicGen
 		// Everything below here reads these rather than asking "am I in a verse?": the energy
 		// contour, the half/double-time feel, the metric displacement, and the key.
 		_sectionTick = sectionTick;
+		_sectionTicks = SectionTicks( part, beatsPerBar );
 		_energy = Math.Clamp( part.Energy, 0f, 1f );
 		_feel = part.Feel;
-		_displace = part.Displace;
 		_keyShift = part.KeyShift;
 		_sectionType = part.Type;
+
+		// Metric displacement, and WHO moves. Mode 0 is the design: the chordal band shifts against
+		// a kit and a melody that stay put, which is the dissonance. The other two are the
+		// listening experiment behind it — a 16th cap (a push rather than a separation), and moving
+		// the melody with the comp (one band displaced, no split at all).
+		int cap = Math.Clamp( _c.DisplaceMode, 0, 2 ) == 1 ? Timing.TicksPerEighth / 2 : int.MaxValue;
+		_displace = Math.Sign( part.Displace ) * Math.Min( Math.Abs( part.Displace ), cap );
+		_melodyDisplace = Math.Clamp( _c.DisplaceMode, 0, 2 ) == 2 ? _displace : 0;
 
 		bool isIntro = part.Type == Section.Intro;
 		bool isEnding = part.Type == Section.Ending;

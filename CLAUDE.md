@@ -368,6 +368,15 @@ in the profile because it is character; only the amount is house config, which i
 value rather than six genres × five trims of JSON. Voices apply it through `MixTrim(trim)` —
 `_drumLowMul`/`_drumHighMul`/`_midMul` already carry it for the kit and the body of the mix.
 
+**`DisplaceMode` is not a level either — it is a listening toggle.** It says WHO a section's
+metric displacement moves: `0` the comp alone (the design — the chordal band shifts against a kit
+and a melody that stay put), `1` the comp capped at a 16th (a push rather than a separation), `2`
+the whole band including the melody and the horns. It is config-only for the same reason the
+balances are — a shared link must not depend on a debug switch — and it is the one advanced field
+with `Choices`, so both hosts render it as a dropdown. The web toy puts it next to the genre
+selector and persists the choice locally; changing it drops the rendered-PCM cache **and** the
+shuffle ledger, because the frozen per-song vibes are derived from the live cfg.
+
 ---
 
 ## The time base (`Engine/Timing.cs`)
@@ -458,7 +467,24 @@ A four-bar tune over an eight-bar cycle states itself twice and the second state
 different chords than it was drawn against — same notes, different harmony, which is what "the lead
 clashes with the backing" actually is. And **displacement is the comp's alone**: the melody and the
 horns that answer it stay on the grid, because shifting the whole harmonic band off the drums at
-once reads as two bands playing rather than one band pushing.
+once reads as two bands playing rather than one band pushing. (`Config.DisplaceMode` is the
+listening toggle behind that rule — see the house-mix section.)
+
+**A section shorter than the tune sings the tune's END, not its beginning.** `RenderTune` pulls the
+anchor back by the difference, so the section's last bar lands on the tune's resolution. A four-bar
+pre-chorus over an eight-bar tune otherwise stated the call and was cut off by the chorus before
+the answer arrived — a phrase interrupted by the next phrase, which is what "two ideas at once"
+sounds like from the outside.
+
+**The melody needs an octave of its own** (`LeadBase()` in `Lead.cs`). The comp registers are
+fixed and known — the rhythm guitar voices its chord over `_rootMidi + 12`, the skank and the keys
+over `+24`, a full voicing reaching about `+31` — so a lead based at `+21`/`+24` sang its whole
+line inside the chordal bed and no amount of gain brought it out. `+31` clears that bed. Two
+exceptions are relational, not absolute: metal's shred already sat clear at `+26` and ranges far
+wider than a tune, and punk's unison IS the riff an octave up, so it stays one octave over the
+guitar's `+12`. Level is the second half of the same problem: the lead's target is **+2 dB over
+the genre's drums**, not level with them (see `LeadLevel`, and the ceiling in the suite is that
+target plus a seed's worth of variance).
 
 ---
 
@@ -474,9 +500,15 @@ one hardcoded list. A `Part` carries `Energy`, `Feel`, `TempoMul`, `KeyShift`, `
   × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is how the mix got flat and mechanical in
   the first place — route it through `NoteGain`.
 - `BarBeats` is the anomalous-measure hook (a 2/4 bar inside a 4/4 section). Bars are laid out per
-  section before anything renders, so a short bar is a length, not a special case. Sections are
-  multiples of 4 bars otherwise — including the ending, which is 4: the old 2-bar ending broke the
-  hypermeasure exactly where a clean landing was wanted.
+  section before anything renders, so a short bar is a length, not a special case. **No form uses
+  one today**: dropping a beat out of a bar under a melody reads as the song jumping to a downbeat
+  early, because the tune is a phrase and the beat comes out of the middle of it. The mechanism is
+  sound and it is what the non-4/4 row builds on — what is missing is the melodic half (a tune that
+  knows the bar it is sung over is short, rather than one that is simply truncated), so wire a short
+  bar back in when that lands, not before. The engine test asserts the MECHANISM (`SectionTicks`
+  honours the beat counts), not that some form uses it. Sections are multiples of 4 bars —
+  including the ending, which is 4: the old 2-bar ending broke the hypermeasure exactly where a
+  clean landing was wanted.
 - **Fills are planned per section, in ticks, not "the last beat of the bar".** Length is a weighted
   draw (a beat ≈ 55% … two bars ≈ 5%) and the ≥1-bar options are gated to boundaries that earn them
   (into a chorus, out of a breakdown). The KIT stops where the fill starts; the melodic voices play

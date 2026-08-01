@@ -72,6 +72,9 @@ function makeMod(E) {
     // host config.json can overlay them onto a cfg without knowing the double[] layout.
     advancedFieldCount: () => E.AdvancedFieldCount(),
     advancedFieldName: (i) => E.AdvancedFieldName(i),
+    // Option labels for a discrete advanced field; empty array for a continuous one. The page
+    // renders a dropdown where this is non-empty, so a new discrete knob needs no table here.
+    advancedFieldChoices: (i) => E.AdvancedFieldChoices(i),
     getAdvancedField: (cfg, i) => E.GetAdvancedField(asArray(cfg), i),
     setAdvancedField: (cfg, i, raw) => E.SetAdvancedField(asArray(cfg), i, raw),
     // Overlay { Name: rawValue } onto cfg (raw, clamped per field). Unknown keys are ignored.

@@ -62,12 +62,32 @@ for (let i = 0; i < 60; i++) lineGenres.add(mod.getGenre(mod.rollVibeFor(cfg, 'g
 check('the shuffle line covers every genre', lineGenres.size === mod.genreCount(),
   `${lineGenres.size} of ${mod.genreCount()}`);
 
-// ── SWING is gone from the knobs the UI renders ──
-let sawSwing = false;
+// ── retired knobs are gone from what the UI renders ──
+// A retired global leaves a RESERVED (null) slot on the wire so every later position holds; what
+// must not survive is the slider. SWING became per-genre character; RESONANCE set a Config field
+// no voice ever read, so it was inert.
+const retired = ['SWING', 'RESONANCE'];
+const seen = new Set();
 for (let g = 0; g < mod.genreCount(); g++)
   for (let i = 0; i < mod.vibeFieldCount(g); i++)
-    if (mod.vibeFieldInfo(g, i).name === 'SWING') sawSwing = true;
-check('SWING is not a knob the UI would render', !sawSwing);
+    seen.add(mod.vibeFieldInfo(g, i).name);
+for (const name of retired)
+  check(`${name} is not a knob the UI would render`, !seen.has(name));
+
+// ── the displacement toggle the page puts next to the genre selector ──
+// It is an ADVANCED field (config-only, never in the seed) and it is discrete, so the page builds
+// its dropdown from the engine's own labels rather than a second table in JS.
+let displaceIdx = -1;
+for (let i = 0, n = mod.advancedFieldCount(); i < n; i++)
+  if (mod.advancedFieldName(i) === 'DisplaceMode') displaceIdx = i;
+check('DisplaceMode is an advanced (config-only) field', displaceIdx >= 0);
+const displaceChoices = displaceIdx >= 0 ? mod.advancedFieldChoices(displaceIdx) : [];
+check('DisplaceMode offers the page a set of labels to render',
+  displaceChoices.length === 3, displaceChoices.join(' | '));
+check('DisplaceMode round-trips through cfg',
+  mod.getAdvancedField(mod.setAdvancedField(cfg, displaceIdx, 2), displaceIdx) === 2);
+check('a continuous advanced field offers no choices',
+  mod.advancedFieldChoices(0).length === 0);
 
 // ── a rolled song actually renders ──
 // The end of the whole chain: shuffle picks a vibe, the worker renders it, the page plays it.

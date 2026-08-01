@@ -49,8 +49,15 @@ public sealed partial class MusicGen
 	{
 		float wet = Math.Clamp( _c.MasterReverb * MixTrim( _prof.Mix.Reverb ), 0f, 1f );
 		if ( wet <= 0.0001f ) return;
-		float feedback = 0.70f + 0.28f * Math.Clamp( _c.ReverbDecay, 0f, 1f ); // tail length
-		Reverb.Process( _bufL, 0, wet, feedback, _sr );
-		Reverb.Process( _bufR, Reverb.StereoSpread, wet, feedback, _sr );
+		// Tail length. The top of this used to be 0.98, which over combs 25–34 ms long is a ~9
+		// second decay — long past a room and into a delay line whose repeats smear every chord
+		// into the next. 0.94 is ~3 s, which is the longest tail that is still a SPACE the band is
+		// playing in. The tail also darkens as it lengthens: a bright decay that outlasts the bar
+		// accumulates top end instead of dying, and that ringing IS the muddiness.
+		float decay = Math.Clamp( _c.ReverbDecay, 0f, 1f );
+		float feedback = 0.70f + 0.24f * decay;
+		float damp = 0.25f + 0.35f * decay;
+		Reverb.Process( _bufL, 0, wet, feedback, damp, _sr );
+		Reverb.Process( _bufR, Reverb.StereoSpread, wet, feedback, damp, _sr );
 	}
 }

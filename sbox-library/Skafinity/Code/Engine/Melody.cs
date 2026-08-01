@@ -150,11 +150,20 @@ public sealed partial class MusicGen
 		var ex = guitarLead ? Expr( "LEAD GTR" ) : Expr( "LEAD" );
 		int prevMidi = NoPrev;
 
-		// NOTE: no _displace here. Metric displacement is the COMP's — shifting the chordal
-		// voices against the kit is the effect. Shifting the melody with them moves the whole
-		// harmonic band off the drums at once, and a listener hears that as two bands playing at
-		// the same time rather than as one band pushing.
-		foreach ( var h in tune.Slice( barTick, barTick + barTicks, _sectionTick, _feel ) )
+		// Metric displacement is the COMP's — shifting the chordal voices against the kit is the
+		// effect, and shifting the melody with them moves the whole harmonic band off the drums at
+		// once, which reads as two bands rather than one band pushing. _melodyDisplace is 0 unless
+		// Config.DisplaceMode says otherwise (a listening toggle, not a per-song value).
+		//
+		// A SECTION SHORTER THAN THE TUNE SINGS THE TUNE'S END, not its beginning. A four-bar
+		// pre-chorus over an eight-bar tune stated the call and was cut off by the chorus before
+		// the answer ever arrived — a phrase interrupted by the next phrase, which is what "two
+		// ideas at once" sounds like. Pulling the anchor back lands the tune's resolution exactly
+		// on the section's last bar, which is what a pre-chorus is for.
+		int anchor = _sectionTicks > 0 && _sectionTicks < tune.LengthTicks
+			? _sectionTick - (tune.LengthTicks - _sectionTicks)
+			: _sectionTick;
+		foreach ( var h in tune.Slice( barTick, barTick + barTicks, anchor, _feel, _melodyDisplace ) )
 		{
 			int degree = h.Value;
 			int len = Math.Min( h.SpanTicks, Timing.TicksPerBeat * 2 );

@@ -219,6 +219,13 @@ public partial class Engine
 	[JSExport]
 	internal static double AdvancedFieldMax( int i ) => VibeCodec.AdvancedFields[i].Max;
 
+	// Option labels for a DISCRETE advanced field (value = Min + index); empty for a continuous
+	// one. Same contract as VibeFieldChoices — the host renders a dropdown rather than a slider
+	// where this is non-empty, so a new discrete knob needs no second table in JS.
+	[JSExport]
+	[return: JSMarshalAs<JSType.Array<JSType.String>>]
+	internal static string[] AdvancedFieldChoices( int i ) => VibeCodec.AdvancedFields[i].Choices ?? Array.Empty<string>();
+
 	[JSExport]
 	internal static double GetAdvancedField( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg, int i )
 		=> VibeCodec.AdvancedFields[i].Get( Cfg.From( cfg ) );
@@ -249,7 +256,7 @@ static class Cfg
 		c.BassVol, c.SkankVol, c.OrganVol, c.MelodyVol, c.HornVol,
 		c.KickVol, c.SnareVol, c.TomVol, c.HatVol, c.CrashVol, c.DrumVol,
 		c.Detune, c.BassCutoff, c.SkankCutoff, c.SkankHighpass, c.SkankChop,
-		c.LeadCutoff, c.OrganCutoff, c.OrganVibrato, c.HornCutoff, c.Resonance,
+		c.LeadCutoff, c.OrganCutoff, c.OrganVibrato, c.HornCutoff,
 		c.BassDrive, c.SkankDrive, c.MelodyDrive, c.HornDrive, c.MasterDrive, c.MasterPeak,
 		c.OctavePopChance, c.OrganBubbleChance, c.KickSyncChance, c.GhostSnareChance,
 		c.FillChance, c.DrumBusy, c.TripletChance, c.BassTriplets,
@@ -272,6 +279,8 @@ static class Cfg
 		c.WidthDelayMs, c.WidthJitterMs, c.WidthAmpVar, c.WidthCutoffVar,
 		// how far each genre's own mix profile is taken (see GenreProfile.Mix)
 		c.GenreMix,
+		// who a section's metric displacement moves (see Part.Displace)
+		c.DisplaceMode,
 	};
 
 	public static MusicGen.Config From( double[] a )
@@ -283,7 +292,7 @@ static class Cfg
 		c.BassVol = (float)a[i++]; c.SkankVol = (float)a[i++]; c.OrganVol = (float)a[i++]; c.MelodyVol = (float)a[i++]; c.HornVol = (float)a[i++];
 		c.KickVol = (float)a[i++]; c.SnareVol = (float)a[i++]; c.TomVol = (float)a[i++]; c.HatVol = (float)a[i++]; c.CrashVol = (float)a[i++]; c.DrumVol = (float)a[i++];
 		c.Detune = (float)a[i++]; c.BassCutoff = (float)a[i++]; c.SkankCutoff = (float)a[i++]; c.SkankHighpass = (float)a[i++]; c.SkankChop = (float)a[i++];
-		c.LeadCutoff = (float)a[i++]; c.OrganCutoff = (float)a[i++]; c.OrganVibrato = (float)a[i++]; c.HornCutoff = (float)a[i++]; c.Resonance = (float)a[i++];
+		c.LeadCutoff = (float)a[i++]; c.OrganCutoff = (float)a[i++]; c.OrganVibrato = (float)a[i++]; c.HornCutoff = (float)a[i++];
 		c.BassDrive = (float)a[i++]; c.SkankDrive = (float)a[i++]; c.MelodyDrive = (float)a[i++]; c.HornDrive = (float)a[i++]; c.MasterDrive = (float)a[i++]; c.MasterPeak = (float)a[i++];
 		c.OctavePopChance = (float)a[i++]; c.OrganBubbleChance = (float)a[i++]; c.KickSyncChance = (float)a[i++]; c.GhostSnareChance = (float)a[i++];
 		c.FillChance = (float)a[i++]; c.DrumBusy = (float)a[i++]; c.TripletChance = (float)a[i++]; c.BassTriplets = (float)a[i++];
@@ -302,6 +311,7 @@ static class Cfg
 		c.DoubleTrack = (float)a[i++]; c.WidthBacking = (float)a[i++]; c.WidthLead = (float)a[i++]; c.WidthDetune = (float)a[i++];
 		c.WidthDelayMs = (float)a[i++]; c.WidthJitterMs = (float)a[i++]; c.WidthAmpVar = (float)a[i++]; c.WidthCutoffVar = (float)a[i++];
 		c.GenreMix = (float)a[i++];
+		c.DisplaceMode = (int)a[i++];
 		return c;
 	}
 }

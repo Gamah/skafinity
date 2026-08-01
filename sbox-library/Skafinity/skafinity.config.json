@@ -3,6 +3,7 @@
   "advanced": {
     "KitPresence": 2.0,
     "GenreMix": 1.0,
+    "DisplaceMode": 0,
     "KickBalance": 0.8,
     "SnareBalance": 0.9,
     "TomBalance": 0.78,

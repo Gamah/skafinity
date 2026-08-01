@@ -700,19 +700,28 @@ static class Program
 		Check( "some genre drops into half time", halfTime );
 
 		// The final-chorus lift, and the metric displacement the transitional sections carry.
-		bool lift = false, displaced = false, hemiola = false, shortBar = false;
+		bool lift = false, displaced = false, hemiola = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 			foreach ( var p in MusicGen.BuildStructure( g ) )
 			{
 				lift |= p.KeyShift != 0;
 				displaced |= p.Displace != 0;
 				hemiola |= p.Hemiola;
-				shortBar |= p.BarBeats != null;
 			}
 		Check( "some genre lifts a section into a new key", lift );
 		Check( "some section displaces its comp against the bar", displaced );
 		Check( "some section regroups into a hemiola", hemiola );
-		Check( "some section runs an anomalous (short) bar", shortBar );
+
+		// The anomalous (short) bar. No FORM uses one today — dropping a beat under a melody reads
+		// as the song jumping to a downbeat early — so what is asserted is the MECHANISM, which the
+		// non-4/4 work builds on: a section's length has to follow its per-bar beat counts, not
+		// bars x the song's meter.
+		var evenBars = new Part( Section.Verse, 4 );
+		var shortBar = new Part( Section.Verse, 4, barBeats: new[] { 4, 4, 4, 2 } );
+		Check( "a plain section is bars x the meter",
+			MusicGen.SectionTicks( evenBars, 4 ) == 4 * 4 * Timing.TicksPerBeat );
+		Check( "a short bar shortens its section by exactly the beats it drops",
+			MusicGen.SectionTicks( shortBar, 4 ) == MusicGen.SectionTicks( evenBars, 4 ) - 2 * Timing.TicksPerBeat );
 	}
 
 	/// <summary>The tune — the thing a listener hums back. What matters is that it is a real
@@ -1022,7 +1031,11 @@ static class Program
 
 			Check( $"genre {g} comp sits under the kit", comp < drums * 0.85,
 				$"comp {Db( comp, drums ):0.0} dB" );
-			Check( $"genre {g} lead does not dominate", lead < drums * 1.6,
+			// The lead is the MELODY and its target is +2 dB over the kit (see LeadLevel), not
+			// level with it. This ceiling is that target plus the ~4 dB a single seed varies
+			// around it — it catches a lead that has become the whole record, not one that is
+			// simply on top, which is where it belongs.
+			Check( $"genre {g} lead does not dominate", lead < drums * 2.0,
 				$"lead {Db( lead, drums ):0.0} dB" );
 			Check( $"genre {g} bass is present", bass > drums * 0.4, $"bass {Db( bass, drums ):0.0} dB" );
 			// Nothing may be inaudible either — a voice a genre plays must actually arrive.
