@@ -1,17 +1,24 @@
 # skafinity
 
+### ▶ Play it: **https://gamah.github.io/skafinity/**
+
+*(also mirrored at [skafinity.notadomain.lol](https://skafinity.notadomain.lol) — same build,
+self-hosted. Prefer one file over a site? Grab
+[skafinity.html](https://gamah.github.io/skafinity/skafinity.html) — the whole toy, runtime
+included, in a single ~9.5 MiB page.)*
+
 *ska + infinity* — endless, deterministic procedural songs across six genres (ska, rock,
 country, metal, punk and pop), generated entirely in your browser from a short shareable seed. No server, no audio
 assets: the music is synthesised from scratch in C# (compiled to WebAssembly) and
-scheduled through the Web Audio API. The whole song is a URL — `…/web/#vibe:tag:n`.
+scheduled through the Web Audio API. The whole song is a URL — share
+`https://gamah.github.io/skafinity/#vibe:bd44ac2a:23` and the other person hears the exact
+same song.
 
 The engine is the **same** `MusicGen.cs` + `VibeCodec.cs` the Rotaliate s&box music
 library ships (`sbox-library/`). The web toy compiles that shared source to WebAssembly
 with the .NET `wasm-tools` workload — no port, so the game and the web run identical
 composition code. `reference/` keeps the original C# for context (see `CLAUDE.md`).
 
-
-Try it out here: https://skafinity.notadomain.lol
 ## Build & run
 
 ### Docker (the deploy path — no local .NET needed)
@@ -64,7 +71,7 @@ make dist     # package it: dist/ (a GitHub-Pages-ready site) + dist/skafinity.h
 
 `make dist` turns the built `web/` into two artifacts:
 
-- **`dist/`** — a static site ready to publish as a GitHub Pages branch/folder root (~7 MB).
+- **`dist/`** — a static site ready for any host (~7 MB); it's what the Pages workflow deploys.
   Every path in the page is relative, so a project page's `/<repo>/` subpath needs no
   rewriting. Three things make it more than `cp -r web dist`: it drops the `*.br`/`*.gz`
   duplicates a plain static host never serves, it re-copies `config.json` from the canonical
@@ -82,6 +89,21 @@ make dist     # package it: dist/ (a GitHub-Pages-ready site) + dist/skafinity.h
 
 `make test-dist` builds both and boots the single file's inlined runtime under node, rendering
 a song through the same `loadBootResource` path a browser takes.
+
+### The live site
+
+[gamah.github.io/skafinity](https://gamah.github.io/skafinity/) is published by
+`.github/workflows/pages.yml` on every push to `master`: it runs `make dist`, checks the
+single-file artifact boots, and deploys `dist/`. Nothing generated is committed, and it uses
+the same `make dist` you run locally, so the live tree can't drift from a dev box's.
+
+> **The deploy does not compile the engine.** A Pages runner has no .NET and no `wasm-tools`
+> workload, so the job packages the **committed** `web/_framework` rather than building it —
+> which keeps deploys at ~30 s and means the audio on the site is a build someone actually
+> listened to. The consequence: a change to `Code/Engine/**`, `wasm/Exports.cs` or
+> `web/engine.js` reaches the site only once you've run `make` locally and committed the
+> re-staged `web/_framework`. Page-only edits (`index.html`, `app.js`, `style.css`,
+> `config.json`) just need a push.
 
 ## What's here
 
