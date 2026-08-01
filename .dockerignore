@@ -5,6 +5,7 @@
 wasm/bin
 wasm/obj
 web/_framework
+dist
 node_modules
 reference
 test

@@ -56,7 +56,7 @@ doubt the C# is right.
 | JS boundary | `[JSExport]` in `wasm/Exports.cs`; `web/engine.js` boots the runtime and adapts the exports |
 | Glue / UI | Vanilla **JS + HTML + CSS** (no framework, no bundler) |
 | Audio | **Web Audio API** — `AudioBufferSourceNode`s scheduled with gain-ramp crossfades |
-| Distribution | A **served** bundle — the self-contained `web/` (which includes `web/_framework`). The runtime is multi-file and needs http; a single-file inline is a deferred follow-up. |
+| Distribution | A **served** bundle — the self-contained `web/` (which includes `web/_framework`). `make dist` repackages it two ways: a GitHub-Pages-ready `dist/`, and `dist/skafinity.html` with the whole runtime inlined. Both need http; neither works from `file://`. |
 | Deploy | Docker Compose (`make up`) — SDK build stage → nginx runtime stage; host reverse proxy (Caddy) fronts it with TLS |
 
 C# is the choice because it *is* the source — same code, two targets, zero port.
@@ -106,8 +106,11 @@ skafinity/
     style.css
     config.json           # house-mix overlay fetched at startup (make-copied from sbox-library)
     _framework/           # published runtime bundle (committed; rebuilt by `make`)
+  tools/
+    bundle-single.mjs     # builds dist/skafinity.html (the whole runtime inlined into one file)
   test/
     smoke.mjs             # node smoke test of the JS↔wasm boundary
+    dist-single.mjs       # boots dist/skafinity.html's inlined runtime under node
     engine/               # engine-only C# harness (make test-engine) — runs without s&box
   Makefile
 ```
@@ -655,18 +658,80 @@ canonical `skafinity.config.json` over `web/config.json` for the same reason (it
 image's equivalent of `make stage`). Because everything is baked in, there are no volumes,
 no `.env`, and no secrets.
 
+## Packaging (`make dist`) — two artifacts, both served over http
+
+`make dist` repackages the already-built `web/`; it never compiles anything. It guards on
+`web/_framework/dotnet.js` the way `fast` does. **Both outputs are gitignored — commit the
+target, never the artifacts.**
+
+**`dist/` — the GitHub Pages payload.** It is deliberately not `cp -r web dist`, for three
+reasons and no others:
+
+- **`.nojekyll` — the trap.** GitHub Pages runs the published tree through Jekyll, which
+  **excludes directories whose name starts with an underscore**. That is exactly `_framework/`.
+  Without the zero-byte `.nojekyll` at the root, the entire runtime is silently missing from the
+  deployed site and the page dies at boot on a 404 for `dotnet.js` — with nothing in the build
+  log to say so. This is documented Jekyll behaviour, not something observed on a live deploy.
+- It drops the `*.br`/`*.gz` duplicates, which a plain static host never serves.
+- It re-copies `config.json` from the canonical `sbox-library/Skafinity/skafinity.config.json`,
+  so a hand-edited `web/config.json` can never ship. It is the deploy-path `stage`.
+
+**Every path in `web/` is relative** (`href="style.css"`, `fetch('./config.json')`,
+`new URL('./worker.js', import.meta.url)`), so a project page's `/<repo>/` subpath needs no
+rewriting. Keep it that way — an absolute path is what would break the Pages deploy.
+
+**`dist/skafinity.html` — one file, ~9.5 MiB.** Built by `tools/bundle-single.mjs`. The runtime's
+boot config is already embedded in `dotnet.js` (it ends in `withConfig({…resources…})`), so the
+only question is where the bytes come from, and `dotnet.withResourceLoader(fn)` answers it. Three
+facts that whole design rests on — all `[SOURCE]`, read out of the published `dotnet.js` on
+2026-08-01, i.e. implementation detail rather than documented contract, so **re-read them if a
+runtime bump breaks the build**:
+
+- For the `dotnetjs` type the loader **must** return a URL *string* (it asserts, then `import()`s
+  it) → the two runtime js modules become `data:text/javascript` URLs.
+- For every other behaviour it may return a `Promise<Response>`, returned as-is → the five wasm
+  assets come from a synthesized `Response` over the inlined bytes. That path skips `fetch`
+  entirely, and SRI is only ever applied to *fetch options*, so **no hash check runs** and
+  `disableIntegrityCheck` never has to be touched.
+- The loader is minified to one- and two-letter top-level names and declares a top-level `var`,
+  and `app.js` has top-level names of its own (`n` among them). Concatenating them into one
+  module scope is a redeclaration `SyntaxError`, so the loader goes in an **IIFE** (a bare block
+  would not contain the `var`) and returns the builder instead of exporting it.
+
+**The workers are why this is not just "base64 everything into app.js".** Each `Worker` boots its
+own runtime instance; re-parsing ~10 MB of base64 three times is not acceptable. The worker is a
+**blob-URL module** carrying loader + engine + worker glue and *no* assets, and the main thread
+posts it the decoded bytes **without a transfer list** — a structured-clone copy, so this realm
+keeps its own runtime alive. The worker's boot awaits that init message.
+
+**Every rewrite in the bundler is anchored on an exact source pattern and hard-fails if it stops
+matching.** Renaming something in `app.js`/`engine.js`/`worker.js` should break `make dist` loudly
+— a silently mis-rewritten bundle is a page that dies at boot for whoever was handed it, and there
+is no server log to find it in.
+
+**What `make test-dist` proves and what it can't.** It boots the artifact's own worker bundle
+under node, on the real `loadBootResource` path, and renders a song — so the resource wiring, the
+synthesized Responses, the concatenation and the asset handoff are genuinely exercised. Two
+node-only substitutions are made and are stated in the test: the worker bundle and the two runtime
+modules are hosted from `file:` rather than `data:`/`blob:` URLs, because emscripten's and the
+loader's `ENVIRONMENT_IS_NODE` branches call `createRequire(import.meta.url)`, which node rejects
+for a data: URL. A browser evaluates neither branch. **Untested without a browser:** the real
+blob-URL `Worker`, `AudioContext` playback, the DOM wiring in `app.js` (the bundle is only
+parse-checked), and any actual GitHub Pages deploy.
+
 ## Conventions
 
 - No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`
   skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (a quick
   no-Docker preview — `make up` is the real nginx-parity host). `make test-engine` → the
   engine-only C# tests (the check that runs on a bare dev host). `make test` → node smoke
-  test. `make fast`/`up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` is a
-  deferred single-file follow-up.
+  test. `make fast`/`up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` →
+  the two handout artifacts (above); `make test-dist` boots the single-file one.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched
-  bundle. `web/` is self-contained (it includes `web/_framework`), so any static server can
-  serve it with the docroot pointed straight at `web/`. `web/_framework` is committed so a
-  clone is testable without the SDK.
+  bundle, and inlining it does not change that: `dist/skafinity.html` needs http too (module
+  scripts and `data:`/`blob:` imports off a `file://` origin). `web/` is self-contained (it
+  includes `web/_framework`), so any static server can serve it with the docroot pointed
+  straight at `web/`. `web/_framework` is committed so a clone is testable without the SDK.
 - Keep `MusicGen.cs` / `VibeCodec.cs` framework-free; web-specific code goes in `Exports.cs`.
 - The house-mix config has ONE canonical copy (`sbox-library/Skafinity/skafinity.config.json`);
   `make`'s `stage` step copies it to `web/config.json`. Edit the canonical and re-`make`, or edit

@@ -28,7 +28,9 @@
 #                     actually runs on a dev host — use it after any engine change.
 #   make serve      → static server rooted at web/ (quick no-Docker preview; `make up` is
 #                     the real, nginx-parity host)
-#   make dist       → (follow-up) single-file bundle; see note below
+#   make dist       → package for handing out: dist/ (a GitHub-Pages-ready static site)
+#                     plus dist/skafinity.html (ONE self-contained file, runtime inlined)
+#   make test-dist  → build dist/ and boot the single file's inlined runtime under node
 #   make clean
 #
 # One-time setup: Docker (for `make up`), or dotnet-sdk-10.0 + `dotnet workload install
@@ -54,7 +56,7 @@ FASTCOMP  = docker compose -f docker/docker-compose.fast.yml
 # are opt-in via `make up`).
 .DEFAULT_GOAL := all
 
-.PHONY: all build dev deploy stage test test-engine test-engine-bless serve dist release clean fast up rebuild down logs ps
+.PHONY: all build dev deploy stage test test-engine test-engine-bless test-dist serve dist release clean fast up rebuild down logs ps
 
 # ── Docker: serve the committed bundle as-is. web/_framework is in the repo, so there is
 # nothing to compile — stock nginx bind-mounts web/ and is up in a second. Same container,
@@ -151,12 +153,46 @@ serve:
 	@echo "serving on http://localhost:$(PORT)/  (docroot web/; Ctrl-C to stop)"
 	python3 -m http.server $(PORT) -d web
 
-# A true single self-contained .html needs the whole .NET runtime + assemblies base64-inlined
-# (multi-MB) — deferred. For now the toy is the served bundle (web/, incl. web/_framework).
+# Two shippable artifacts out of the already-built web/ bundle. Both need web/_framework, so
+# guard on it the way `fast` does rather than assembling a payload that 404s at boot.
+#
+#   dist/            — a GitHub-Pages-ready static site. It is not `cp -r web dist`, and it
+#                      earns its own target for exactly three reasons:
+#                        • .nojekyll — Pages runs Jekyll, which EXCLUDES directories whose name
+#                          starts with an underscore. Without that file `_framework/` is
+#                          silently dropped from the published site and the page dies at boot
+#                          with a 404 on dotnet.js. This is the single trap in deploying it.
+#                        • no *.br/*.gz — a plain static host serves the uncompressed files and
+#                          the duplicates are dead weight.
+#                        • config.json is re-copied from the CANONICAL
+#                          sbox-library/Skafinity/skafinity.config.json, so a hand-edited
+#                          web/config.json can never ship. This is the deploy-path equivalent
+#                          of `stage` (and of what the Dockerfile does for the image).
+#                      Every path in web/ is relative, so a /<repo>/ project-page subpath needs
+#                      no rewriting.
+#   dist/skafinity.html — ONE self-contained file: page, glue and the whole .NET runtime
+#                      inlined. ~10 MB (base64 of a 7 MB runtime). Serve it over http — it is
+#                      NOT a file:// artifact. It rides inside dist/ so the deployed site also
+#                      offers the standalone as a download.
 dist:
-	@echo "dist (single-file inline of the .NET runtime) is not implemented yet — serve the"
-	@echo "bundle with 'make serve'. See PLAN/README for the follow-up."
-	@exit 1
+	@test -f web/_framework/dotnet.js || { \
+		echo "web/_framework is missing — nothing to package." >&2; \
+		echo "Build it with 'make' (local .NET SDK) or 'make up' (Docker)." >&2; exit 1; }
+	rm -rf dist
+	mkdir -p dist
+	cp web/index.html web/app.js web/engine.js web/worker.js web/style.css dist/
+	cp sbox-library/Skafinity/skafinity.config.json dist/config.json
+	mkdir -p dist/_framework
+	find web/_framework -maxdepth 1 -type f ! -name '*.br' ! -name '*.gz' -exec cp {} dist/_framework/ \;
+	touch dist/.nojekyll
+	$(NODE) tools/bundle-single.mjs dist/skafinity.html
+	@echo "dist/ ready ($$(du -sh dist | cut -f1)) — publish it as the Pages branch/folder root."
+
+# Boot the single-file artifact's inlined runtime under node and render a song. Browser-only
+# bits (the blob-URL Worker, AudioContext, the DOM) are out of reach here and say so in the
+# test's own comments; run it after any change to web/*.js or tools/bundle-single.mjs.
+test-dist: dist
+	$(NODE) test/dist-single.mjs
 
 # Package the runtime bundle the web layer loads — engine.js + worker.js + the staged
 # _framework (minus the brotli/gzip duplicates a plain static server doesn't use) — into a
