@@ -1,17 +1,18 @@
-# Render digests — SHA-256 over the interleaved 16-bit PCM of each seed.
+# Render digests — SHA-256 over the interleaved 16-bit PCM of each seed,
+# rendered at 22050 Hz. Changing that rate invalidates every hash below.
 #
 # NOT a cross-commit contract: audio is expected to change when the engine
 # changes. This file is a tripwire for refactors that are supposed to be PURE
 # (a file split, a type extraction) — bless before, run after, expect silence.
 # Re-bless in the same commit as any deliberate audible change:
 #   make test-engine-bless
-0:rotaliate:0 7a1ce76b3df885938c43f820fd628b165a3699e7571a800d89ed26d849fbc144
-0:skafinity:7 7bd03fee37e4f1295ce3e7c37217ed9c50deeb176dd4f1b9f08512a17f0444ab
-1:rotaliate:0 399398e6dbd52226ad138d9a922e9c332aebb51f826f9b86ae05281674be657d
-1:gamah:3 a77d36d4882294fad1d42ae5cd2230ebff208932478c5bca9b9b7fdb6f7a514f
-2:rotaliate:0 4901cd9667f33c3fd017122110a7169b9dcee69ec37fb32c5aeb982b63f206fb
-3:rotaliate:0 f02e187265a93b4225aae8b381794d4fdb0e5a103567b706377a6c1b2d6bb240
-3:doom:11 dc9ab12d8395d2d749e7a9635a4b59934d67bd4b58c447c0bb555932b36118fa
-4:rotaliate:0 44480420b2ebe71cf9b31ed72df099d27ef62c6027924a2322ad307a5ed9031b
-5:rotaliate:0 32418b41bd2bf742cc6cfee05eedbecb7ca775ace9176312da26db001371d5d1
-5:bubblegum:23 ba883d8fc3175ee80be071f18dbbbef3e359439df2dd1299132de9938e2f0c03
+0:rotaliate:0 f7251c5a1e8759a79aced51e14a6b6cb087b5d1f8d9ad283176f0d1922308f93
+0:skafinity:7 c52139455c4e10aa690268322cd62e84bec7ef7af6dd32916f5920fcfbddb685
+1:rotaliate:0 325348ca0ec8adbaf95501c7781656863389fe8d1937c22fd498d2d85b0acbad
+1:gamah:3 d5918f861bce751e94dd7d461452df0b5fdb06aad2d604eeb1d0804e7531d5d4
+2:rotaliate:0 b3c65f0c6cb08e2434706f6156ede4f6ba1a3286681ddfd4def9efd22dd4e5cf
+3:rotaliate:0 3da6675fd44c9ed2041ef0bad59d3c86b7c7351b941c503d6a8b7d4bfa4ecefa
+3:doom:11 acb9a25ba59041385d3b170558017688da56c962dbf617d51a2489488ed3ecbd
+4:rotaliate:0 d164dddbb9f632c3ae1a80dda3a19837dde86c07f9611e3bd6f9416b3a84f0f1
+5:rotaliate:0 563212a2dba34ad8b0e475e34cd1ad3b69653f196cc3cc80a55d728ac837b732
+5:bubblegum:23 0bd96eeaffe317965f1f5f9f51335a328f513334633ccae810ec8d677819dbc5

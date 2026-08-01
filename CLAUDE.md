@@ -153,7 +153,33 @@ It also carries a **render digest** over a 10-seed matrix (`test/engine/digests.
 a tripwire for refactors that are *meant* to be pure, not a golden-audio contract: run
 `make test-engine-bless` before a mechanical change, `make test-engine` after, and expect
 silence. **Any deliberate audible change re-blesses in the same commit** — a digest diff is
-information, never a failure to be argued with.
+information, never a failure to be argued with. The matrix renders at 22.05 kHz
+(`Program.MatrixRate`), so **changing that constant invalidates every recorded hash** — the
+file's header says so too.
+
+**The harness is render-bound, so keep it that way deliberately.** It runs in ~25 s; it took
+8m18s before the work that got it here, and every second of that was synthesis. Four rules keep
+a new check from undoing it:
+
+- **Render at the lowest rate the check can answer at.** Nothing here listens. Determinism, the
+  digest tripwire, "does this knob change the song", the WAV header — none of them get a truer
+  answer at 44.1 kHz, and the rate is a straight multiplier on the cost.
+- **Render once and ask several questions.** One song per genre carries the length, level,
+  clipping and dynamic-range checks. Two checks wanting "a song for genre g" is not a reason to
+  render two.
+- **Fan out over renders, assert on the main thread.** Renders are independent and every `Rng` is
+  per-instance, so the expensive sections build a work list of individual renders and hand it to
+  `Parallel.ForEach`. `Check()` writes shared counters and prints a line, so it must NOT run on a
+  worker — collect numbers in parallel, assert in order afterwards. Fan out per RENDER, not per
+  genre: a genre's measurements are wildly uneven and a per-genre loop idles the machine on the
+  slowest one.
+- **Soloing a voice costs one voice.** The mix mutes by amplitude, so a soloed render still
+  *carries* every other voice's events; `RenderPitchedRange` skips the silent ones and the kit
+  voices return early when `_drumGain` is 0. That is what makes the 40-odd solo renders behind
+  the mix-balance checks affordable — don't reintroduce a path that renders them at zero gain.
+
+The per-section wall clock prints at the end of every run. When the harness gets slow again, that
+table says where, and it has been wrong to guess before.
 
 **Two diagnostics answer "why does this song sound wrong", and both beat arguing by ear:**
 

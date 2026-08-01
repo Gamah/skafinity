@@ -35,41 +35,40 @@ static class Program
 		int si = Array.IndexOf( args, "--seed" );
 		if ( si >= 0 && si + 1 < args.Length ) { Explain( args[si + 1] ); return 0; }
 
-		Banner( "prng + determinism" );
-		DeterminismTests();
+		// Sections run in a list so each one can be timed. The per-section wall clock is printed
+		// at the end: this harness is dominated by rendering, so "which section costs what" is the
+		// first question anyone asks before optimising it, and guessing has been wrong before.
+		var sections = new (string Name, Action Run)[]
+		{
+			( "prng + determinism", DeterminismTests ),
+			( "harmony",            HarmonyTests ),
+			( "time base",          TimingTests ),
+			( "patterns",           PatternTests ),
+			( "melody",             MelodyTests ),
+			( "genre feel",         GenreProfileTests ),
+			( "wired knobs",        WiredKnobTests ),
+			( "structure",          StructureTests ),
+			( "arrangement",        ArrangementTests ),
+			( "vibe codec",         VibeTests ),
+			( "wav container",      WavTests ),
+			( bless ? "render digest (blessing)" : "render digest", () => RenderDigestTests( bless ) ),
+		};
 
-		Banner( "harmony" );
-		HarmonyTests();
+		var timings = new (string Name, double Ms)[sections.Length];
+		var total = System.Diagnostics.Stopwatch.StartNew();
+		for ( int i = 0; i < sections.Length; i++ )
+		{
+			Banner( sections[i].Name );
+			var sw = System.Diagnostics.Stopwatch.StartNew();
+			sections[i].Run();
+			timings[i] = (sections[i].Name, sw.Elapsed.TotalMilliseconds);
+		}
 
-		Banner( "time base" );
-		TimingTests();
-
-		Banner( "patterns" );
-		PatternTests();
-
-		Banner( "melody" );
-		MelodyTests();
-
-		Banner( "genre feel" );
-		GenreProfileTests();
-
-		Banner( "wired knobs" );
-		WiredKnobTests();
-
-		Banner( "structure" );
-		StructureTests();
-
-		Banner( "arrangement" );
-		ArrangementTests();
-
-		Banner( "vibe codec" );
-		VibeTests();
-
-		Banner( "wav container" );
-		WavTests();
-
-		Banner( bless ? "render digest (blessing)" : "render digest" );
-		RenderDigestTests( bless );
+		Console.WriteLine();
+		Console.WriteLine( "── time ──" );
+		foreach ( var (name, ms) in timings )
+			Console.WriteLine( $"  {ms,8:0} ms  {name}" );
+		Console.WriteLine( $"  {total.Elapsed.TotalMilliseconds,8:0} ms  TOTAL" );
 
 		Console.WriteLine();
 		Console.WriteLine( _failed == 0
@@ -123,18 +122,17 @@ static class Program
 		Check( "Rng.Int(n) stays in [0,n)", inRange );
 		Check( "Rng.Int(0) is 0", new Rng( 1u ).Int( 0 ) == 0 );
 
-		// Same tag+cfg ⇒ same song, twice in a row, in the same process.
-		foreach ( var (vibe, tag, n) in Matrix )
-		{
-			var s1 = Render( vibe, tag, n );
-			var s2 = Render( vibe, tag, n );
-			Check( $"song {Seed( vibe, tag, n )} renders identically twice", SameSamples( s1, s2 ) );
-		}
+		// Same tag+cfg ⇒ same song, twice in a row, in the same process. Both renders of each
+		// seed come from the shared matrix pass, which the digest section reads too.
+		foreach ( var (seed, first, second) in MatrixDigests() )
+			if ( second != null )
+				Check( $"song {seed} renders identically twice", first == second );
 
-		// Different n ⇒ a different song (the infinite sequence must actually advance).
-		var x = Render( "0", "rotaliate", 0 );
-		var y = Render( "0", "rotaliate", 1 );
-		Check( "stepping n produces a different song", !SameSamples( x, y ) );
+		// Different n ⇒ a different song (the infinite sequence must actually advance). 0:rotaliate:0
+		// is in the matrix, so only its neighbour needs rendering.
+		var stepped = Digest( Render( "0", "rotaliate", 1 ) );
+		Check( "stepping n produces a different song",
+			MatrixDigest( "0:rotaliate:0" ) != stepped );
 	}
 
 	static void HarmonyTests()
@@ -559,42 +557,55 @@ static class Program
 	/// the knob end to end and the song must come out different.</summary>
 	static void WiredKnobTests()
 	{
-		Check( "the HORN SECTION knob changes the song",
-			!SameSamples( Knob( 0, c => c.HornSectionChance = 0f ),
-				Knob( 0, c => c.HornSectionChance = 1f ) ) );
-		Check( "the ORGAN BUBBLE knob changes the song",
-			!SameSamples( Knob( 0, c => c.OrganBubbleChance = 0f ),
-				Knob( 0, c => c.OrganBubbleChance = 1f ) ) );
+		// Every setting below is rendered once, all of them at the same time, and the comparisons
+		// are made afterwards. Rendered one at a time this was the most expensive section in the
+		// harness — and it rendered three of these settings twice over, because the pair checks
+		// and the per-instrument sweep each asked for their own copy.
+		int hornOff = 0, hornOn = 1, bubbleOff = 2, bubbleOn = 3;
+		int trumpet = 4, trombone = 7, byWeight = 8, slow = 9, quick = 10;
+		var settings = new Action<MusicGen.Config>[]
+		{
+			c => c.HornSectionChance = 0f,
+			c => c.HornSectionChance = 1f,
+			c => c.OrganBubbleChance = 0f,
+			c => c.OrganBubbleChance = 1f,
+			c => c.ForceInstrument = 0,
+			c => c.ForceInstrument = 1,
+			c => c.ForceInstrument = 2,
+			c => c.ForceInstrument = 3,
+			c =>
+			{
+				c.ForceInstrument = -1;
+				c.TrumpetWeight = c.SaxWeight = c.OrganWeight = 0f;
+				c.TromboneWeight = 1f;
+			},
+			c => c.TempoScale = 0.70f,
+			c => c.TempoScale = 1.45f,
+		};
+		var song = new short[settings.Length][];
+		System.Threading.Tasks.Parallel.For( 0, settings.Length,
+			i => song[i] = Knob( i >= slow ? 1 : 0, settings[i] ) );
+
+		Check( "the HORN SECTION knob changes the song", !SameSamples( song[hornOff], song[hornOn] ) );
+		Check( "the ORGAN BUBBLE knob changes the song", !SameSamples( song[bubbleOff], song[bubbleOn] ) );
 
 		// ForceInstrument and the four *Weight knobs were inert while the lead was hardcoded to
 		// the trumpet, which also meant the finished Sax/Organ/Trombone voices never played.
 		Check( "forcing a lead instrument changes the song",
-			!SameSamples( Knob( 0, c => c.ForceInstrument = 0 ),
-				Knob( 0, c => c.ForceInstrument = 3 ) ) );
+			!SameSamples( song[trumpet], song[trombone] ) );
 		bool everyLeadPlays = true;
-		for ( int inst = 0; inst < 4; inst++ )
-		{
-			var s = Knob( 0, c => c.ForceInstrument = inst );
-			everyLeadPlays &= s != null && s.Length > 0;
-		}
+		for ( int inst = trumpet; inst <= trombone; inst++ )
+			everyLeadPlays &= song[inst] != null && song[inst].Length > 0;
 		Check( "every lead instrument renders", everyLeadPlays );
 
 		// The lead weights must be reachable too — zeroing every one but the trombone has to
 		// give the same song as forcing the trombone outright.
 		Check( "the lead weights pick the same instrument as forcing it",
-			SameSamples( Knob( 0, c => c.ForceInstrument = 3 ),
-				Knob( 0, c =>
-				{
-					c.ForceInstrument = -1;
-					c.TrumpetWeight = c.SaxWeight = c.OrganWeight = 0f;
-					c.TromboneWeight = 1f;
-				} ) ) );
+			SameSamples( song[trombone], song[byWeight] ) );
 
 		// The TEMPO knob is the replacement for the retired absolute band: slower must mean a
 		// longer song, and it must be the same song.
-		var slow = Knob( 1, c => c.TempoScale = 0.70f );
-		var quick = Knob( 1, c => c.TempoScale = 1.45f );
-		Check( "the TEMPO knob changes how long a song runs", slow.Length > quick.Length );
+		Check( "the TEMPO knob changes how long a song runs", song[slow].Length > song[quick].Length );
 	}
 
 	/// <summary>One short song, rendered at a low sample rate (these checks look at whether the
@@ -942,26 +953,47 @@ static class Program
 	/// a song that came out silent, clipped, or the wrong length entirely.</summary>
 	static void ArrangementTests()
 	{
-		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-		{
-			var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
-			var pcm = MusicGen.GenerateSamples( $"arrange:{g}", cfg, out int sr );
-			double seconds = pcm.Length / (double)(sr * MusicGen.Channels);
-			Check( $"genre {g} renders a song of plausible length", seconds > 30 && seconds < 300,
-				$"{seconds:0.0}s" );
+		// This is the expensive section: every measurement below is a rendered song, and there are
+		// four of them per genre. The genres are independent and every Rng is per-instance, so the
+		// RENDERING fans out across the machine and the ASSERTIONS run after it, in genre order —
+		// Check() writes shared counters and one interleaved line of output per call, so it must
+		// not run on a worker.
+		// The work is listed one render at a time rather than one genre at a time: a genre's four
+		// measurements are 10 renders of very different lengths, so fanning out per genre leaves
+		// the machine waiting on whichever genre drew the slowest tempo.
+		int genres = VibeCodec.GenreCount;
+		var arr = new Arrangement[genres];
+		var drift = new List<(string Name, double Mean, double BadPct)>[genres];
+		var solo = new double[genres][];
+		double mutedRms = 0;
 
-			double sum = 0; int loud = 0, clipped = 0;
-			foreach ( var s in pcm )
+		var work = new List<Action>();
+		for ( int i = 0; i < genres; i++ )
+		{
+			int g = i;
+			solo[g] = new double[BalanceSolos.Length];
+			work.Add( () => arr[g] = MeasureArrangement( g ) );
+			work.Add( () => drift[g] = MeasureGridDrift( g ) );
+			for ( int j = 0; j < BalanceSolos.Length; j++ )
 			{
-				double v = s / 32768.0;
-				sum += v * v;
-				if ( Math.Abs( v ) > 0.05 ) loud++;
-				if ( Math.Abs( v ) > 0.999 ) clipped++;
+				int v = j;
+				work.Add( () => solo[g][v] = SoloRms( g, BalanceSolos[v] ) );
 			}
-			double rms = Math.Sqrt( sum / Math.Max( 1, pcm.Length ) );
-			Check( $"genre {g} is not silent", rms > 0.01, $"rms {rms:0.0000}" );
-			Check( $"genre {g} plays for most of its length", loud > pcm.Length / 4 );
-			Check( $"genre {g} is not clipped to a square wave", clipped < pcm.Length / 100 );
+		}
+		work.Add( () => mutedRms = SoloRms( 0, _ => { } ) );
+		System.Threading.Tasks.Parallel.ForEach( work, w => w() );
+
+		var mix = new Balance[genres];
+		for ( int g = 0; g < genres; g++ ) mix[g] = Balance.From( solo[g] );
+
+		for ( int g = 0; g < genres; g++ )
+		{
+			var a = arr[g];
+			Check( $"genre {g} renders a song of plausible length", a.Seconds > 30 && a.Seconds < 300,
+				$"{a.Seconds:0.0}s" );
+			Check( $"genre {g} is not silent", a.Rms > 0.01, $"rms {a.Rms:0.0000}" );
+			Check( $"genre {g} plays for most of its length", a.Loud > a.Samples / 4 );
+			Check( $"genre {g} is not clipped to a square wave", a.Clipped < a.Samples / 100 );
 		}
 
 		// ── are the parts playing together? ──
@@ -973,31 +1005,10 @@ static class Program
 		// looking fine at metal's. Double-tracking offsets the second take ~9 ms by design, so the
 		// bar is set above that and well under a 32nd note.
 		// Diagnose failures with `dotnet run --project test/engine -- --grid [genre]`.
-		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var (name, solo) in Voices )
-			{
-				if ( name == "DRUMS" ) continue;             // written into the buffer, not events
-				var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
-				cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
-					cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
-				solo( cfg );
-				var mg = MusicGen.BeginPlan( $"grid:{g}", cfg );
-				var (starts, _) = mg.Onsets();
-				if ( starts.Length < 20 ) continue;          // a voice this genre barely plays
-				var grid = mg.GridSamples();
-
-				double sum = 0; int n = 0, bad = 0;
-				foreach ( var st in starts )
-				{
-					int i = NearestBar( grid, st );
-					double d = Math.Abs( st - grid[i] ) / 22.05;
-					if ( i + 1 < grid.Length ) d = Math.Min( d, Math.Abs( st - grid[i + 1] ) / 22.05 );
-					sum += d; n++;
-					if ( d > 25 ) bad++;
-				}
-				Check( $"genre {g} {name} plays on the grid", sum / n < 15 && bad * 100.0 / n < 5,
-					$"mean {sum / n:0.0} ms, {bad * 100.0 / n:0.0}% over 25 ms" );
-			}
+		for ( int g = 0; g < genres; g++ )
+			foreach ( var (name, mean, badPct) in drift[g] )
+				Check( $"genre {g} {name} plays on the grid", mean < 15 && badPct < 5,
+					$"mean {mean:0.0} ms, {badPct:0.0}% over 25 ms" );
 
 		// ── the balance of the mix ──
 		// The comp is the BED. It measured 5 dB over the kit after the figures were rewritten —
@@ -1005,14 +1016,9 @@ static class Program
 		// backing is what makes a repeated figure sound like the whole song. Measured pre-master
 		// (see MusicGen.RawLevels), because the master bus normalizes every solo to one peak.
 		// Retune with `dotnet run --project test/engine -- --levels`.
-		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		for ( int g = 0; g < genres; g++ )
 		{
-			double drums = SoloRms( g, c => c.DrumVol = 1f );
-			double comp = Math.Max(
-				Math.Max( SoloRms( g, c => c.RhythmGtrVol = 1f ), SoloRms( g, c => c.KeysVol = 1f ) ),
-				SoloRms( g, c => c.SkankVol = 1f ) );
-			double lead = Math.Max( SoloRms( g, c => c.LeadGtrVol = 1f ), SoloRms( g, c => c.MelodyVol = 1f ) );
-			double bass = SoloRms( g, c => c.BassVol = 1f );
+			double drums = mix[g].Drums, comp = mix[g].Comp, lead = mix[g].Lead, bass = mix[g].Bass;
 
 			Check( $"genre {g} comp sits under the kit", comp < drums * 0.85,
 				$"comp {Db( comp, drums ):0.0} dB" );
@@ -1025,32 +1031,17 @@ static class Program
 
 		// Muting everything must give silence. The ending chord used to carry a hardcoded level,
 		// so a listener with every instrument at zero still heard a chord at the end of the song.
-		Check( "muting every voice renders silence", SoloRms( 0, _ => { } ) < 0.0005,
-			$"rms {SoloRms( 0, _ => { } ):0.00000}" );
+		Check( "muting every voice renders silence", mutedRms < 0.0005, $"rms {mutedRms:0.00000}" );
 
 		// ── dynamics ──
 		// Loudness used to be a per-patch constant with two ad-hoc exceptions, so a song was as
 		// flat at the end as at the start. Velocity + the section energy contour must reach the
 		// OUTPUT: measure per-second RMS and expect a real spread between the song's quietest
 		// playing second and its loudest.
-		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-		{
-			var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
-			var pcm = MusicGen.GenerateSamples( $"dyn:{g}", cfg, out int sr );
-			int win = sr * MusicGen.Channels;                 // one second of interleaved frames
-			double quiet = double.MaxValue, loud = 0;
-			// Skip the last three seconds: the ring-out tail is silence by design.
-			for ( int i = 0; i + win < pcm.Length - 3 * win; i += win )
-			{
-				double sum = 0;
-				for ( int k = 0; k < win; k++ ) { double v = pcm[i + k] / 32768.0; sum += v * v; }
-				double rms = Math.Sqrt( sum / win );
-				if ( rms < 0.005 ) continue;                  // an empty bar is not a dynamic
-				quiet = Math.Min( quiet, rms ); loud = Math.Max( loud, rms );
-			}
-			Check( $"genre {g} has real dynamics across the song", loud > quiet * 1.35,
-				$"quiet {quiet:0.000} loud {loud:0.000}" );
-		}
+		for ( int g = 0; g < genres; g++ )
+			Check( $"genre {g} has real dynamics across the song",
+				arr[g].Loudest > arr[g].Quietest * 1.35,
+				$"quiet {arr[g].Quietest:0.000} loud {arr[g].Loudest:0.000}" );
 
 		// The ending ritard: the last bars run slower, so the same structure has to render LONGER
 		// than a naive constant-tempo estimate — and the tail has to outlast the final chord.
@@ -1059,6 +1050,98 @@ static class Program
 		for ( int i = end.Length - 2; i >= 0 && Math.Abs( end[i] / 32768.0 ) < 0.001; i -= 2 ) silentTail++;
 		Check( "the song decays into its reserved tail rather than being cut off",
 			silentTail > 0 && silentTail < esr * 4, $"{silentTail} silent frames" );
+	}
+
+	// ── the measurements behind the arrangement checks ─────────────────────────────────────
+	// Each one renders and reduces to numbers, so it can run on a worker thread. None of them
+	// calls Check(): the assertions are made by the caller, in genre order.
+
+	readonly record struct Arrangement( double Seconds, double Rms, int Loud, int Clipped, int Samples,
+		double Quietest, double Loudest );
+	/// <summary>The pre-master levels the balance checks compare. The comp bed and the lead are
+	/// each whichever of their candidate voices this genre actually plays loudest.</summary>
+	readonly record struct Balance( double Drums, double Comp, double Lead, double Bass )
+	{
+		public static Balance From( double[] s ) => new( s[0],
+			Math.Max( Math.Max( s[1], s[2] ), s[3] ), Math.Max( s[4], s[5] ), s[6] );
+	}
+
+	/// <summary>The voices <see cref="Balance"/> is built from, in the order it reads them.</summary>
+	static readonly Action<MusicGen.Config>[] BalanceSolos =
+	{
+		c => c.DrumVol = 1f,
+		c => c.RhythmGtrVol = 1f,
+		c => c.KeysVol = 1f,
+		c => c.SkankVol = 1f,
+		c => c.LeadGtrVol = 1f,
+		c => c.MelodyVol = 1f,
+		c => c.BassVol = 1f,
+	};
+
+	/// <summary>One whole song for a genre, reduced to length, level, clipping and its dynamic
+	/// range. Length/level and dynamics used to render a song each, off two different tags; they
+	/// are questions about the same thing, so they ask them of the same song.</summary>
+	static Arrangement MeasureArrangement( int g )
+	{
+		var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
+		var pcm = MusicGen.GenerateSamples( $"arrange:{g}", cfg, out int sr );
+
+		double sum = 0; int loud = 0, clipped = 0;
+		foreach ( var s in pcm )
+		{
+			double v = s / 32768.0;
+			sum += v * v;
+			if ( Math.Abs( v ) > 0.05 ) loud++;
+			if ( Math.Abs( v ) > 0.999 ) clipped++;
+		}
+
+		int win = sr * MusicGen.Channels;                 // one second of interleaved frames
+		double quietest = double.MaxValue, loudest = 0;
+		// Skip the last three seconds: the ring-out tail is silence by design.
+		for ( int i = 0; i + win < pcm.Length - 3 * win; i += win )
+		{
+			double w = 0;
+			for ( int k = 0; k < win; k++ ) { double v = pcm[i + k] / 32768.0; w += v * v; }
+			double rms = Math.Sqrt( w / win );
+			if ( rms < 0.005 ) continue;                  // an empty bar is not a dynamic
+			quietest = Math.Min( quietest, rms ); loudest = Math.Max( loudest, rms );
+		}
+
+		return new Arrangement( pcm.Length / (double)(sr * MusicGen.Channels),
+			Math.Sqrt( sum / Math.Max( 1, pcm.Length ) ), loud, clipped, pcm.Length,
+			quietest, loudest );
+	}
+
+	/// <summary>Each voice's onsets measured against the song's own tick grid, in ms. A voice this
+	/// genre barely plays is left out of the list rather than reported. Composition only — no audio
+	/// is synthesised, because onsets are decided by the composer.</summary>
+	static List<(string Name, double Mean, double BadPct)> MeasureGridDrift( int g )
+	{
+		var rows = new List<(string, double, double)>();
+		foreach ( var (name, solo) in Voices )
+		{
+			if ( name == "DRUMS" ) continue;             // written into the buffer, not events
+			var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
+			cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
+				cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
+			solo( cfg );
+			var mg = MusicGen.BeginPlan( $"grid:{g}", cfg );
+			var (starts, _) = mg.Onsets();
+			if ( starts.Length < 20 ) continue;
+			var grid = mg.GridSamples();
+
+			double sum = 0; int n = 0, bad = 0;
+			foreach ( var st in starts )
+			{
+				int i = NearestBar( grid, st );
+				double d = Math.Abs( st - grid[i] ) / 22.05;
+				if ( i + 1 < grid.Length ) d = Math.Min( d, Math.Abs( st - grid[i + 1] ) / 22.05 );
+				sum += d; n++;
+				if ( d > 25 ) bad++;
+			}
+			rows.Add( (name, sum / n, bad * 100.0 / n) );
+		}
+		return rows;
 	}
 
 	// ── the mix balancing tool (`--levels`) ────────────────────────────────────────────────
@@ -1221,7 +1304,9 @@ static class Program
 
 	static void WavTests()
 	{
-		var wav = MusicGen.Generate( "rotaliate" );
+		// These are container checks — they read the 44-byte header, not the audio — so the song
+		// behind them is rendered at the lowest rate that still produces one.
+		var wav = MusicGen.Generate( "rotaliate", new MusicGen.Config { SampleRate = 8000 } );
 		Check( "WAV is produced", wav != null && wav.Length > 44 );
 		Check( "WAV starts RIFF", Ascii( wav, 0, 4 ) == "RIFF" );
 		Check( "WAV is a WAVE", Ascii( wav, 8, 4 ) == "WAVE" );
@@ -1248,10 +1333,8 @@ static class Program
 			}
 
 		var fresh = new List<string>();
-		foreach ( var (vibe, tag, n) in Matrix )
+		foreach ( var (seed, digest, _) in MatrixDigests() )
 		{
-			var seed = Seed( vibe, tag, n );
-			var digest = Digest( Render( vibe, tag, n ) );
 			fresh.Add( $"{seed} {digest}" );
 
 			if ( bless ) { Console.WriteLine( $"  bless {seed} → {digest}" ); continue; }
@@ -1266,7 +1349,8 @@ static class Program
 		if ( !bless ) return;
 
 		var sb = new StringBuilder();
-		sb.AppendLine( "# Render digests — SHA-256 over the interleaved 16-bit PCM of each seed." );
+		sb.AppendLine( "# Render digests — SHA-256 over the interleaved 16-bit PCM of each seed," );
+		sb.AppendLine( $"# rendered at {MatrixRate} Hz. Changing that rate invalidates every hash below." );
 		sb.AppendLine( "#" );
 		sb.AppendLine( "# NOT a cross-commit contract: audio is expected to change when the engine" );
 		sb.AppendLine( "# changes. This file is a tripwire for refactors that are supposed to be PURE" );
@@ -1281,12 +1365,66 @@ static class Program
 	// ── plumbing ─────────────────────────────────────────────────────────────────────────
 
 	/// <summary>Render one song exactly the way the players do: default Config, vibe overlaid,
-	/// PRNG seeded on <c>"{tag}:{n}"</c>.</summary>
+	/// PRNG seeded on <c>"{tag}:{n}"</c> — but at <see cref="MatrixRate"/> rather than the
+	/// player's rate, which is the single biggest cost in this harness and buys nothing here.
+	/// Every check over these renders (determinism, the digest tripwire) is about whether two
+	/// runs of the same code agree, and that is as true at 22.05 kHz as at 44.1.</summary>
 	static short[] Render( string vibe, string tag, int n )
 	{
-		var cfg = new MusicGen.Config();
+		var cfg = new MusicGen.Config { SampleRate = MatrixRate };
 		VibeCodec.Apply( vibe, cfg );
 		return MusicGen.GenerateSamples( $"{tag}:{n}", cfg, out _ );
+	}
+
+	const int MatrixRate = 22050;
+
+	/// <summary>Every Nth matrix seed is rendered twice for the determinism check — a stride rather
+	/// than a prefix so the sample spreads across genres as the matrix grows. What that check is
+	/// really asking is whether the engine carries hidden state between songs in one process: a
+	/// property of the engine, not of a seed, so a few songs settle it. The recorded digests still
+	/// cover all ten, across runs.</summary>
+	const int DoubleRendered = 4;
+
+	static (string Seed, string First, string Second)[] _matrix;
+
+	/// <summary>Every matrix seed rendered TWICE, in parallel, hashed. Both the determinism check
+	/// (the two renders agree) and the digest tripwire (the first matches the recorded hash) read
+	/// this one pass — the harness used to render the matrix three times over, serially, at full
+	/// rate. Renders are independent and every Rng is per-instance, so the only ordering that
+	/// matters is the result array's, which is by index.</summary>
+	static (string Seed, string First, string Second)[] MatrixDigests()
+	{
+		if ( _matrix != null ) return _matrix;
+		// One task per RENDER, not one per seed: the seeds that get rendered twice are twice the
+		// work, and a per-seed loop would leave half the machine idle waiting for them.
+		var jobs = new List<(int Row, bool Second)>();
+		for ( int i = 0; i < Matrix.Length; i++ )
+		{
+			jobs.Add( (i, false) );
+			if ( i % DoubleRendered == 0 ) jobs.Add( (i, true) );
+		}
+		var first = new string[Matrix.Length];
+		var second = new string[Matrix.Length];
+		System.Threading.Tasks.Parallel.ForEach( jobs, j =>
+		{
+			var (vibe, tag, n) = Matrix[j.Row];
+			var digest = Digest( Render( vibe, tag, n ) );
+			if ( j.Second ) second[j.Row] = digest; else first[j.Row] = digest;
+		} );
+
+		var rows = new (string, string, string)[Matrix.Length];
+		for ( int i = 0; i < Matrix.Length; i++ )
+		{
+			var (vibe, tag, n) = Matrix[i];
+			rows[i] = (Seed( vibe, tag, n ), first[i], second[i]);
+		}
+		return _matrix = rows;
+	}
+
+	static string MatrixDigest( string seed )
+	{
+		foreach ( var row in MatrixDigests() ) if ( row.Seed == seed ) return row.First;
+		throw new InvalidOperationException( $"{seed} is not in the matrix" );
 	}
 
 	static string Seed( string vibe, string tag, int n ) => $"{vibe}:{tag}:{n}";

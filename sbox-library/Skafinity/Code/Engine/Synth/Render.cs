@@ -28,6 +28,11 @@ public sealed partial class MusicGen
 		for ( int k = 0; k < events.Count; k++ )
 		{
 			var ev = events[k];
+			// A silent note sums zero into the buffer, so synthesising it is pure waste. This is
+			// the same "audible" test Onsets() applies, and it is what makes soloing one voice
+			// cost one voice: the mix mutes by amplitude, so a soloed render still CARRIES every
+			// other voice's events and used to render all of them at Amp 0.
+			if ( ev.P.Amp <= 0f ) continue;
 			int end = Math.Min( _bufL.Length, ev.Start + ev.Dur );
 			if ( end <= from || ev.Start >= to ) continue; // no overlap with this window
 			RenderEvent( ev, from, to, ph, inc );
@@ -67,6 +72,19 @@ public sealed partial class MusicGen
 		int relStart = dur - rel;
 		// Expression windows (samples): vibrato holds off then ramps in; the scoop is a quick
 		// attack gesture. Kept fixed/absolute so a long held note locks on pitch after them.
+		// The SVF coefficient only moves while the cutoff envelope does. Without one it is a
+		// constant, so it is computed once here instead of a Sin() every sample — the same value,
+		// not an approximation of it.
+		bool cutMoves = p.CutEnv > 0f;
+		float fixedF = cutMoves ? 0f
+			: (float)(2 * Math.Sin( Math.PI * Math.Min( p.Cutoff, _sr * 0.16f ) / _sr ));
+		// Both envelopes decay at the same rate, so both are walked as a running multiply rather
+		// than an Exp() per sample per envelope per note — the inner loop's largest single cost.
+		// The accumulators are double: over the ~10^6 samples of the longest note that is a
+		// relative drift on the order of 10^-13, which is below the 16-bit output's last bit.
+		double decStep = Math.Exp( -1.0 / decSamp );
+		double ampDecay = 1.0;   // exp( -(i - atk) / decSamp ), advanced once past the attack
+		double cutDecay = 1.0;   // exp( -i / decSamp ), advanced from the note's start
 		int vibDelay = (int)(0.18f * _sr);
 		int vibRamp = Math.Max( 1, (int)(0.16f * _sr) );
 		int scoopWin = Math.Max( 1, (int)(0.16f * _sr) );
@@ -74,12 +92,12 @@ public sealed partial class MusicGen
 		{
 			float env;
 			if ( i < atk ) env = (float)i / atk;
-			else if ( p.Sustained )
+			else
 			{
-				float d = (float)Math.Exp( -(i - atk) / decSamp );
-				env = p.Sustain + (1f - p.Sustain) * d;
+				float d = (float)ampDecay;
+				env = p.Sustained ? p.Sustain + (1f - p.Sustain) * d : d;
+				ampDecay *= decStep;
 			}
-			else env = (float)Math.Exp( -(i - atk) / decSamp );
 			if ( i >= relStart ) env *= Math.Max( 0f, (float)(dur - i) / rel );
 			if ( env < 0.0006f && i > atk && !p.Sustained ) break;
 
@@ -127,8 +145,13 @@ public sealed partial class MusicGen
 
 			// resonant low-pass (Chamberlin SVF) with cutoff envelope.
 			// Clamp to ~sr/6 to keep the SVF stable.
-			float cut = p.Cutoff + (p.CutEnv > 0f ? p.CutEnv * (float)Math.Exp( -i / decSamp ) : 0f);
-			float f = (float)(2 * Math.Sin( Math.PI * Math.Min( cut, _sr * 0.16f ) / _sr ));
+			float f = fixedF;
+			if ( cutMoves )
+			{
+				float cut = p.Cutoff + p.CutEnv * (float)cutDecay;
+				cutDecay *= decStep;
+				f = (float)(2 * Math.Sin( Math.PI * Math.Min( cut, _sr * 0.16f ) / _sr ));
+			}
 			float high = s - low - reso * band;
 			band += f * high;
 			low += f * band;
