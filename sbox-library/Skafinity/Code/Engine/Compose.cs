@@ -151,6 +151,13 @@ public sealed partial class MusicGen
 	/// <summary>How much slower the song's final bars run than its nominal tempo.</summary>
 	const double RitardAmount = 0.22;
 
+	/// <summary>Which chord of the progression bar <paramref name="bar"/> of a section sits on.
+	/// One definition, because the tune has to be able to ask the same question — a melody drawn
+	/// against the changes only stays consonant if it is sung over the changes it was drawn for.
+	/// </summary>
+	internal int ChordIndexAt( in Part part, int bar )
+		=> (bar / _chordBars) % _prog.Length;
+
 	/// <summary>Length of a section in ticks, honouring any anomalous (short) bars.</summary>
 	internal static int SectionTicks( in Part p, int beatsPerBar )
 	{
@@ -262,12 +269,11 @@ public sealed partial class MusicGen
 		_sectionType = part.Type;
 
 		// Metric displacement, and WHO moves. Mode 0 is the design: the chordal band shifts against
-		// a kit and a melody that stay put, which is the dissonance. The other two are the
-		// listening experiment behind it — a 16th cap (a push rather than a separation), and moving
-		// the melody with the comp (one band displaced, no split at all).
-		int cap = Math.Clamp( _c.DisplaceMode, 0, 2 ) == 1 ? Timing.TicksPerEighth / 2 : int.MaxValue;
-		_displace = Math.Sign( part.Displace ) * Math.Min( Math.Abs( part.Displace ), cap );
-		_melodyDisplace = Math.Clamp( _c.DisplaceMode, 0, 2 ) == 2 ? _displace : 0;
+		// a kit and a melody that stay put, which is the dissonance. The other two are the two
+		// ways of not having the split — no displacement at all, or the whole band moving together.
+		int mode = Math.Clamp( _c.DisplaceMode, 0, 2 );
+		_displace = mode == 1 ? 0 : part.Displace;
+		_melodyDisplace = mode == 2 ? _displace : 0;
 
 		bool isIntro = part.Type == Section.Intro;
 		bool isEnding = part.Type == Section.Ending;
@@ -313,8 +319,8 @@ public sealed partial class MusicGen
 			// nextChord is the NEXT BAR's chord, not the next slot's: with 2 bars/chord the first
 			// of the pair does not change harmony, and a bass approach note walking into a chord
 			// that is still a bar away just lands wrong.
-			int chord = (bar / _chordBars) % _prog.Length;
-			int nextChord = ((bar + 1) / _chordBars) % _prog.Length;
+			int chord = ChordIndexAt( part, bar );
+			int nextChord = ChordIndexAt( part, bar + 1 );
 
 			// The ending lands on a held tonic chord that rings out — the band stops on the
 			// "one", it doesn't roll forward as if looping. The bar before it fills to lead in.

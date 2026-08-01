@@ -151,6 +151,35 @@ public sealed partial class MusicGen
 	/// The tick grid, not the sixteenth grid: 48 ticks to the beat is what makes 8ths, 16ths and
 	/// both triplet rates exact (see Timing), so a triplet ornament is ON the grid and a
 	/// sixteenth-only ruler would flag it as drift.</summary>
+	/// <summary>The genre this plan was composed for (diagnostics).</summary>
+	internal int Genre => _genre;
+
+	/// <summary>Every audible note as (sample start, frequency), in composition order. The
+	/// per-voice score behind the <c>--score</c> diagnostic: solo a voice, read what it actually
+	/// played and where. Double-tracking emits two takes per note, so a caller that wants NOTES
+	/// rather than takes de-duplicates on (start, freq).</summary>
+	internal (int Start, float Freq)[] AudibleNotes()
+	{
+		var list = new List<(int, float)>();
+		foreach ( var e in _events ) if ( e.P.Amp > 0f ) list.Add( (e.Start, e.Freq) );
+		return list.ToArray();
+	}
+
+	/// <summary>First tick of each bar in the song — the ruler the score diagnostic reads
+	/// against, and the one place the anomalous-measure bar lengths are honoured.</summary>
+	internal int[] BarTickLines()
+	{
+		var bars = new List<int>();
+		int tick = 0;
+		foreach ( var part in BuildStructure( _genre ) )
+			for ( int bar = 0; bar < part.Bars; bar++ )
+			{
+				bars.Add( tick );
+				tick += BarBeats( part, bar, _time.BeatsPerBar ) * Timing.TicksPerBeat;
+			}
+		return bars.ToArray();
+	}
+
 	internal int[] GridSamples()
 	{
 		var grid = new List<int>();

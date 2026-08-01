@@ -150,7 +150,7 @@ public static class VibeCodec
 		// are: it must not ride in a shareable seed. Discrete, so it carries Choices and both hosts
 		// render it as a dropdown rather than a slider.
 		F( "DisplaceMode", 0f, 2f, true, c => c.DisplaceMode, ( c, v ) => c.DisplaceMode = (int)v,
-			choices: new[] { "COMP ONLY", "COMP, 16TH CAP", "WHOLE BAND" } ),
+			choices: new[] { "COMP ONLY", "OFF", "WHOLE BAND" } ),
 		F( "KickBalance", 0f, 2f, false, c => c.KickBalance, ( c, v ) => c.KickBalance = v ),
 		F( "SnareBalance", 0f, 2f, false, c => c.SnareBalance, ( c, v ) => c.SnareBalance = v ),
 		F( "TomBalance", 0f, 2f, false, c => c.TomBalance, ( c, v ) => c.TomBalance = v ),

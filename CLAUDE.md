@@ -181,7 +181,7 @@ a new check from undoing it:
 The per-section wall clock prints at the end of every run. When the harness gets slow again, that
 table says where, and it has been wrong to guess before.
 
-**Two diagnostics answer "why does this song sound wrong", and both beat arguing by ear:**
+**Three diagnostics answer "why does this song sound wrong", and all of them beat arguing by ear:**
 
 - `-- --seed vibe:tag:n` prints what the composer decided for that seed: the decoded knobs, the
   tempo and swing (flagging a shuffle), key, changes, voicing, groove, figure lengths, tune
@@ -192,6 +192,12 @@ table says where, and it has been wrong to guess before.
   5 ms at metal tempo and 75 ms at country's, i.e. a guitar audibly out of time. Anything physical
   rather than musical (a strum spread, the kit's push/lay-back) belongs in milliseconds/samples;
   the suite asserts every voice stays on the grid.
+- `-- --score vibe:tag:n [fromBar] [toBar]` prints the SCORE: every voice's onsets over a range of
+  bars, at `bar.beat`, with their MIDI pitches and the section + chord each bar is on. **A
+  listening note is always about a moment** ("it goes wrong on the 48th beat"), and the other two
+  answer whole-song questions — this is the one that reads that moment. It found the pre-chorus
+  displacement by putting the guitar at 1.25/1.75/2.25 next to a bass and a lead at 1.00/2.00.
+  Double-tracking emits two takes ~9 ms apart, so adjacent near-identical rows are one note.
 
 **Balancing the mix is a measurement, not a guess.** `dotnet run --project test/engine -c Release
 -- --levels` renders every genre with one voice soloed and prints its level in dB relative to that
@@ -370,8 +376,11 @@ value rather than six genres × five trims of JSON. Voices apply it through `Mix
 
 **`DisplaceMode` is not a level either — it is a listening toggle.** It says WHO a section's
 metric displacement moves: `0` the comp alone (the design — the chordal band shifts against a kit
-and a melody that stay put), `1` the comp capped at a 16th (a push rather than a separation), `2`
-the whole band including the melody and the horns. It is config-only for the same reason the
+and a melody that stay put), `1` off (every voice on the grid), `2` the whole band including the
+melody and the horns. **The three must be three audibly different renders** or the toggle answers
+nothing — the first attempt offered "cap it at a 16th", which was a no-op, because rock, metal and
+pop displace by `TicksPerEighth/2` and that IS a 16th; only ska (a full eighth) ever moved. It is
+config-only for the same reason the
 balances are — a shared link must not depend on a debug switch — and it is the one advanced field
 with `Choices`, so both hosts render it as a dropdown. The web toy puts it next to the genre
 selector and persists the choice locally; changing it drops the rendered-PCM cache **and** the

@@ -34,6 +34,14 @@ static class Program
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }
 		int si = Array.IndexOf( args, "--seed" );
 		if ( si >= 0 && si + 1 < args.Length ) { Explain( args[si + 1] ); return 0; }
+		int ci = Array.IndexOf( args, "--score" );
+		if ( ci >= 0 && ci + 1 < args.Length )
+		{
+			int from = ci + 2 < args.Length && int.TryParse( args[ci + 2], out var f0 ) ? f0 : 1;
+			int to = ci + 3 < args.Length && int.TryParse( args[ci + 3], out var t0 ) ? t0 : from + 8;
+			Score( args[ci + 1], from, to );
+			return 0;
+		}
 
 		// Sections run in a list so each one can be timed. The per-section wall clock is printed
 		// at the end: this harness is dominated by rendering, so "which section costs what" is the
@@ -1216,6 +1224,87 @@ static class Program
 		var g = MusicGen.BeginPlan( $"{tag}:{n}", cfg );
 		Console.WriteLine();
 		Console.WriteLine( g.Explain() );
+	}
+
+	/// <summary>What every voice plays over a range of BARS, as a score.
+	///
+	/// <c>--seed</c> says what the composer decided for the whole song and <c>--grid</c> says
+	/// whether the band agrees about the beat. Neither answers "what happens at bar 13" — and a
+	/// listening note is always about a MOMENT. This solos each voice, reads its audible notes
+	/// back off the plan, and prints them at bar.beat with their pitch, next to the section and
+	/// the chord each bar is on. Usage: <c>-- --score vibe:tag:n [fromBar] [toBar]</c> (bars are
+	/// 1-based, counted from the song's first downbeat).</summary>
+	static void Score( string seed, int fromBar, int toBar )
+	{
+		var bits = seed.Split( ':' );
+		string vibe = bits.Length >= 3 ? bits[0] : "";
+		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
+		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
+
+		MusicGen.Config Base()
+		{
+			var c = new MusicGen.Config { SampleRate = 22050 };
+			VibeCodec.Apply( vibe, c );
+			return c;
+		}
+
+		// The ruler: bar lines in ticks, and which section each bar belongs to.
+		var ruler = MusicGen.BeginPlan( $"{tag}:{n}", Base() );
+		var barTicks = ruler.BarTickLines();
+		var structure = MusicGen.BuildStructure( ruler.Genre );
+		var barSection = new (string Name, int Chord)[barTicks.Length];
+		int bi = 0;
+		foreach ( var part in structure )
+			for ( int bar = 0; bar < part.Bars && bi < barSection.Length; bar++, bi++ )
+				barSection[bi] = ($"{part.Type}", ruler.ChordIndexAt( part, bar ));
+
+		fromBar = Math.Clamp( fromBar, 1, barTicks.Length );
+		toBar = Math.Clamp( toBar, fromBar, barTicks.Length );
+		Console.WriteLine( $"score for {seed} — bars {fromBar}..{toBar} (1-based)" );
+		Console.WriteLine();
+
+		foreach ( var (name, solo) in Voices )
+		{
+			if ( name == "DRUMS" ) continue;      // synthesised into the buffer, not events
+			var cfg = Base();
+			cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
+				cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
+			solo( cfg );
+			var g = MusicGen.BeginPlan( $"{tag}:{n}", cfg );
+			var notes = g.AudibleNotes();
+			if ( notes.Length == 0 ) continue;
+
+			// Sample -> tick, off the same 1-tick grid --grid measures against. Double-tracking
+			// emits two takes per note a few ms apart, so identical (tick, midi) pairs collapse.
+			var grid = g.GridSamples();
+			var rows = new SortedDictionary<int, SortedSet<int>>();
+			foreach ( var (start, freq) in notes )
+			{
+				int tick = NearestBar( grid, start );
+				if ( tick < barTicks[fromBar - 1] ) continue;
+				if ( toBar < barTicks.Length && tick >= barTicks[toBar] ) continue;
+				int midi = (int)Math.Round( 69 + 12 * Math.Log2( Math.Max( 1e-3, freq ) / 440.0 ) );
+				if ( !rows.TryGetValue( tick, out var set ) ) rows[tick] = set = new SortedSet<int>();
+				set.Add( midi );
+			}
+			if ( rows.Count == 0 ) continue;
+
+			Console.WriteLine( $"── {name} ──" );
+			int lastBar = -1;
+			foreach ( var (tick, midis) in rows )
+			{
+				int bar = NearestBar( barTicks, tick );
+				if ( bar != lastBar )
+				{
+					var (sect, chord) = barSection[bar];
+					Console.WriteLine( $"  bar {bar + 1,3}  [{sect}, chord {chord}]" );
+					lastBar = bar;
+				}
+				double beat = (tick - barTicks[bar]) / (double)Timing.TicksPerBeat + 1;
+				Console.WriteLine( $"      {beat,5:0.00}   {string.Join( " ", midis )}" );
+			}
+			Console.WriteLine();
+		}
 	}
 
 	/// <summary>Are the parts playing together?

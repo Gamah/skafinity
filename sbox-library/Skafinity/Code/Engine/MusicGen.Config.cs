@@ -151,8 +151,11 @@ public sealed partial class MusicGen
 		// the seed either: a song's identity must not depend on a debug switch.
 		//   0 = comp only (the design: the chordal band shifts against a kit and a melody that
 		//       stay put — the displacement dissonance)
-		//   1 = comp only, capped at a 16th (a push rather than a separation)
-		//   2 = whole band (melody and horns shift with the comp — no split at all)
+		//   1 = off (nothing displaces; every voice on the grid)
+		//   2 = whole band (melody shifts with the comp — displaced, but not split)
+		// The three must be three AUDIBLY different renders or the toggle answers nothing: an
+		// earlier "cap it at a 16th" option was a no-op, because rock, metal and pop displace by
+		// TicksPerEighth/2 — a 16th already — so it only ever moved ska.
 		public int DisplaceMode = 0;
 		// Kit per-voice level balance. The pieces synthesise at very different raw levels (a kick
 		// is huge, a hat is thin noise). Starting point was EQUAL PRE-MASTER PEAK (kick 0.40 /
