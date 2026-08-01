@@ -6,7 +6,7 @@
 # (a file split, a type extraction) — bless before, run after, expect silence.
 # Re-bless in the same commit as any deliberate audible change:
 #   make test-engine-bless
-0:rotaliate:0 39caacf69ff660d1017352ae5d97ecdb581309420873f179e0a13e01a7ca430d
+0:rotaliate:0 f85412700634755c57ad405d90e239f66c2757e27d7f7d47664d81db06865962
 0:skafinity:7 95f144b17ae8dc25ed5ebf7e651e4b447827063052b9a4b4a1f891cf27c4ad71
 1:rotaliate:0 690f9817a9bcb25613ae24d5c7c174d228d7eeeb093678aeb7e361b117ceb7c7
 1:gamah:3 582337007e13be3b990e19b05b76883ce7cca214b2be96f53780847b518405c2
@@ -15,4 +15,4 @@
 3:doom:11 474295199846a3e2a6c38a8c0bf18b011139821c784fce7bbb462516d4fc408f
 4:rotaliate:0 b0986ac7f4c7c70a9314eac3c924f83e634b99181fc4c83551fcecffccca934b
 5:rotaliate:0 f4ad6bb6f28cc213956f4f38817274199bdd51c3ae8d5a3caad6b865eb81a450
-5:bubblegum:23 759b125a9f2e4f43303e7d509cc143db1ea5f608877b70020bbf5160b27f3df7
+5:bubblegum:23 4393c9964cd60b704ccadf9fca3972ac3bde9ee2ff99d26b5cfccd755e4efa2b

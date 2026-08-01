@@ -407,7 +407,7 @@ public sealed partial class MusicGen
 
 			case EndingStyle.Cadence:
 				// V, then home on beat 3 — an actual cadence rather than a single held chord.
-				EndingChord( barTick, beat, 0.5, 0.8f, degree: 4 );
+				EndingChord( barTick, beat, 0.5, 0.8f, rootDegree: 4 );
 				EmitBass( at, _time.SpanSamples( barTick, beat ), ChordRoot4(), 0.45,
 					NoteGain( barTick, 0.85f ), default );
 				RenderKick( at, noise );
@@ -447,41 +447,50 @@ public sealed partial class MusicGen
 	/// ends on horns, a metal song on the riff guitar, a pop song on the synth. The song's own
 	/// voicing carries too, so a ska ending lands on its 9th and a metal one on a bare fifth.
 	/// </summary>
-	void EndingChord( int tick, int dur, double decay, float vel, int degree = 0, bool samples = false )
+	/// <param name="rootDegree">Scale degree the chord is built on, or −1 for the song's HOME
+	/// chord — which is the progression's first slot, so the band lands where the bass lands
+	/// (RenderEnding plays ChordRoot(0) under it). The degree used to be folded in as
+	/// <c>_prog[0] + d + shift</c> on top of a <c>ChordDegrees</c> that had already added
+	/// <c>_prog[0]</c>: harmless while every progression started on the tonic, and a chord built a
+	/// third or a sixth off home for the pop and punk loops that do not.</param>
+	void EndingChord( int tick, int dur, double decay, float vel, int rootDegree = -1,
+		bool samples = false )
 	{
 		int at = _time.TickToSample( tick );
 		int durSamples = samples ? dur : _time.SpanSamples( tick, dur );
 		bool ring = decay > 0.4;
-		// The ending is voiced by whichever voice plays it, so a driven guitar drops its third here
-		// too (see GuitarDegrees) — a song must not land on the one chord it spent three minutes
-		// avoiding.
-		var degs = _prof.Comp is CompStyle.Skank or CompStyle.Pad ? ChordDegrees( 0 ) : GuitarDegrees( 0 );
-		// A cadence's first chord is the V; everything else lands on the tonic.
-		int shift = degree;
-
-		foreach ( var d in degs )
+		int root = rootDegree < 0 ? _prog[0] : rootDegree;
+		// The register is the genre's own chordal voice; a driven guitar drops its third here too
+		// (see GuitarMidis) — a song must not land on the one chord it spent three minutes avoiding.
+		int chordBase = _rootMidi + _keyShift + _prof.Comp switch
 		{
-			int midi;
+			CompStyle.Skank => 19,   // ska: the horn section
+			CompStyle.Pad => 24,     // pop: the synth
+			_ => 12,                 // the guitar genres
+		};
+		var tones = VoicedMidis( chordBase, root );
+		if ( _prof.Comp is not (CompStyle.Skank or CompStyle.Pad) ) tones = DrivenVoicing( tones );
+
+		foreach ( var midi in tones )
+		{
 			Patch p;
 			switch ( _prof.Comp )
 			{
 				case CompStyle.Skank:   // ska: the horn section holds the last chord
-					midi = ScaleMidi( _rootMidi + _keyShift + 19, _prog[0] + d + shift );
 					p = new Patch
 					{
 						Osc = 1, Voices = 3, Detune = _c.Detune,
-						Amp = _c.HornVol * _c.HornBalance * _midMul / degs.Length * NoteGain( tick, vel ),
+						Amp = _c.HornVol * _c.HornBalance * _midMul / tones.Length * NoteGain( tick, vel ),
 						Attack = 0.01f, Decay = decay, Sustain = ring ? 0.35f : 0f, Sustained = false,
 						Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f, Drive = _c.HornDrive,
 						Pan = 0f, Vibrato = _c.MelodyVibrato,
 					};
 					break;
 				case CompStyle.Pad:     // pop: the synth
-					midi = ScaleMidi( _rootMidi + _keyShift + 24, _prog[0] + d + shift );
 					p = new Patch
 					{
 						Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-						Amp = _c.KeysVol * _c.KeysBalance * KeysLevel() * _midMul / degs.Length
+						Amp = _c.KeysVol * _c.KeysBalance * KeysLevel() * _midMul / tones.Length
 							* NoteGain( tick, vel ),
 						Attack = 0.004f, Decay = decay, Sustain = ring ? 0.5f : 0f, Sustained = false,
 						Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f, Drive = KeysDriveFor(),
@@ -490,11 +499,10 @@ public sealed partial class MusicGen
 					break;
 				default:                // the guitar genres, through their own tone
 					var (drive, cutEnv, reso, level) = RhythmGtrTone();
-					midi = ScaleMidi( _rootMidi + _keyShift + 12, _prog[0] + d + shift );
 					p = new Patch
 					{
 						Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-						Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / degs.Length
+						Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / tones.Length
 							* NoteGain( tick, vel ),
 						Attack = 0.002f, Decay = decay, Sustain = ring ? 0.4f : 0f, Sustained = false,
 						Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso, Drive = drive,

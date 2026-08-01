@@ -145,6 +145,45 @@ static class Program
 
 	static void HarmonyTests()
 	{
+		// ── a voicing's PERFECT intervals must be perfect, on every degree of every scale ──
+		// Spelled diatonically (root degree + offset), a "power chord" or a "sus4" is only really
+		// one on the degrees where the scale happens to hand it a perfect fifth. Every seven-note
+		// scale has one degree whose fifth is DIMINISHED and one whose fourth is AUGMENTED, and on
+		// those a power chord comes out a bare tritone — with no third present to explain it, which
+		// is what "way off key" sounds like, at its worst through distortion. Harmony.VoicedTone
+		// forces those two intervals; this asserts it across the whole cross product, which is
+		// cheap because none of it renders.
+		bool perfect = true;
+		string worst = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			foreach ( var scale in prof.Scales )
+				foreach ( var voicing in prof.Voicings )
+					foreach ( var prog in prof.Progressions )
+						foreach ( var deg in prog )
+							foreach ( var offset in voicing )
+							{
+								if ( offset != Harmony.Fourth && offset != Harmony.Fifth ) continue;
+								int root = Harmony.ScaleMidi( 48, scale, deg );
+								int tone = Harmony.VoicedTone( 48, scale, deg, offset );
+								int want = offset == Harmony.Fourth ? 5 : 7;
+								if ( tone - root == want ) continue;
+								perfect = false;
+								worst = $"genre {g} degree {deg} offset {offset} = {tone - root} semitones";
+							}
+		}
+		Check( "every voicing's fourth and fifth are perfect on every degree", perfect, worst );
+
+		// …and the diatonic spelling really does go wrong somewhere, or the rule above is vacuous
+		// and would keep passing after someone deleted it.
+		bool diatonicBreaks = false;
+		foreach ( var scale in GenreProfile.For( 1 ).Scales )
+			for ( int deg = 0; deg < scale.Length; deg++ )
+				diatonicBreaks |= Harmony.ScaleMidi( 48, scale, deg + Harmony.Fifth )
+					- Harmony.ScaleMidi( 48, scale, deg ) != 7;
+		Check( "a diatonic fifth really is diminished on some degree", diatonicBreaks );
+
 		// ScaleMidi wraps octaves rather than clamping, so a progression may run off either
 		// end of its scale table and still yield a sane pitch.
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )

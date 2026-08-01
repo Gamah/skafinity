@@ -20,7 +20,7 @@ public sealed partial class MusicGen
 		// +24: skank/organ sit an octave above the bass register — at +12 the chop was too
 		// low/muddy to cut through. The organ stays a further octave down via the -12 below.
 		int gBase = _rootMidi + _keyShift + 24;
-		var degs = ChordDegrees( chord );
+		var tones = ChordMidis( gBase, chord );
 		// Skank is dead straight (default); the organ bubble gets a gentle vibrato depth.
 		var organVc = Roll( Expr( "ORGAN" ), 0, NoPrev, exprRng );
 
@@ -31,11 +31,11 @@ public sealed partial class MusicGen
 				Timing.TicksPerEighth * Math.Clamp( _c.SkankChop, 0.15f, 1f ) );
 
 			// bright, thin, short guitar chop
-			foreach ( var d in degs )
-				RenderPatch( at, chop, Midi( ScaleMidi( gBase, d ) ), new Patch
+			foreach ( var m in tones )
+				RenderPatch( at, chop, Midi( m ), new Patch
 				{
 					Osc = 1, Voices = 3, Detune = _c.Detune,
-					Amp = _c.SkankVol * _c.SkankBalance * _midMul / degs.Length * NoteGain( h.Tick, h.Vel ),
+					Amp = _c.SkankVol * _c.SkankBalance * _midMul / tones.Length * NoteGain( h.Tick, h.Vel ),
 					Attack = 0.002f, Decay = 0.10,
 					Sustain = 0f, Sustained = false,
 					Cutoff = _c.SkankCutoff, CutEnv = 1500f, Reso = 0.8f,
@@ -44,19 +44,19 @@ public sealed partial class MusicGen
 
 			// reggae organ "bubble": a softer, rounder offbeat under the guitar
 			if ( !_organBubble ) continue;
-			foreach ( var d in degs )
+			foreach ( var m in tones )
 			{
 				var organ = new Patch
 				{
 					Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.OrganVol * _c.OrganBalance * _midMul / degs.Length * NoteGain( h.Tick, h.Vel ),
+					Amp = _c.OrganVol * _c.OrganBalance * _midMul / tones.Length * NoteGain( h.Tick, h.Vel ),
 					Attack = 0.004f, Decay = 0.16,
 					Sustain = 0.3f, Sustained = false,
 					Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,
 					Vibrato = _c.OrganVibrato,
 				};
 				ApplyVoicing( ref organ, organVc );
-				RenderPatch( at, (int)(chop * 1.1f), Midi( ScaleMidi( gBase, d ) - 12 ), organ );
+				RenderPatch( at, (int)(chop * 1.1f), Midi( m - 12 ), organ );
 			}
 		}
 	}

@@ -312,6 +312,22 @@ that is the sound of one instrument rather than the identity of a genre: `BassTo
 `Keys.cs`, the lead's per-genre distortion in `Lead.cs`, the expression propensities in
 `Expression.cs`. Don't drag those in, and don't push a rhythm out.
 
+**A voicing is a list of degree offsets, so turning it into NOTES is not `ScaleMidi(base, root +
+offset)`.** That spelling is diatonic — every interval comes out whatever the scale makes it at
+that degree — which is exactly right for the third, sixth, seventh and ninth (major-or-minor by
+position IS diatonic harmony) and wrong for the fourth and the fifth. Every seven-note scale has
+one degree whose diatonic fifth is **diminished** and one whose fourth is **augmented**, so on
+those degrees a `Power` chord spells as a bare tritone and a `Sus4` as a root with a flat five —
+with no third present to explain either. That is what "way off key" sounds like, and distortion
+makes it far worse. A guitarist frets the same power-chord shape on every degree; the shape does
+not go diminished because of the key. `Harmony.VoicedTone` forces the fourth and the fifth perfect
+and leaves everything else diatonic, and **every voice that SOUNDS a chord goes through it** —
+`ChordMidis(baseMidi, chord)` / `ChordToneMidi` / `VoicedMidis(baseMidi, rootDegree)`.
+`ChordDegrees` survives as the MELODIC view (what tones a line may land on); if you find a chordal
+voice calling `ScaleMidi` over it, that voice is spelling its chords wrong. The engine test asserts
+the invariant over every genre × scale × voicing × progression degree, and separately asserts that
+the diatonic spelling really does break somewhere — otherwise the first check is vacuous.
+
 **A driven guitar does not play thirds.** Distortion is a non-linearity, so it generates sum and
 difference tones between everything fed into it; a root and a fifth are a simple enough ratio to
 survive that and a third is not. That is why guitarists play power chords through a driven amp and

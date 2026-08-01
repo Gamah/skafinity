@@ -21,7 +21,7 @@ public sealed partial class MusicGen
 	{
 		int spe = _time.Spe;
 		int baseMidi = _rootMidi + _keyShift + 19;
-		var degs = ChordDegrees( chord );
+		var tones = ChordMidis( baseMidi, chord );
 		float spread = _c.PanAmount * 0.7f;
 		float sectionGain = TuneFor( _sectionType ) != null ? 0.7f : 1f;
 		int six = spe / 2;
@@ -40,23 +40,23 @@ public sealed partial class MusicGen
 			var horn = new Patch
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = _c.HornVol * _c.HornBalance * _midMul / degs.Length * gain * sectionGain
+				Amp = _c.HornVol * _c.HornBalance * _midMul / tones.Length * gain * sectionGain
 					* NoteGain( tickNow, gainNow ),
 				Attack = 0.008f, Decay = dec,
 				Sustain = 0.2f, Sustained = false,
 				Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
 				Drive = _c.HornDrive,
-				Pan = spread * (k / (float)Math.Max( 1, degs.Length - 1 ) * 2f - 1f),
+				Pan = spread * (k / (float)Math.Max( 1, tones.Length - 1 ) * 2f - 1f),
 				Vibrato = _c.MelodyVibrato,
 			};
 			ApplyVoicing( ref horn, hornVc );
-			RenderPatch( at, dur, Midi( ScaleMidi( baseMidi, degs[k] ) ), horn );
+			RenderPatch( at, dur, Midi( tones[k] ), horn );
 		}
 
 		// full block chord stab
 		void Stab( int at, int dur, double dec, float gain )
 		{
-			for ( int k = 0; k < degs.Length; k++ ) Note( at, dur, k, dec, gain );
+			for ( int k = 0; k < tones.Length; k++ ) Note( at, dur, k, dec, gain );
 		}
 
 		// When the section is singing a tune, the horns ANSWER it — they do not double it. The
@@ -80,7 +80,7 @@ public sealed partial class MusicGen
 				{
 					// rolling arpeggio: chord tones climb across a 16th-triplet
 					int step = spe / 3;
-					for ( int k = 0; k < degs.Length; k++ )
+					for ( int k = 0; k < tones.Length; k++ )
 						Note( _time.EvenSpan( h.Tick, Timing.TicksPerEighth, k / 3.0 ),
 							(int)(step * 0.9f), k, secPerEighth / 3 * 0.8, 1f );
 					continue;
