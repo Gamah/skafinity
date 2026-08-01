@@ -21,6 +21,14 @@
     <!-- AOT-compile to native wasm: synthesis is a heavy per-sample loop, far faster AOT
          than interpreted. Comment out for quicker dev builds (composition is identical). -->
     <RunAOTCompilation>true</RunAOTCompilation>
+    <!-- Don't pre-compress the bundle. The SDK otherwise writes a .br and a .gz beside every
+         file in _framework, and NOTHING here consumes them: .gitignore excludes them from the
+         committed web/_framework, `make release` excludes them from the tarball, and
+         docker/nginx.conf serves the bundle with no gzip_static/brotli_static. Measured at 22 s
+         of a 113 s publish — a fifth of the build, for output that is deleted or ignored
+         everywhere it lands. Turn it back on the day something actually serves precompressed
+         assets. -->
+    <CompressionEnabled>false</CompressionEnabled>
   </PropertyGroup>
 
   <ItemGroup>
