@@ -14,10 +14,17 @@
 #   make ps         → container status
 #
 # ── Local (.NET SDK on the host) ──
-#   make            → publish the engine, stage web/_framework for the web layer
+#   make            → publish the engine, stage web/_framework for the web layer. ~2 min on an
+#                     8-core box, and the cost is irreducible native work: the emcc -O2 compile
+#                     of aot-instances (~32 s), the emcc link + wasm-opt (~25 s), the Mono AOT
+#                     pass (~14 s) and the trimmer (~10 s). See CLAUDE.md for the full table —
+#                     it has been measured, so don't re-guess at it.
 #   make build      → compile-only typecheck of the shared C# (no publish/stage) — the fast
 #                     synth-check after editing Code/Engine/ or Exports.cs
-#   make dev        → same as all, but skip AOT (much faster to build; identical composition)
+#   make dev        → same as all, but skip AOT: ~22 s instead of ~2 min, and composition is
+#                     identical (only the per-sample synthesis loop runs slower in the browser).
+#                     THE INNER LOOP — reach for it while iterating and run a full `make` before
+#                     you commit web/_framework.
 #   make deploy     → clean, verified release build: wipes stale artifacts, full AOT
 #                     publish, then runs the smoke test (the cruft-free bundle to ship)
 #   make test       → node tests of the JS↔wasm boundary AND the page's engine surface
@@ -89,7 +96,9 @@ ps:
 # Wipe the publish OUTPUT dir first: `dotnet publish` never prunes old content-hashed
 # assemblies, so re-publishing into a dirty dir accumulates stale *.wasm that `stage` then
 # copies into web/. Clearing just $(PUBROOT) (not obj/) keeps the AOT cache, so the rebuild
-# stays incremental while the staged bundle only ever holds the canonical files.
+# stays incremental while the staged bundle only ever holds the canonical files — measured at
+# zero: an unchanged re-publish is 9 s with or without the rm, because everything it deletes is
+# re-copied out of obj/.
 all:
 	rm -rf $(PUBROOT)
 	$(DOTNET) publish $(PROJECT) -c Release

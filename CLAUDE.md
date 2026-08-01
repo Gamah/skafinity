@@ -226,6 +226,22 @@ Note that `make test` passing is NOT evidence that a NEW export shipped unless s
 actually calls it; the cross-check above exists precisely because the hand-written assertions
 only cover exports someone remembered to test.
 
+**Where the AOT publish's two minutes go — measured, don't re-guess.** On an 8-core dev host a
+full `make` is ~113 s after a real source change (131 s from an empty `wasm/obj`), and MSBuild's
+`PerformanceSummary` attributes it: the emcc `-O2` compile of `aot-instances.dll.bc` ~32 s, the
+emcc link + `wasm-opt` ~25 s, the Mono AOT pass ~14 s, the trimmer (ILLink, the log's "Optimizing
+assemblies for size") ~10 s, `Csc` ~1 s. Three things that were suspected and are NOT the cost:
+`rm -rf $(PUBROOT)` in `all` (an unchanged re-publish is 9 s with or without it — the AOT cache is
+in `obj/`, and everything the rm deletes is re-copied from there); the AOT of the framework
+assemblies (`[n/5] skipped unchanged assemblies` — only the app assembly and `aot-instances`
+re-AOT); and `WasmNativeDebugSymbols=false`, which measured *slower*, not faster. What was
+recovered is the ~22 s of brotli/gzip pre-compression (`CompressionEnabled=false` in the csproj —
+see the comment there). The rest is native codegen of a program whose point is a hot per-sample
+loop, so **`make dev` is the inner loop** — ~22 s, identical composition — and a full `make` is
+what you owe `web/_framework` before committing it. Note the render digests do NOT cover build
+flags: they run on the engine-only harness, so a flag change is proved by `make test` and a
+listen, never by a hash.
+
 **What can and cannot be built on a dev host.** The web side is fully buildable: `make` does a
 full AOT publish and stages `web/_framework`, then `make test` exercises the real JS↔wasm
 boundary. It needs the `wasm-tools` workload (`dotnet workload install wasm-tools`) and a modern
