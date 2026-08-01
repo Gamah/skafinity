@@ -120,9 +120,16 @@ public sealed partial class MusicGen
 			_ => 0.4f,
 		};
 		float leap = _prof.Lead == LeadStyle.Shred ? 0.35f : 0.2f;
-		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:chorus" ), 4, barTicks, density, leap );
+		// The tune is as long as the HARMONIC CYCLE — the bars it takes the progression to come
+		// round (ChordBars x the progression's length), capped at eight. A four-bar tune over an
+		// eight-bar cycle states itself twice, and the second statement lands over different
+		// chords than it was written against: same notes, different harmony, which is exactly the
+		// "the lead clashes with the backing" it sounds like. Matching the cycle means every
+		// repetition sits over the changes it was drawn for.
+		int cycle = Math.Clamp( _chordBars * _prog.Length, 2, 8 );
+		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:chorus" ), cycle, barTicks, density, leap );
 		_verseTune = _genre == 3 ? null
-			: Melody.Draw( new Rng( $"{_tag}:tune:verse" ), 4, barTicks, density * 0.8f, leap );
+			: Melody.Draw( new Rng( $"{_tag}:tune:verse" ), cycle, barTicks, density * 0.8f, leap );
 	}
 
 	/// <summary>Play one bar of the section's tune.
@@ -146,12 +153,15 @@ public sealed partial class MusicGen
 		foreach ( var h in tune.Slice( barTick, barTick + barTicks, _sectionTick, _feel, _displace ) )
 		{
 			int degree = h.Value;
-			bool onBeat = (h.Tick - _barTick) % Timing.TicksPerBeat == 0;
-			if ( onBeat ) degree = NearestChordTone( tones, degree );
-
-			// A melody breathes: notes are held, not run together, and the longest ones still
-			// stop short of the next entry.
 			int len = Math.Min( h.SpanTicks, Timing.TicksPerBeat * 2 );
+			bool onBeat = (h.Tick - _barTick) % Timing.TicksPerBeat == 0;
+
+			// What resolves is the note the ear has TIME to hear against the chord: anything on a
+			// beat, and anything held for a beat or more. A quick note between beats is a passing
+			// tone and is left alone — that is the difference between a melody and an arpeggio.
+			// (Snapping only the on-beat notes left long off-beat non-chord tones ringing over the
+			// backing for up to two beats, which is what a clash sounds like.)
+			if ( onBeat || len >= Timing.TicksPerBeat ) degree = NearestChordTone( tones, degree );
 			int midi = ScaleMidi( melBase, degree );
 			var vc = Roll( ex, midi, prevMidi, exprRng );
 			prevMidi = midi;
@@ -167,7 +177,7 @@ public sealed partial class MusicGen
 				RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, len * 0.92 ),
 					ScaleMidi( melBase, degree + 2 ), amp * 0.7f * NoteGain( h.Tick, h.Vel ),
 					_time.SpanSeconds( h.Tick, len ) * 0.8, drive, vc );
-			else if ( _prof.Lead == LeadStyle.Shred && len >= Timing.TicksPerBeat && rng.Chance( 0.4f ) )
+			else if ( _prof.Lead == LeadStyle.Shred && len >= Timing.TicksPerBeat && rng.Chance( 0.18f ) )
 				for ( int k = 1; k <= 3; k++ )
 				{
 					int m2 = ScaleMidi( melBase, degree + k );

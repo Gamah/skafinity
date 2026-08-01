@@ -257,6 +257,7 @@ public sealed partial class MusicGen
 		_feel = part.Feel;
 		_displace = part.Displace;
 		_keyShift = part.KeyShift;
+		_sectionType = part.Type;
 
 		bool isIntro = part.Type == Section.Intro;
 		bool isEnding = part.Type == Section.Ending;

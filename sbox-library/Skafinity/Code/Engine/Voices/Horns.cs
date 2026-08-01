@@ -23,6 +23,7 @@ public sealed partial class MusicGen
 		int baseMidi = _rootMidi + _keyShift + 19;
 		var degs = ChordDegrees( chord );
 		float spread = _c.PanAmount * 0.7f;
+		float sectionGain = TuneFor( _sectionType ) != null ? 0.7f : 1f;
 		int six = spe / 2;
 		float ornChance = 0.18f + _c.TripletChance; // ~0.24 default; rides the same knob
 
@@ -39,7 +40,7 @@ public sealed partial class MusicGen
 			var horn = new Patch
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = _c.HornVol * _c.HornBalance * _midMul / degs.Length * gain
+				Amp = _c.HornVol * _c.HornBalance * _midMul / degs.Length * gain * sectionGain
 					* NoteGain( tickNow, gainNow ),
 				Attack = 0.008f, Decay = dec,
 				Sustain = 0.2f, Sustained = false,
@@ -58,8 +59,15 @@ public sealed partial class MusicGen
 			for ( int k = 0; k < degs.Length; k++ ) Note( at, dur, k, dec, gain );
 		}
 
+		// When the section is singing a tune, the horns ANSWER it — they do not double it. The
+		// lead and the section are the same instrument in nearly the same register, so a full
+		// two-bar stab figure under a horn melody reads as two lead lines fighting. The call bar
+		// belongs to the melody; the horns take the answer bar, quieter.
+		bool answerOnly = TuneFor( _sectionType ) != null;
+
 		foreach ( var h in _hornFig.Slice( barTick, barTick + barTicks, _sectionTick, _feel, _displace ) )
 		{
+			if ( answerOnly && ((h.Tick - _sectionTick) / barTicks) % 2 == 0 ) continue;
 			int at = _time.TickToSample( h.Tick );
 			double secPerEighth = _time.SpanSeconds( h.Tick, Timing.TicksPerEighth );
 			tickNow = h.Tick; gainNow = h.Vel;

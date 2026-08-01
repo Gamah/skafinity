@@ -142,4 +142,6 @@ public sealed partial class MusicGen
 	float _feel = 1f;        // pattern-rate multiplier: 0.5 half time, 2 double time
 	int _displace;           // metric displacement of the comp, in ticks
 	int _keyShift;           // semitones this section is transposed by (the final-chorus lift)
+	Section _sectionType;    // which kind of section is playing — voices that must not double the
+	                         // tune (the ska horn section) ask TuneFor() about it
 }
