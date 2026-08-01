@@ -43,7 +43,7 @@ readonly struct Hit
 /// the tables that are still authored one cell per eighth.
 ///
 /// Patterns are immutable and shared between songs — everything per-song (which pattern, where
-/// it is anchored, how it is displaced) is the caller's.
+/// it is anchored) is the caller's.
 /// </summary>
 sealed class Pattern
 {
@@ -122,11 +122,14 @@ sealed class Pattern
 	/// multi-bar figure restarts with the section rather than wherever the song happens to be).
 	/// <paramref name="feel"/> is the section's half/double-time multiplier — the pattern's own
 	/// rate, not the tempo: 0.5 stretches every figure to twice its length, 2 halves it.
-	/// <paramref name="displaceTicks"/> shifts every onset late (metric displacement); it moves
-	/// the figure against the bar without changing what the figure is.
+	///
+	/// There is deliberately NO "shift every onset late" argument. A figure that pushes into the
+	/// next bar says so in its CELLS — the ska skank's stab on the "and of 4", the Charleston, the
+	/// horn answer — which is one gesture at a phrase seam, and that is where a push belongs. A
+	/// section-wide constant offset expressed the same idea the other way and it did not survive a
+	/// listen; see the note in <see cref="SongForm"/>.
 	/// </summary>
-	public List<Hit> Slice( int fromTick, int toTick, int anchorTick = 0, float feel = 1f,
-		int displaceTicks = 0 )
+	public List<Hit> Slice( int fromTick, int toTick, int anchorTick = 0, float feel = 1f )
 	{
 		var hits = new List<Hit>();
 		if ( toTick <= fromTick || _tick.Length == 0 ) return hits;
@@ -134,8 +137,8 @@ sealed class Pattern
 
 		// Song tick t ↔ pattern tick p:  p = (t − anchor) · feel.  The window is converted once,
 		// then walked repetition by repetition; every hit maps back the same way.
-		double pFrom = (fromTick - displaceTicks - anchorTick) * (double)feel;
-		double pTo = (toTick - displaceTicks - anchorTick) * (double)feel;
+		double pFrom = (fromTick - anchorTick) * (double)feel;
+		double pTo = (toTick - anchorTick) * (double)feel;
 		long rep = (long)Math.Floor( pFrom / LengthTicks );
 
 		for ( ; ; rep++ )
@@ -146,7 +149,7 @@ sealed class Pattern
 			{
 				double p = bas + _tick[i];
 				if ( p < pFrom || p >= pTo ) continue;
-				int t = anchorTick + displaceTicks + (int)Math.Round( p / feel );
+				int t = anchorTick + (int)Math.Round( p / feel );
 				int span = Math.Max( 1, (int)Math.Round( _span[i] / feel ) );
 				hits.Add( new Hit( t, _value[i], span, _vel[i] ) );
 			}

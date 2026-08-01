@@ -35,14 +35,23 @@ public sealed partial class MusicGen
 		}
 	}
 
-	/// <summary>The lead's register, per grammar. A shred line lives high and wide; a horn line
-	/// sits where a horn sits.</summary>
+	/// <summary>The lead's register, per grammar.
+	///
+	/// THE MELODY NEEDS AN OCTAVE OF ITS OWN. The comp registers are fixed and known — the rhythm
+	/// guitar voices its chord over <c>_rootMidi + 12</c>, the skank and the keys over
+	/// <c>+24</c> — so a lead based at +21 or +24 sang its whole line inside the chordal bed and
+	/// simply disappeared into it, which no amount of gain fixes. +31 clears the top of that bed
+	/// (a full voicing reaches about +31) and the tune's own degrees carry it up from there.
+	///
+	/// The two exceptions are relational rather than absolute: metal's shred already sat clear at
+	/// +26 and ranges far wider than a tune does, and punk's unison IS the riff an octave up, so
+	/// its base has to stay one octave over the guitar's <c>_rootMidi + 12</c> or it stops being
+	/// a double.</summary>
 	int LeadBase() => _rootMidi + _keyShift + (_prof.Lead switch
 	{
 		LeadStyle.Shred => 26,
-		LeadStyle.Bluesy => 21,
-		LeadStyle.DoubleStop => 24,
-		_ => 24,
+		LeadStyle.Unison => 24,
+		_ => 31,
 	});
 
 	// ── Ska (and rock, sparser): a sung line ──
@@ -225,17 +234,22 @@ public sealed partial class MusicGen
 		return best;
 	}
 
-	/// <summary>Per-genre lead level (measured with `--levels`). The lead sings the tune now
-	/// rather than filling the odd phrase, so it is playing far more of the song than the
-	/// balances were set for — a melody that is 6 dB over the kit stops being a melody and starts
-	/// being the whole record.</summary>
+	/// <summary>Per-genre lead level, measured with `--levels` and re-measured after any change to
+	/// what the lead plays.
+	///
+	/// The target is +2 dB over that genre's drums, not level with them. The mix rebalance set
+	/// these against the kit while the lead was still filling the odd phrase; it carries the tune
+	/// now, and a melody that sits AT kit level is a melody a listener has to go looking for.
+	/// Every genre measured within a dB of 0 before this, so each is a straight trim to +2 —
+	/// which is also comfortably inside the suite's "the lead does not dominate" ceiling.</summary>
 	float LeadLevel() => _genre switch
 	{
-		2 => 0.50f,   // country: doubled in thirds, so two notes per melody note
-		3 => 0.95f,   // metal: it is supposed to be on top
-		4 => 0.45f,   // punk: it doubles the guitar, and two of everything is loud
-		5 => 0.95f,   // pop: the hook IS the song
-		_ => 0.65f,   // ska horn, rock
+		0 => 0.83f,   // ska horn
+		1 => 0.86f,   // rock
+		2 => 0.67f,   // country: doubled in thirds, so two notes per melody note
+		3 => 1.24f,   // metal: it is supposed to be on top
+		4 => 0.64f,   // punk: it doubles the guitar, and two of everything is loud
+		_ => 1.21f,   // pop: the hook IS the song
 	};
 
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,

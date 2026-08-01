@@ -62,12 +62,29 @@ for (let i = 0; i < 60; i++) lineGenres.add(mod.getGenre(mod.rollVibeFor(cfg, 'g
 check('the shuffle line covers every genre', lineGenres.size === mod.genreCount(),
   `${lineGenres.size} of ${mod.genreCount()}`);
 
-// ── SWING is gone from the knobs the UI renders ──
-let sawSwing = false;
+// ── retired knobs are gone from what the UI renders ──
+// A retired global leaves a RESERVED (null) slot on the wire so every later position holds; what
+// must not survive is the slider. SWING became per-genre character; RESONANCE set a Config field
+// no voice ever read, so it was inert.
+const retired = ['SWING', 'RESONANCE'];
+const seen = new Set();
 for (let g = 0; g < mod.genreCount(); g++)
   for (let i = 0; i < mod.vibeFieldCount(g); i++)
-    if (mod.vibeFieldInfo(g, i).name === 'SWING') sawSwing = true;
-check('SWING is not a knob the UI would render', !sawSwing);
+    seen.add(mod.vibeFieldInfo(g, i).name);
+for (const name of retired)
+  check(`${name} is not a knob the UI would render`, !seen.has(name));
+
+// ── double-tracking width stays a width, not a tuning error ──
+// WidthDetune is house config with no listener-facing undo, so its RANGE is the safety rail:
+// a few cents between two takes reads as two performances, tens of cents reads as out of tune.
+let wdIdx = -1;
+for (let i = 0, n = mod.advancedFieldCount(); i < n; i++)
+  if (mod.advancedFieldName(i) === 'WidthDetune') wdIdx = i;
+check('WidthDetune is an advanced (config-only) field', wdIdx >= 0);
+check('WidthDetune cannot be pushed past a musical width',
+  mod.advancedFieldMax(wdIdx) <= 20, `max ${mod.advancedFieldMax(wdIdx)} cents`);
+check('WidthDetune round-trips through cfg',
+  mod.getAdvancedField(mod.setAdvancedField(cfg, wdIdx, 8), wdIdx) === 8);
 
 // ── a rolled song actually renders ──
 // The end of the whole chain: shuffle picks a vibe, the worker renders it, the page plays it.

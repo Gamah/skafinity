@@ -102,7 +102,7 @@ public sealed partial class MusicGen
 		{
 			var p = structure[i];
 			sb.AppendLine( $"  {i,2} {p.Type,-10} {p.Bars,2} bars  energy {p.Energy:0.00}  feel {p.Feel:0.0}"
-				+ $"{(p.KeyShift != 0 ? $"  key +{p.KeyShift}" : "")}{(p.Displace != 0 ? "  displaced" : "")}"
+				+ $"{(p.KeyShift != 0 ? $"  key +{p.KeyShift}" : "")}"
 				+ $"{(p.Hemiola ? "  hemiola" : "")}{(p.BarBeats != null ? "  short bar" : "")}"
 				+ $"  tune {(TuneFor( p.Type ) != null ? "yes" : "no")}" );
 		}
@@ -151,6 +151,35 @@ public sealed partial class MusicGen
 	/// The tick grid, not the sixteenth grid: 48 ticks to the beat is what makes 8ths, 16ths and
 	/// both triplet rates exact (see Timing), so a triplet ornament is ON the grid and a
 	/// sixteenth-only ruler would flag it as drift.</summary>
+	/// <summary>The genre this plan was composed for (diagnostics).</summary>
+	internal int Genre => _genre;
+
+	/// <summary>Every audible note as (sample start, frequency), in composition order. The
+	/// per-voice score behind the <c>--score</c> diagnostic: solo a voice, read what it actually
+	/// played and where. Double-tracking emits two takes per note, so a caller that wants NOTES
+	/// rather than takes de-duplicates on (start, freq).</summary>
+	internal (int Start, float Freq)[] AudibleNotes()
+	{
+		var list = new List<(int, float)>();
+		foreach ( var e in _events ) if ( e.P.Amp > 0f ) list.Add( (e.Start, e.Freq) );
+		return list.ToArray();
+	}
+
+	/// <summary>First tick of each bar in the song — the ruler the score diagnostic reads
+	/// against, and the one place the anomalous-measure bar lengths are honoured.</summary>
+	internal int[] BarTickLines()
+	{
+		var bars = new List<int>();
+		int tick = 0;
+		foreach ( var part in BuildStructure( _genre ) )
+			for ( int bar = 0; bar < part.Bars; bar++ )
+			{
+				bars.Add( tick );
+				tick += BarBeats( part, bar, _time.BeatsPerBar ) * Timing.TicksPerBeat;
+			}
+		return bars.ToArray();
+	}
+
 	internal int[] GridSamples()
 	{
 		var grid = new List<int>();
@@ -221,10 +250,11 @@ public sealed partial class MusicGen
 	// a verse?" (see Part). This is what makes a chorus a chorus rather than a repeat.
 	int[] _sectionStart = Array.Empty<int>(); // first tick of each section
 	int _sectionTick;        // the current section's first tick — patterns loop from here
+	int _sectionTicks;       // its length in ticks — a section shorter than the tune sings the
+	                         // tune's resolving half rather than being cut off mid-phrase
 	int _barTick;            // the current bar's first tick — the accent grid is relative to it
 	float _energy = 1f;      // 0 = as thin as the arrangement gets, 1 = full band
 	float _feel = 1f;        // pattern-rate multiplier: 0.5 half time, 2 double time
-	int _displace;           // metric displacement of the comp, in ticks
 	int _keyShift;           // semitones this section is transposed by (the final-chorus lift)
 	Section _sectionType;    // which kind of section is playing — voices that must not double the
 	                         // tune (the ska horn section) ask TuneFor() about it

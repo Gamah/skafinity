@@ -106,9 +106,10 @@ quantised to one base-36 digit (16 levels) in the seed. The instrument roster �
 genre-specific knobs in each row — changes per genre; the field list is read straight from
 `VibeCodec.cs`, so this table is just a readable mirror of it.
 
-**Global** (all genres): `TEMPO MIN` / `TEMPO MAX` (BPM band, 60–200) · `TEMPO BIAS` (how
-often a song lands fast) · `SWING` (off-beat delay, 0–0.4) · `RESONANCE` (filter Q, 0.2–2) ·
-`STEREO WIDTH` (master stereo amount — see *Stereo image* below; 100% = full, 0% = mono).
+**Global** (all genres): `TEMPO` (0.70–1.45× the genre's own band) · `TEMPO BIAS` (how often a
+song takes the genre's uptempo band) · `STEREO WIDTH` (master stereo amount — see *Stereo image*
+below; 100% = full, 0% = mono) · `REVERB` (room blend). Tempo bands and swing are per-genre
+character rather than knobs (see `GenreProfile`), so neither is here.
 
 Every instrument row shares the first two columns: **VOLUME** (0–150%) and **TONE** (low-pass
 cutoff). **DRUMS** carries the same four knobs in every genre — its `TONE` sweeps toms ↔

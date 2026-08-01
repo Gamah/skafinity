@@ -42,6 +42,11 @@ static class Harmony
 	// {0,4} is the bare power chord (root + 5th). Nothing in the engine played anything but a
 	// triad or a power chord, which is why every genre's harmony read as the same primary-colour
 	// chord set even under different roots. The chordal voices draw from their genre's table.
+	/// <summary>Degree offsets inside a voicing. The THIRD decides major or minor and is the note a
+	/// driven guitar leaves out; the FOURTH and the FIFTH are the ones that must stay PERFECT (see
+	/// MusicGen.VoicedTone), because they are what "sus4" and "power chord" mean.</summary>
+	public const int Third = 2, Fourth = 3, Fifth = 4;
+
 	public static readonly int[] Triad = { 0, 2, 4 };
 	public static readonly int[] Seventh = { 0, 2, 4, 6 };
 	public static readonly int[] Ninth = { 0, 2, 4, 6, 8 };
@@ -327,6 +332,31 @@ static class Harmony
 	/// <summary>Root pitch of a progression degree.</summary>
 	public static int ChordRoot( int rootMidi, int[] scale, int degree )
 		=> ScaleMidi( rootMidi, scale, degree );
+
+	/// <summary>
+	/// One voice of a chord, as a MIDI pitch — the ONLY correct way to turn a voicing into notes.
+	///
+	/// A voicing is a list of degree offsets, so <c>ScaleMidi(base, root + offset)</c> spells it
+	/// DIATONICALLY: every interval comes out whatever the scale makes it at that degree. For the
+	/// third, the sixth, the seventh and the ninth that is exactly right — major-or-minor by
+	/// position is what diatonic harmony IS. For the FOURTH and the FIFTH it is wrong, because
+	/// every seven-note scale has one degree whose diatonic fifth is DIMINISHED and one whose
+	/// fourth is AUGMENTED. Spelled diatonically, a power chord on that degree is a bare tritone
+	/// and a sus4 is a root with a flat five — with no third present to explain either, which is
+	/// what "way off key" sounds like, and it is at its worst through distortion.
+	///
+	/// A guitarist frets the same power-chord shape on every degree; the shape does not go
+	/// diminished because of the key. So the fourth and the fifth are forced perfect and
+	/// everything else keeps its diatonic spelling. Both offsets sit inside one octave of the
+	/// root, so the perfect interval is simply the root plus 5 or 7.
+	/// </summary>
+	public static int VoicedTone( int baseMidi, int[] scale, int rootDegree, int offset )
+	{
+		int root = ScaleMidi( baseMidi, scale, rootDegree );
+		if ( offset == Fourth ) return root + 5;
+		if ( offset == Fifth ) return root + 7;
+		return ScaleMidi( baseMidi, scale, rootDegree + offset );
+	}
 }
 
 public sealed partial class MusicGen
@@ -347,11 +377,39 @@ public sealed partial class MusicGen
 		return _prog[chord] + _voicing[i - oct * n] + oct * _scale.Length;
 	}
 
-	/// <summary>Every note of the chord, as scale degrees.</summary>
+	/// <summary>Every note of the chord, as scale degrees. This is the MELODIC view — what tones
+	/// a line may land on. A voice that SOUNDS the chord wants <see cref="ChordMidis"/> instead,
+	/// which keeps the perfect intervals perfect.</summary>
 	int[] ChordDegrees( int chord )
 	{
 		var d = new int[_voicing.Length];
 		for ( int i = 0; i < d.Length; i++ ) d[i] = _prog[chord] + _voicing[i];
 		return d;
+	}
+
+	/// <summary>Every note of the chord as MIDI pitches over <paramref name="baseMidi"/> — what a
+	/// chordal voice actually plays. Use this rather than <c>ScaleMidi</c> over
+	/// <see cref="ChordDegrees"/>: see <see cref="Harmony.VoicedTone"/> for why the difference
+	/// matters on one degree of every scale.</summary>
+	int[] ChordMidis( int baseMidi, int chord ) => VoicedMidis( baseMidi, _prog[chord] );
+
+	/// <summary>As <see cref="ChordMidis"/>, for a chord whose root degree is given directly (the
+	/// ending's cadence builds its V that way).</summary>
+	int[] VoicedMidis( int baseMidi, int rootDegree )
+	{
+		var m = new int[_voicing.Length];
+		for ( int i = 0; i < m.Length; i++ )
+			m[i] = Harmony.VoicedTone( baseMidi, _scale, rootDegree, _voicing[i] );
+		return m;
+	}
+
+	/// <summary>Pitch of the <paramref name="i"/>th voice of the chord (wrapping up an octave past
+	/// the top, so an arpeggio can keep counting) — the sounding counterpart of
+	/// <see cref="ChordDegree"/>.</summary>
+	int ChordToneMidi( int baseMidi, int chord, int i )
+	{
+		int n = _voicing.Length;
+		int oct = (int)Math.Floor( i / (double)n );
+		return Harmony.VoicedTone( baseMidi, _scale, _prog[chord], _voicing[i - oct * n] ) + 12 * oct;
 	}
 }

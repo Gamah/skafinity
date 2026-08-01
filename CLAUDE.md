@@ -181,17 +181,24 @@ a new check from undoing it:
 The per-section wall clock prints at the end of every run. When the harness gets slow again, that
 table says where, and it has been wrong to guess before.
 
-**Two diagnostics answer "why does this song sound wrong", and both beat arguing by ear:**
+**Three diagnostics answer "why does this song sound wrong", and all of them beat arguing by ear:**
 
 - `-- --seed vibe:tag:n` prints what the composer decided for that seed: the decoded knobs, the
   tempo and swing (flagging a shuffle), key, changes, voicing, groove, figure lengths, tune
-  lengths, ending style, and the form with each section's energy/feel/key/displacement.
+  lengths, ending style, and the form with each section's energy/feel/key.
 - `-- --grid [genre]` prints, per voice, how often it lands on a bar line and how far its onsets
   sit from the song's own sixteenth grid (swing and tempo curve included). **A gesture written in
   TICKS scales with tempo** — country's strum spread was "a couple of ticks per string", which is
   5 ms at metal tempo and 75 ms at country's, i.e. a guitar audibly out of time. Anything physical
   rather than musical (a strum spread, the kit's push/lay-back) belongs in milliseconds/samples;
   the suite asserts every voice stays on the grid.
+- `-- --score vibe:tag:n [fromBar] [toBar]` prints the SCORE: every voice's onsets over a range of
+  bars, at `bar.beat`, with their MIDI pitches and the section + chord each bar is on. **A
+  listening note is always about a moment** ("it goes wrong on the 48th beat"), and the other two
+  answer whole-song questions — this is the one that reads that moment. It found the pre-chorus
+  section-wide displacement (since removed) by putting the guitar at 1.25/1.75/2.25 next to a
+  bass and a lead at 1.00/2.00.
+  Double-tracking emits two takes ~9 ms apart, so adjacent near-identical rows are one note.
 
 **Balancing the mix is a measurement, not a guess.** `dotnet run --project test/engine -c Release
 -- --levels` renders every genre with one voice soloed and prints its level in dB relative to that
@@ -305,6 +312,34 @@ that is the sound of one instrument rather than the identity of a genre: `BassTo
 `Keys.cs`, the lead's per-genre distortion in `Lead.cs`, the expression propensities in
 `Expression.cs`. Don't drag those in, and don't push a rhythm out.
 
+**A voicing is a list of degree offsets, so turning it into NOTES is not `ScaleMidi(base, root +
+offset)`.** That spelling is diatonic — every interval comes out whatever the scale makes it at
+that degree — which is exactly right for the third, sixth, seventh and ninth (major-or-minor by
+position IS diatonic harmony) and wrong for the fourth and the fifth. Every seven-note scale has
+one degree whose diatonic fifth is **diminished** and one whose fourth is **augmented**, so on
+those degrees a `Power` chord spells as a bare tritone and a `Sus4` as a root with a flat five —
+with no third present to explain either. That is what "way off key" sounds like, and distortion
+makes it far worse. A guitarist frets the same power-chord shape on every degree; the shape does
+not go diminished because of the key. `Harmony.VoicedTone` forces the fourth and the fifth perfect
+and leaves everything else diatonic, and **every voice that SOUNDS a chord goes through it** —
+`ChordMidis(baseMidi, chord)` / `ChordToneMidi` / `VoicedMidis(baseMidi, rootDegree)`.
+`ChordDegrees` survives as the MELODIC view (what tones a line may land on); if you find a chordal
+voice calling `ScaleMidi` over it, that voice is spelling its chords wrong. The engine test asserts
+the invariant over every genre × scale × voicing × progression degree, and separately asserts that
+the diatonic spelling really does break somewhere — otherwise the first check is vacuous.
+
+**A driven guitar does not play thirds.** Distortion is a non-linearity, so it generates sum and
+difference tones between everything fed into it; a root and a fifth are a simple enough ratio to
+survive that and a third is not. That is why guitarists play power chords through a driven amp and
+full triads through a clean one — and `RockVoicings` includes `Triad`, so a rock song at
+`DISTORTION 4` was a full triad through gain 5.5 and read exactly the way it reads on a real amp:
+"something is out of tune". `GuitarDegrees()` in `Guitar.cs` drops the voicing's third
+(`Harmony.Third`) once the effective drive passes `DirtyChord`; country's clean strum never
+reaches it, punk and metal always do. **The song's `_voicing` is untouched** — every chordal voice
+must still agree what the chord IS — this drops a note on the way out of ONE voice, so the keys
+keep the third and the band still states the quality. Guitar on the fifths, keyboard on the
+colour, which is how the parts divide in a real band.
+
 When adding per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a
 genre grid) or the genre's identity (`GenreProfile`). Getting it wrong is only obvious once
 shuffle is on.
@@ -368,6 +403,18 @@ in the profile because it is character; only the amount is house config, which i
 value rather than six genres × five trims of JSON. Voices apply it through `MixTrim(trim)` —
 `_drumLowMul`/`_drumHighMul`/`_midMul` already carry it for the kit and the body of the mix.
 
+**Double-tracking width has a ceiling, and it is not every voice's friend.** `WidthDetune` is
+bounded at 20 cents rather than 50: a few cents between two takes reads as two performances, tens
+of cents reads as out of tune, and this is house config with no listener-facing undo. `Detune` (the
+unison spread INSIDE one patch) is a half-spread applied symmetrically, so a 3-voice patch spans
+double it — at 14 the skank, the horns and the trumpet/trombone/organ leads sang across 28 cents,
+which is a chorus rather than a unison, and double-tracking stacked on top of it. **The keys are
+not double-tracked** (`mono: true` in `EmitKeys`): they already sound a whole voicing of held,
+detuned unisons at once, and doubling that put four detuned oscillators on every chord tone. A part
+worth doubling is one line or a strum, not a stack of held thirds. Dropping a take costs ~2.5 dB,
+so `KeysBalance` was re-measured with `--levels` in the same change — a timbre fix must not smuggle
+a mix change in with it.
+
 ---
 
 ## The time base (`Engine/Timing.cs`)
@@ -411,15 +458,18 @@ phrase whose last bar varies (the punk and busy-ska bass), and a 3-eighth hemiol
 divide the bar (the cadential regrouping). It is also why the engine is meter-agnostic enough for
 the non-4/4 row to be tractable.
 
-`Slice(from, to, anchor, feel, displace)` is the only way to read one, and every argument is a
-feature the composer needs:
+`Slice(from, to, anchor, feel)` is the only way to read one, and every argument is a feature the
+composer needs:
 
 - **anchor** — the section's first tick, so a multi-bar figure restarts with the section rather
   than with wherever the song happens to be.
 - **feel** — the section's half/double-time multiplier. Half time is a PATTERN RATE, not a tempo:
   the grid is untouched and the song's length does not change.
-- **displace** — metric displacement in ticks (Biamonte's displacement dissonance). Off-kilter
-  placement no amount of note-choice variation produces, and near-free because positions are ticks.
+
+There is deliberately **no displace argument**. A figure that pushes into the next bar says so in
+its CELLS — the ska skank's stab on the "and of 4", the Charleston, the horn answer — which is one
+gesture at a phrase seam. A constant per-section offset expressed the same idea the other way and
+did not survive a listen; see `SongForm`.
 
 Cell values are the *voice's* vocabulary, not the pattern's: bass cells are semitone offsets plus
 `Harmony.Rest`/`Approach`, comp cells are `CompFigure.Ring/Stab/Mute/Tone(i)`, drum cells are hit
@@ -456,27 +506,54 @@ bed under the tune in every genre, including ska.
 **The tune is as long as the harmonic cycle** (`ChordBars × progression length`, capped at 8 bars).
 A four-bar tune over an eight-bar cycle states itself twice and the second statement lands over
 different chords than it was drawn against — same notes, different harmony, which is what "the lead
-clashes with the backing" actually is. And **displacement is the comp's alone**: the melody and the
-horns that answer it stay on the grid, because shifting the whole harmonic band off the drums at
-once reads as two bands playing rather than one band pushing.
+clashes with the backing" actually is.
+
+**A section shorter than the tune sings the tune's END, not its beginning.** `RenderTune` pulls the
+anchor back by the difference, so the section's last bar lands on the tune's resolution. A four-bar
+pre-chorus over an eight-bar tune otherwise stated the call and was cut off by the chorus before
+the answer arrived — a phrase interrupted by the next phrase, which is what "two ideas at once"
+sounds like from the outside.
+
+**The melody needs an octave of its own** (`LeadBase()` in `Lead.cs`). The comp registers are
+fixed and known — the rhythm guitar voices its chord over `_rootMidi + 12`, the skank and the keys
+over `+24`, a full voicing reaching about `+31` — so a lead based at `+21`/`+24` sang its whole
+line inside the chordal bed and no amount of gain brought it out. `+31` clears that bed. Two
+exceptions are relational, not absolute: metal's shred already sat clear at `+26` and ranges far
+wider than a tune, and punk's unison IS the riff an octave up, so it stays one octave over the
+guitar's `+12`. Level is the second half of the same problem: the lead's target is **+2 dB over
+the genre's drums**, not level with them (see `LeadLevel`, and the ceiling in the suite is that
+target plus a seed's worth of variance).
 
 ---
 
 ## Sections carry state (`Engine/Structure.cs`, `SongForm`)
 
 `BuildStructure(genre)` returns the genre's OWN form — a metal song and a pop song no longer share
-one hardcoded list. A `Part` carries `Energy`, `Feel`, `TempoMul`, `KeyShift`, `Displace`,
-`Hemiola` and `BarBeats`, and `RenderSection` publishes them as `_energy`/`_feel`/`_displace`/
-`_keyShift` before rendering a bar.
+one hardcoded list. A `Part` carries `Energy`, `Feel`, `TempoMul`, `KeyShift`, `Hemiola` and
+`BarBeats`, and `RenderSection` publishes them as `_energy`/`_feel`/`_keyShift` before rendering
+a bar.
+
+**A `Displace` field is not coming back.** It held a constant tick offset that pushed the chordal
+voices late for a whole section, and all three things wrong with it were structural: it shifted
+LATE where real syncopation anticipates; it moved the guitar and keys but not the bass, so every
+chord arrived as a flam with its own root; and being constant it never re-converged, so there was
+no dissonance to resolve. `Hemiola` is the metric device that survives — a figure whose length does
+not divide the bar genuinely drifts and comes back.
 
 - **Voices read the state; they never ask "am I in a verse?"** Density and level come from
   `NoteGain(tick, vel)` = the cell's velocity × the genre's accent weight for that metric position
   × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is how the mix got flat and mechanical in
   the first place — route it through `NoteGain`.
 - `BarBeats` is the anomalous-measure hook (a 2/4 bar inside a 4/4 section). Bars are laid out per
-  section before anything renders, so a short bar is a length, not a special case. Sections are
-  multiples of 4 bars otherwise — including the ending, which is 4: the old 2-bar ending broke the
-  hypermeasure exactly where a clean landing was wanted.
+  section before anything renders, so a short bar is a length, not a special case. **No form uses
+  one today**: dropping a beat out of a bar under a melody reads as the song jumping to a downbeat
+  early, because the tune is a phrase and the beat comes out of the middle of it. The mechanism is
+  sound and it is what the non-4/4 row builds on — what is missing is the melodic half (a tune that
+  knows the bar it is sung over is short, rather than one that is simply truncated), so wire a short
+  bar back in when that lands, not before. The engine test asserts the MECHANISM (`SectionTicks`
+  honours the beat counts), not that some form uses it. Sections are multiples of 4 bars —
+  including the ending, which is 4: the old 2-bar ending broke the hypermeasure exactly where a
+  clean landing was wanted.
 - **Fills are planned per section, in ticks, not "the last beat of the bar".** Length is a weighted
   draw (a beat ≈ 55% … two bars ≈ 5%) and the ≥1-bar options are gated to boundaries that earn them
   (into a chorus, out of a breakdown). The KIT stops where the fill starts; the melodic voices play

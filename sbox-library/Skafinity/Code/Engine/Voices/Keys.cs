@@ -36,7 +36,11 @@ public sealed partial class MusicGen
 			Drive = KeysDriveFor(), Pan = 0f,
 		};
 		ApplyVoicing( ref keys, vc );
-		RenderPatch( _time.TickToSample( tick ), dur, Midi( midi ), keys );
+		// NOT double-tracked. The keys already sound their whole voicing as simultaneous notes, each
+		// a 2-voice detuned unison; doubling that put four detuned oscillators on every chord tone
+		// and the beating between them read as an out-of-tune keyboard rather than as width. A
+		// doubled part wants to be one line or a strum, not a stack of held thirds.
+		RenderPatch( _time.TickToSample( tick ), dur, Midi( midi ), keys, mono: true );
 	}
 
 	// ── Rock keys: the Charleston stab ──
@@ -46,15 +50,15 @@ public sealed partial class MusicGen
 	void RenderKeysStabBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
 		int kBase = _rootMidi + _keyShift + 24;
-		var degs = ChordDegrees( chord );
+		var tones = ChordMidis( kBase, chord );
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
 		bool ring = chug < 0.5f;
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, ring ) * Math.Max( 0.25f, 1f - 0.7f * chug )) );
-			foreach ( var d in degs )
-				EmitKeys( h.Tick, len, ScaleMidi( kBase, d ), h.Vel, ring, degs.Length, vc );
+			foreach ( var m in tones )
+				EmitKeys( h.Tick, len, m, h.Vel, ring, tones.Length, vc );
 		}
 	}
 
@@ -64,15 +68,15 @@ public sealed partial class MusicGen
 	void RenderHonkyTonkBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
 		int kBase = _rootMidi + _keyShift + 24;
-		var degs = ChordDegrees( chord );
+		var tones = ChordMidis( kBase, chord );
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, false ) * 0.9f) );
-			foreach ( var d in degs )
-				EmitKeys( h.Tick, len, ScaleMidi( kBase, d ), h.Vel, false, degs.Length + 1, vc );
-			EmitKeys( h.Tick, len, ScaleMidi( kBase, degs[0] ) - 12, h.Vel * 0.8f, false,
-				degs.Length + 1, vc );
+			foreach ( var m in tones )
+				EmitKeys( h.Tick, len, m, h.Vel, false, tones.Length + 1, vc );
+			EmitKeys( h.Tick, len, tones[0] - 12, h.Vel * 0.8f, false,
+				tones.Length + 1, vc );
 		}
 	}
 
@@ -82,15 +86,15 @@ public sealed partial class MusicGen
 	void RenderPadBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
 		int kBase = _rootMidi + _keyShift + 24;
-		var degs = ChordDegrees( chord );
+		var tones = ChordMidis( kBase, chord );
 		float pluck = Math.Clamp( _c.KeysChug, 0f, 1f );
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(h.SpanTicks * Math.Max( 0.2f, 1f - 0.75f * pluck )) );
-			foreach ( var d in degs )
-				EmitKeys( h.Tick, len, ScaleMidi( kBase, d ), h.Vel * 0.85f, pluck < 0.5f,
-					degs.Length, vc );
+			foreach ( var m in tones )
+				EmitKeys( h.Tick, len, m, h.Vel * 0.85f, pluck < 0.5f,
+					tones.Length, vc );
 		}
 	}
 
@@ -105,7 +109,7 @@ public sealed partial class MusicGen
 		{
 			if ( !CompFigure.IsTone( h.Value ) ) continue;
 			int len = Math.Max( 1, (int)(h.SpanTicks * 0.9f) );
-			EmitKeys( h.Tick, len, ScaleMidi( kBase, ChordDegree( chord, CompFigure.ToneIndex( h.Value ) ) ),
+			EmitKeys( h.Tick, len, ChordToneMidi( kBase, chord, CompFigure.ToneIndex( h.Value ) ),
 				h.Vel * 0.7f, false, 1, vc );
 		}
 	}

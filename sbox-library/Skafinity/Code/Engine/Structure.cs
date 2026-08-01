@@ -13,8 +13,8 @@ enum Section { Intro, Chorus, Verse, Ending, PreChorus, Bridge, Solo, Breakdown 
 /// A section is not just a span of bars: it carries the state that makes it FEEL like a
 /// different part of the song. Voices read <see cref="Energy"/> (thin the comp and drop the
 /// hats in a verse, pile on in a chorus), the time base reads <see cref="TempoMul"/>, the
-/// pattern layer reads <see cref="Feel"/> (half/double time) and <see cref="Displace"/>
-/// (metric displacement), and the harmony reads <see cref="KeyShift"/> (the final-chorus lift).
+/// pattern layer reads <see cref="Feel"/> (half/double time), and the harmony reads
+/// <see cref="KeyShift"/> (the final-chorus lift).
 ///
 /// <see cref="BarBeats"/> is the anomalous-measure hook: a section is normally a run of bars in
 /// the song's meter, but it may name a beat count per bar, which is how a 2/4 link bar lands
@@ -40,10 +40,6 @@ readonly struct Part
 	/// <summary>Semitones the section's key is shifted by — the final-chorus lift.</summary>
 	public readonly int KeyShift;
 
-	/// <summary>Metric displacement in ticks: the comp's figures land this late against the bar.
-	/// Biamonte's displacement dissonance, and near-free now positions are ticks.</summary>
-	public readonly int Displace;
-
 	/// <summary>True if the section's last two bars regroup into a hemiola (a figure whose length
 	/// does not divide the bar), which is the cadential accelerando into the next section.</summary>
 	public readonly bool Hemiola;
@@ -53,11 +49,10 @@ readonly struct Part
 	public readonly int[] BarBeats;
 
 	public Part( Section t, int bars, int verse = 0, float energy = 0.7f, float feel = 1f,
-		float tempoMul = 1f, int keyShift = 0, int displace = 0, bool hemiola = false,
-		int[] barBeats = null )
+		float tempoMul = 1f, int keyShift = 0, bool hemiola = false, int[] barBeats = null )
 	{
 		Type = t; Bars = bars; VerseIndex = verse; Energy = energy; Feel = feel;
-		TempoMul = tempoMul; KeyShift = keyShift; Displace = displace; Hemiola = hemiola;
+		TempoMul = tempoMul; KeyShift = keyShift; Hemiola = hemiola;
 		BarBeats = barBeats;
 	}
 }
@@ -71,10 +66,24 @@ readonly struct Part
 /// two rows down would never do: metal drops into a half-time breakdown, pop lifts the last
 /// chorus a tone, punk cuts a bar short on the way into a chorus, country and rock take a solo.
 ///
-/// Section lengths are multiples of 4 (the hypermeasure) EXCEPT where a short bar is the point —
-/// see <see cref="Part.BarBeats"/>. The old 2-bar ending broke the four-bar norm at exactly the
-/// moment a clean landing was wanted, so the ending is four bars everywhere and the
-/// irregularity moved to the transitions, where it does work.
+/// Every section here is a multiple of 4 bars in the song's own meter. The 2/4 link bar
+/// <see cref="Part.BarBeats"/> exists for is deliberately UNUSED at the moment: dropping a beat
+/// out of a bar under a melody reads as the song jumping to a downbeat early, because the tune is
+/// a phrase and the missing beat is taken out of the middle of it. The MECHANISM is sound and it
+/// is the hook the non-4/4 work needs — what is missing is the melodic half of it (a tune that
+/// knows the bar it is being sung over is short, rather than one that is simply truncated). Wire
+/// a short bar back in when that lands, not before.
+///
+/// A <c>Displace</c> field used to sit alongside <see cref="Part.Hemiola"/> — a constant tick
+/// offset that pushed the chordal voices late for a whole section. It is gone, and it should not
+/// come back in that shape. Three things were wrong with it and all three are structural:
+/// it shifted LATE where real syncopation anticipates; it moved the guitar and keys but not the
+/// bass, so every chord arrived as a flam with its own root; and being constant across a section
+/// it never re-converged, so there was no dissonance to resolve — just an offset bounded by two
+/// hard cuts. A push into a phrase seam is ONE GESTURE and the engine already writes it where it
+/// belongs, in a figure's cells (the ska skank's stab on the "and of 4", the Charleston, the horn
+/// answer). <see cref="Part.Hemiola"/> is the metric device that survives, because a figure whose
+/// length does not divide the bar genuinely drifts and comes back.
 /// </summary>
 static class SongForm
 {
@@ -90,24 +99,23 @@ static class SongForm
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Verse,  8, 0, energy: Mid ),
 		new( Section.Chorus, 8, energy: Full ),
-		new( Section.Bridge, 8, energy: Low + 0.05f, displace: Timing.TicksPerEighth ),
+		new( Section.Bridge, 8, energy: Low + 0.05f ),
 		new( Section.Verse,  8, 1, energy: Mid, hemiola: true ),
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Ending, 4, energy: Lift ),
 	};
 
 	// Rock — verse / pre-chorus / chorus, with the solo where a rock song puts it: after the
-	// second chorus, before the last one. The pre-chorus is the transitional section, so it is
-	// the one that runs short (a 2/4 bar) and displaces.
+	// second chorus, before the last one. The pre-chorus is the transitional section, so it is the
+	// one that regroups into a hemiola on the way into the chorus.
 	public static readonly Part[] Rock =
 	{
 		new( Section.Intro,     4, energy: Low, tempoMul: 0.97f ),
 		new( Section.Verse,     8, 0, energy: Mid ),
-		new( Section.PreChorus, 4, energy: Lift, displace: Timing.TicksPerEighth / 2,
-			barBeats: new[] { 4, 4, 4, 2 } ),
+		new( Section.PreChorus, 4, energy: Lift ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Verse,     8, 1, energy: Mid ),
-		new( Section.PreChorus, 4, energy: Lift, hemiola: true, barBeats: new[] { 4, 4, 4, 2 } ),
+		new( Section.PreChorus, 4, energy: Lift, hemiola: true ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Solo,      8, energy: Lift ),
 		new( Section.Chorus,    8, energy: Full ),
@@ -138,13 +146,13 @@ static class SongForm
 		new( Section.Verse,     8, 1, energy: Mid ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Breakdown, 8, energy: Low, feel: 0.5f, tempoMul: 0.98f ),
-		new( Section.Solo,      8, energy: Lift, displace: Timing.TicksPerEighth / 2 ),
+		new( Section.Solo,      8, energy: Lift ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Ending,    4, energy: Full ),
 	};
 
-	// Punk — the shortest form, no pre-chorus, no solo, and the one bar that gets cut is the run
-	// into the last chorus. Everything is at the top of its energy already.
+	// Punk — the shortest form, no pre-chorus, no solo, and a four-bar bridge that regroups on the
+	// run into the last chorus. Everything is at the top of its energy already.
 	public static readonly Part[] Punk =
 	{
 		new( Section.Intro,  4, energy: Mid, tempoMul: 1f ),
@@ -152,7 +160,7 @@ static class SongForm
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Verse,  8, 1, energy: Lift ),
 		new( Section.Chorus, 8, energy: Full ),
-		new( Section.Bridge, 4, energy: Mid, hemiola: true, barBeats: new[] { 4, 4, 4, 2 } ),
+		new( Section.Bridge, 4, energy: Mid, hemiola: true ),
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Ending, 4, energy: Full ),
 	};
@@ -164,7 +172,7 @@ static class SongForm
 	{
 		new( Section.Intro,     4, energy: Low ),
 		new( Section.Verse,     8, 0, energy: Mid ),
-		new( Section.PreChorus, 4, energy: Lift, displace: Timing.TicksPerEighth / 2 ),
+		new( Section.PreChorus, 4, energy: Lift ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Verse,     8, 1, energy: Mid ),
 		new( Section.PreChorus, 4, energy: Lift ),

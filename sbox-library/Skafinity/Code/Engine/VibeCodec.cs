@@ -119,7 +119,11 @@ public static class VibeCodec
 		// every later global and the whole instrument grid stay at their existing wire positions
 		// and previously shared vibes still decode. A future global knob can claim it.
 		null,
-		F( "RESONANCE", 0.2f, 2f, false, c => c.Resonance, ( c, v ) => c.Resonance = v ),
+		// RESERVED — was RESONANCE. It set a Config field no voice ever read, so the slider was
+		// inert; every patch names its own SVF damping next to the voice it belongs to, which is
+		// where a timbre value belongs. Kept as an empty slot so every later global and the whole
+		// instrument grid stay at their existing wire positions.
+		null,
 		F( "STEREO WIDTH", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
 		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
 		// Appended, so every position above keeps the place it has always had. The range is 15
@@ -159,7 +163,9 @@ public static class VibeCodec
 		F( "DoubleTrack", 0f, 1f, false, c => c.DoubleTrack, ( c, v ) => c.DoubleTrack = v ),
 		F( "WidthBacking", 0f, 1f, false, c => c.WidthBacking, ( c, v ) => c.WidthBacking = v ),
 		F( "WidthLead", 0f, 1f, false, c => c.WidthLead, ( c, v ) => c.WidthLead = v ),
-		F( "WidthDetune", 0f, 50f, false, c => c.WidthDetune, ( c, v ) => c.WidthDetune = v ),
+		// Bounded at 20 cents, not 50: half a quarter-tone between two takes is not a double, it is
+		// a tuning error, and this is a house-config field with no way for a listener to undo it.
+		F( "WidthDetune", 0f, 20f, false, c => c.WidthDetune, ( c, v ) => c.WidthDetune = v ),
 		F( "WidthDelayMs", 0f, 40f, false, c => c.WidthDelayMs, ( c, v ) => c.WidthDelayMs = v ),
 		F( "WidthJitterMs", 0f, 30f, false, c => c.WidthJitterMs, ( c, v ) => c.WidthJitterMs = v ),
 		F( "WidthAmpVar", 0f, 1f, false, c => c.WidthAmpVar, ( c, v ) => c.WidthAmpVar = v ),

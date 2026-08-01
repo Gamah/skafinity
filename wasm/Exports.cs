@@ -219,6 +219,7 @@ public partial class Engine
 	[JSExport]
 	internal static double AdvancedFieldMax( int i ) => VibeCodec.AdvancedFields[i].Max;
 
+
 	[JSExport]
 	internal static double GetAdvancedField( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg, int i )
 		=> VibeCodec.AdvancedFields[i].Get( Cfg.From( cfg ) );
@@ -241,7 +242,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 88;
+	public const int Size = 87;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -249,7 +250,7 @@ static class Cfg
 		c.BassVol, c.SkankVol, c.OrganVol, c.MelodyVol, c.HornVol,
 		c.KickVol, c.SnareVol, c.TomVol, c.HatVol, c.CrashVol, c.DrumVol,
 		c.Detune, c.BassCutoff, c.SkankCutoff, c.SkankHighpass, c.SkankChop,
-		c.LeadCutoff, c.OrganCutoff, c.OrganVibrato, c.HornCutoff, c.Resonance,
+		c.LeadCutoff, c.OrganCutoff, c.OrganVibrato, c.HornCutoff,
 		c.BassDrive, c.SkankDrive, c.MelodyDrive, c.HornDrive, c.MasterDrive, c.MasterPeak,
 		c.OctavePopChance, c.OrganBubbleChance, c.KickSyncChance, c.GhostSnareChance,
 		c.FillChance, c.DrumBusy, c.TripletChance, c.BassTriplets,
@@ -283,7 +284,7 @@ static class Cfg
 		c.BassVol = (float)a[i++]; c.SkankVol = (float)a[i++]; c.OrganVol = (float)a[i++]; c.MelodyVol = (float)a[i++]; c.HornVol = (float)a[i++];
 		c.KickVol = (float)a[i++]; c.SnareVol = (float)a[i++]; c.TomVol = (float)a[i++]; c.HatVol = (float)a[i++]; c.CrashVol = (float)a[i++]; c.DrumVol = (float)a[i++];
 		c.Detune = (float)a[i++]; c.BassCutoff = (float)a[i++]; c.SkankCutoff = (float)a[i++]; c.SkankHighpass = (float)a[i++]; c.SkankChop = (float)a[i++];
-		c.LeadCutoff = (float)a[i++]; c.OrganCutoff = (float)a[i++]; c.OrganVibrato = (float)a[i++]; c.HornCutoff = (float)a[i++]; c.Resonance = (float)a[i++];
+		c.LeadCutoff = (float)a[i++]; c.OrganCutoff = (float)a[i++]; c.OrganVibrato = (float)a[i++]; c.HornCutoff = (float)a[i++];
 		c.BassDrive = (float)a[i++]; c.SkankDrive = (float)a[i++]; c.MelodyDrive = (float)a[i++]; c.HornDrive = (float)a[i++]; c.MasterDrive = (float)a[i++]; c.MasterPeak = (float)a[i++];
 		c.OctavePopChance = (float)a[i++]; c.OrganBubbleChance = (float)a[i++]; c.KickSyncChance = (float)a[i++]; c.GhostSnareChance = (float)a[i++];
 		c.FillChance = (float)a[i++]; c.DrumBusy = (float)a[i++]; c.TripletChance = (float)a[i++]; c.BassTriplets = (float)a[i++];

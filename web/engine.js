@@ -72,6 +72,8 @@ function makeMod(E) {
     // host config.json can overlay them onto a cfg without knowing the double[] layout.
     advancedFieldCount: () => E.AdvancedFieldCount(),
     advancedFieldName: (i) => E.AdvancedFieldName(i),
+    advancedFieldMin: (i) => E.AdvancedFieldMin(i),
+    advancedFieldMax: (i) => E.AdvancedFieldMax(i),
     getAdvancedField: (cfg, i) => E.GetAdvancedField(asArray(cfg), i),
     setAdvancedField: (cfg, i, raw) => E.SetAdvancedField(asArray(cfg), i, raw),
     // Overlay { Name: rawValue } onto cfg (raw, clamped per field). Unknown keys are ignored.

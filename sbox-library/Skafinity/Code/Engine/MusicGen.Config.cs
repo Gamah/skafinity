@@ -76,7 +76,11 @@ public sealed partial class MusicGen
 		public float LeadGtrBend = 0.30f;     // rock lead "bendiness" 0..1 — propensity to bend up into notes and scoop
 
 		// Tone — low drives + filtering for warmth; detune for width.
-		public float Detune = 14f;        // cents, unison spread
+		// Unison spread in cents, applied SYMMETRICALLY across a patch's voices: a 3-voice patch
+		// puts them at -Detune, 0, +Detune, so this is the half-spread and the total is double it.
+		// 14 meant a 28-cent spread on the skank, the horns and the trumpet/trombone/organ leads —
+		// a chorus, not a unison, and it stacked with double-tracking on top of every chord tone.
+		public float Detune = 7f;
 		public float BassCutoff = 380f;   // Hz low-pass on bass
 		public float SkankCutoff = 3000f; // Hz low-pass on skank
 		public float SkankHighpass = 500f;// Hz high-pass to thin the skank ("skank bite")
@@ -85,7 +89,8 @@ public sealed partial class MusicGen
 		public float OrganCutoff = 1400f; // Hz low-pass on the organ bubble
 		public float OrganVibrato = 5.5f; // organ bubble vibrato depth
 		public float HornCutoff = 3200f;  // Hz low-pass on the backing horns
-		public float Resonance = 1.0f;    // SVF damping (lower = more resonant)
+		// SVF damping is not a Config value: it is part of a voice's timbre and is named on the
+		// Patch next to the voice that renders it (see Patch.Reso).
 		public float BassDrive = 1.5f;
 		public float SkankDrive = 1.3f;
 		public float MelodyDrive = 1.3f;
@@ -162,7 +167,9 @@ public sealed partial class MusicGen
 		public float OrganBalance = 1.237f;
 		public float MelodyBalance = 0.896f;  // ska horn lead
 		public float HornBalance = 1.142f;    // backing horn section
-		public float KeysBalance = 1.065f;    // rock offbeat keys
+		// Re-measured when the keys stopped being double-tracked: one take instead of two summed
+		// cost the voice ~2.5 dB, which is a mix change nobody asked for hiding inside a timbre fix.
+		public float KeysBalance = 1.390f;    // rock offbeat keys
 		public float RhythmGtrBalance = 1.053f;
 		public float LeadGtrBalance = 0.896f;
 
@@ -181,7 +188,10 @@ public sealed partial class MusicGen
 		                                      // (see RenderLeadNote) — doubling a solo line smeared pitch
 		                                      // ("out of key"). Only takes effect if the lead path is
 		                                      // switched back to lead:true. Chordal voices use WidthBacking.
-		public float WidthDetune = 6f;        // cents BETWEEN the two takes (split ±half each)
+		public float WidthDetune = 6f;        // cents BETWEEN the two takes (split ±half each).
+		                                      // Kept deliberately small — a few cents is what makes
+		                                      // two takes read as two performances; a wide value is
+		                                      // just out of tune (see the range in AdvancedFields).
 		public float WidthDelayMs = 9f;       // constant timing offset of the 2nd take (ms)
 		public float WidthJitterMs = 4f;      // extra random per-note timing jitter (ms, ± per take)
 		public float WidthAmpVar = 0.08f;     // per-note amplitude variation between takes (0..1)

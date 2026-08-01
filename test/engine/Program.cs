@@ -34,6 +34,14 @@ static class Program
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }
 		int si = Array.IndexOf( args, "--seed" );
 		if ( si >= 0 && si + 1 < args.Length ) { Explain( args[si + 1] ); return 0; }
+		int ci = Array.IndexOf( args, "--score" );
+		if ( ci >= 0 && ci + 1 < args.Length )
+		{
+			int from = ci + 2 < args.Length && int.TryParse( args[ci + 2], out var f0 ) ? f0 : 1;
+			int to = ci + 3 < args.Length && int.TryParse( args[ci + 3], out var t0 ) ? t0 : from + 8;
+			Score( args[ci + 1], from, to );
+			return 0;
+		}
 
 		// Sections run in a list so each one can be timed. The per-section wall clock is printed
 		// at the end: this harness is dominated by rendering, so "which section costs what" is the
@@ -137,6 +145,45 @@ static class Program
 
 	static void HarmonyTests()
 	{
+		// ── a voicing's PERFECT intervals must be perfect, on every degree of every scale ──
+		// Spelled diatonically (root degree + offset), a "power chord" or a "sus4" is only really
+		// one on the degrees where the scale happens to hand it a perfect fifth. Every seven-note
+		// scale has one degree whose fifth is DIMINISHED and one whose fourth is AUGMENTED, and on
+		// those a power chord comes out a bare tritone — with no third present to explain it, which
+		// is what "way off key" sounds like, at its worst through distortion. Harmony.VoicedTone
+		// forces those two intervals; this asserts it across the whole cross product, which is
+		// cheap because none of it renders.
+		bool perfect = true;
+		string worst = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			foreach ( var scale in prof.Scales )
+				foreach ( var voicing in prof.Voicings )
+					foreach ( var prog in prof.Progressions )
+						foreach ( var deg in prog )
+							foreach ( var offset in voicing )
+							{
+								if ( offset != Harmony.Fourth && offset != Harmony.Fifth ) continue;
+								int root = Harmony.ScaleMidi( 48, scale, deg );
+								int tone = Harmony.VoicedTone( 48, scale, deg, offset );
+								int want = offset == Harmony.Fourth ? 5 : 7;
+								if ( tone - root == want ) continue;
+								perfect = false;
+								worst = $"genre {g} degree {deg} offset {offset} = {tone - root} semitones";
+							}
+		}
+		Check( "every voicing's fourth and fifth are perfect on every degree", perfect, worst );
+
+		// …and the diatonic spelling really does go wrong somewhere, or the rule above is vacuous
+		// and would keep passing after someone deleted it.
+		bool diatonicBreaks = false;
+		foreach ( var scale in GenreProfile.For( 1 ).Scales )
+			for ( int deg = 0; deg < scale.Length; deg++ )
+				diatonicBreaks |= Harmony.ScaleMidi( 48, scale, deg + Harmony.Fifth )
+					- Harmony.ScaleMidi( 48, scale, deg ) != 7;
+		Check( "a diatonic fifth really is diminished on some degree", diatonicBreaks );
+
 		// ScaleMidi wraps octaves rather than clamping, so a progression may run off either
 		// end of its scale table and still yield a sane pitch.
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
@@ -699,20 +746,29 @@ static class Program
 			foreach ( var p in MusicGen.BuildStructure( g ) ) halfTime |= p.Feel < 1f;
 		Check( "some genre drops into half time", halfTime );
 
-		// The final-chorus lift, and the metric displacement the transitional sections carry.
-		bool lift = false, displaced = false, hemiola = false, shortBar = false;
+		// The final-chorus lift, and the hemiola the transitional sections regroup into. A constant
+		// per-section displacement used to live here too; it is gone deliberately (see SongForm) and
+		// the hemiola is the metric device that survives, because it re-converges.
+		bool lift = false, hemiola = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 			foreach ( var p in MusicGen.BuildStructure( g ) )
 			{
 				lift |= p.KeyShift != 0;
-				displaced |= p.Displace != 0;
 				hemiola |= p.Hemiola;
-				shortBar |= p.BarBeats != null;
 			}
 		Check( "some genre lifts a section into a new key", lift );
-		Check( "some section displaces its comp against the bar", displaced );
 		Check( "some section regroups into a hemiola", hemiola );
-		Check( "some section runs an anomalous (short) bar", shortBar );
+
+		// The anomalous (short) bar. No FORM uses one today — dropping a beat under a melody reads
+		// as the song jumping to a downbeat early — so what is asserted is the MECHANISM, which the
+		// non-4/4 work builds on: a section's length has to follow its per-bar beat counts, not
+		// bars x the song's meter.
+		var evenBars = new Part( Section.Verse, 4 );
+		var shortBar = new Part( Section.Verse, 4, barBeats: new[] { 4, 4, 4, 2 } );
+		Check( "a plain section is bars x the meter",
+			MusicGen.SectionTicks( evenBars, 4 ) == 4 * 4 * Timing.TicksPerBeat );
+		Check( "a short bar shortens its section by exactly the beats it drops",
+			MusicGen.SectionTicks( shortBar, 4 ) == MusicGen.SectionTicks( evenBars, 4 ) - 2 * Timing.TicksPerBeat );
 	}
 
 	/// <summary>The tune — the thing a listener hums back. What matters is that it is a real
@@ -796,12 +852,9 @@ static class Program
 		bool drifts = b1.Count != b2.Count || b1[0].Tick % bar != b2[0].Tick % bar;
 		Check( "a hemiola lands differently in the next bar", drifts );
 
-		// Half time stretches the figure without touching the grid; displacement moves it late.
+		// Half time stretches the figure without touching the grid.
 		var half = oneBar.Slice( 0, bar * 2, 0, 0.5f );
 		Check( "half time stretches a figure over two bars", half.Count == 4 );
-		var moved = oneBar.Slice( 0, bar, 0, 1f, Timing.TicksPerEighth );
-		Check( "displacement pushes every onset late",
-			moved[0].Tick == oneBar.Slice( 0, bar )[0].Tick + Timing.TicksPerEighth );
 
 		// The anchor is the section, so a multi-bar figure restarts with the section rather than
 		// wherever the song happens to be.
@@ -1022,7 +1075,11 @@ static class Program
 
 			Check( $"genre {g} comp sits under the kit", comp < drums * 0.85,
 				$"comp {Db( comp, drums ):0.0} dB" );
-			Check( $"genre {g} lead does not dominate", lead < drums * 1.6,
+			// The lead is the MELODY and its target is +2 dB over the kit (see LeadLevel), not
+			// level with it. This ceiling is that target plus the ~4 dB a single seed varies
+			// around it — it catches a lead that has become the whole record, not one that is
+			// simply on top, which is where it belongs.
+			Check( $"genre {g} lead does not dominate", lead < drums * 2.0,
 				$"lead {Db( lead, drums ):0.0} dB" );
 			Check( $"genre {g} bass is present", bass > drums * 0.4, $"bass {Db( bass, drums ):0.0} dB" );
 			// Nothing may be inaudible either — a voice a genre plays must actually arrive.
@@ -1203,6 +1260,87 @@ static class Program
 		var g = MusicGen.BeginPlan( $"{tag}:{n}", cfg );
 		Console.WriteLine();
 		Console.WriteLine( g.Explain() );
+	}
+
+	/// <summary>What every voice plays over a range of BARS, as a score.
+	///
+	/// <c>--seed</c> says what the composer decided for the whole song and <c>--grid</c> says
+	/// whether the band agrees about the beat. Neither answers "what happens at bar 13" — and a
+	/// listening note is always about a MOMENT. This solos each voice, reads its audible notes
+	/// back off the plan, and prints them at bar.beat with their pitch, next to the section and
+	/// the chord each bar is on. Usage: <c>-- --score vibe:tag:n [fromBar] [toBar]</c> (bars are
+	/// 1-based, counted from the song's first downbeat).</summary>
+	static void Score( string seed, int fromBar, int toBar )
+	{
+		var bits = seed.Split( ':' );
+		string vibe = bits.Length >= 3 ? bits[0] : "";
+		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
+		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
+
+		MusicGen.Config Base()
+		{
+			var c = new MusicGen.Config { SampleRate = 22050 };
+			VibeCodec.Apply( vibe, c );
+			return c;
+		}
+
+		// The ruler: bar lines in ticks, and which section each bar belongs to.
+		var ruler = MusicGen.BeginPlan( $"{tag}:{n}", Base() );
+		var barTicks = ruler.BarTickLines();
+		var structure = MusicGen.BuildStructure( ruler.Genre );
+		var barSection = new (string Name, int Chord)[barTicks.Length];
+		int bi = 0;
+		foreach ( var part in structure )
+			for ( int bar = 0; bar < part.Bars && bi < barSection.Length; bar++, bi++ )
+				barSection[bi] = ($"{part.Type}", ruler.ChordIndexAt( part, bar ));
+
+		fromBar = Math.Clamp( fromBar, 1, barTicks.Length );
+		toBar = Math.Clamp( toBar, fromBar, barTicks.Length );
+		Console.WriteLine( $"score for {seed} — bars {fromBar}..{toBar} (1-based)" );
+		Console.WriteLine();
+
+		foreach ( var (name, solo) in Voices )
+		{
+			if ( name == "DRUMS" ) continue;      // synthesised into the buffer, not events
+			var cfg = Base();
+			cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
+				cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
+			solo( cfg );
+			var g = MusicGen.BeginPlan( $"{tag}:{n}", cfg );
+			var notes = g.AudibleNotes();
+			if ( notes.Length == 0 ) continue;
+
+			// Sample -> tick, off the same 1-tick grid --grid measures against. Double-tracking
+			// emits two takes per note a few ms apart, so identical (tick, midi) pairs collapse.
+			var grid = g.GridSamples();
+			var rows = new SortedDictionary<int, SortedSet<int>>();
+			foreach ( var (start, freq) in notes )
+			{
+				int tick = NearestBar( grid, start );
+				if ( tick < barTicks[fromBar - 1] ) continue;
+				if ( toBar < barTicks.Length && tick >= barTicks[toBar] ) continue;
+				int midi = (int)Math.Round( 69 + 12 * Math.Log2( Math.Max( 1e-3, freq ) / 440.0 ) );
+				if ( !rows.TryGetValue( tick, out var set ) ) rows[tick] = set = new SortedSet<int>();
+				set.Add( midi );
+			}
+			if ( rows.Count == 0 ) continue;
+
+			Console.WriteLine( $"── {name} ──" );
+			int lastBar = -1;
+			foreach ( var (tick, midis) in rows )
+			{
+				int bar = NearestBar( barTicks, tick );
+				if ( bar != lastBar )
+				{
+					var (sect, chord) = barSection[bar];
+					Console.WriteLine( $"  bar {bar + 1,3}  [{sect}, chord {chord}]" );
+					lastBar = bar;
+				}
+				double beat = (tick - barTicks[bar]) / (double)Timing.TicksPerBeat + 1;
+				Console.WriteLine( $"      {beat,5:0.00}   {string.Join( " ", midis )}" );
+			}
+			Console.WriteLine();
+		}
 	}
 
 	/// <summary>Are the parts playing together?
