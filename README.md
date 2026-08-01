@@ -10,6 +10,8 @@ library ships (`sbox-library/`). The web toy compiles that shared source to WebA
 with the .NET `wasm-tools` workload — no port, so the game and the web run identical
 composition code. `reference/` keeps the original C# for context (see `CLAUDE.md`).
 
+
+Try it out here: https://skafinity.notadomain.lol
 ## Build & run
 
 ### Docker (the deploy path — no local .NET needed)
