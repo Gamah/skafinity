@@ -60,11 +60,11 @@ public sealed partial class MusicGen
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
 		_widthScale = Math.Clamp( _c.PanAmount * prof.Mix.Width * _c.GenreMix, 0f, 1f );
 		_drumPan = DrumPan * _widthScale;
-		_bassPat = rng.Pick( prof.BassPatterns );
-		_compFig = rng.Pick( prof.CompFigures );
+		_bassPat = _songBass = rng.Pick( prof.BassPatterns );
+		_compFig = _songComp = rng.Pick( prof.CompFigures );
 		// The second chordal voice's figure. Drawn even where the genre has none, so the genres
 		// that do have one are not the only ones consuming the value.
-		_keysFig = PickOrNull( rng, prof.KeysFigures );
+		_keysFig = _songKeys = PickOrNull( rng, prof.KeysFigures );
 		_groove = prof.DrawGroove( rng );
 		// Metal's bass either pedals under the riff or doubles it; punk sometimes takes the same
 		// unison. Both are RELATIONAL, so this decides whether the bass reads the guitar's onsets
@@ -81,6 +81,10 @@ public sealed partial class MusicGen
 		_ridePref = prof.DrawRidePref( rng );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
 		_crashBrightLeft = rng.Chance( 0.5f );
+
+		// The song's TUNE — the thing a listener hums back. Drawn off its own streams, so a song
+		// having a melody shifts nothing else in the composition.
+		DrawTunes( beatsPerBar * Timing.TicksPerBeat );
 
 		// Swing is the genre's own feel, drawn per song from its band exactly the way tempo is —
 		// not a knob, so a reroll can never hand metal a shuffle. Ska and country may instead
@@ -226,6 +230,25 @@ public sealed partial class MusicGen
 		var fillRng = new Rng( $"{_tag}:fill:{absIndex}" );
 		var fillNoise = new Rng( $"{_tag}:fillnoise:{absIndex}" );
 
+		// ── the section's figures ──
+		// The comp, keys and bass figures were drawn ONCE PER SONG, so a two-bar figure really was
+		// everything a listener ever heard — the backing read as one cell repeated for three
+		// minutes. The chorus keeps the song's own figure (that is the song's identity, and every
+		// chorus must agree); the other sections draw their own off a stream keyed by section TYPE,
+		// so a verse contrasts with the chorus while both verses still match each other.
+		if ( part.Type != Section.Chorus )
+		{
+			var figRng = new Rng( $"{_tag}:figure:{bk}" );
+			_compFig = figRng.Pick( _prof.CompFigures );
+			_keysFig = PickOrNull( figRng, _prof.KeysFigures );
+			_bassPat = figRng.Pick( _prof.BassPatterns );
+		}
+		else
+		{
+			_compFig = _songComp; _keysFig = _songKeys; _bassPat = _songBass;
+		}
+		var tune = TuneFor( part.Type );
+
 		// ── the section's own state ──
 		// Everything below here reads these rather than asking "am I in a verse?": the energy
 		// contour, the half/double-time feel, the metric displacement, and the key.
@@ -322,9 +345,15 @@ public sealed partial class MusicGen
 
 			RenderDrumBar( barTick, barTicks, fillFrom, noise );
 
-			// No lead in the ending: the band has already resolved, so the lead must too.
-			if ( playTop && !isEnding && bar % Math.Max( 1, _prof.LeadPhraseBars ) == 0 )
-				RenderLeadPhrase( barTick, barTicks, chord, leadRng, exprRng );
+			// The melody. Where the section has a tune it SINGS it — the same one every time that
+			// section comes round, which is what makes a chorus a chorus. Sections without one (a
+			// solo, and metal's verses) are where the genre's lead grammar improvises instead.
+			if ( playTop && !isEnding )
+			{
+				if ( tune != null ) RenderTune( tune, barTick, barTicks, chord, leadRng, exprRng );
+				else if ( bar % Math.Max( 1, _prof.LeadPhraseBars ) == 0 )
+					RenderLeadPhrase( barTick, barTicks, chord, leadRng, exprRng );
+			}
 		}
 
 		// The fill, once, wherever it started — a beat, or the two bars before a final chorus.
@@ -357,12 +386,21 @@ public sealed partial class MusicGen
 		// the song's own, so a ska song ends on its 9th and a metal song on a bare fifth.
 		int dur = (int)(_sr * RingOutTail * 0.92f);
 		int baseMidi = _rootMidi + _keyShift + 19;
+		// The final chord is the CHORDAL VOICE's last note, so it tracks that voice's level. It
+		// used to carry a hardcoded amplitude, which meant a listener who had muted every
+		// instrument still got a chord at the end of the song.
+		float padAmp = _prof.Comp switch
+		{
+			CompStyle.Skank => _c.SkankVol * _c.SkankBalance,
+			CompStyle.Pad => _c.KeysVol * _c.KeysBalance,
+			_ => _c.RhythmGtrVol * _c.RhythmGtrBalance,
+		};
 		foreach ( var d in _voicing )
 		{
 			var pad = new Patch
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = 0.7f / _voicing.Length * _midMul, Attack = 0.006f, Decay = 1.2,
+				Amp = 0.7f * padAmp / _voicing.Length * _midMul, Attack = 0.006f, Decay = 1.2,
 				Sustain = 0f, Sustained = false,
 				Cutoff = _c.SkankCutoff, CutEnv = 700f, Reso = 0.8f,
 				Drive = _genre == 3 ? 3.5f : 1.3f, Pan = 0f,

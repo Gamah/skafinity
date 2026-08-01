@@ -31,6 +31,16 @@ public sealed partial class MusicGen
 		}
 	}
 
+	/// <summary>How long a comp hit rings.
+	///
+	/// NOT simply "until the next onset". A figure with uneven gaps then produces a note with an
+	/// uneven length every single bar — the "short, longggg" shape that made the backing read as
+	/// one repeated cell however varied the figure was. A chord rings for up to two beats and a
+	/// stab is a stab; past that the voice is silent and the next hit lands into space, which is
+	/// what a played part actually sounds like.</summary>
+	static int CompLen( int spanTicks, bool ring )
+		=> Math.Max( 1, Math.Min( spanTicks, ring ? Timing.TicksPerBeat * 2 : Timing.TicksPerEighth ) );
+
 	/// <summary>The second chordal voice — the keys/piano/synth layer, where the genre has one.
 	/// It never doubles the main voice: rock's organ answers the riff's gaps, country's piano
 	/// hits the backbeat the guitar leaves alone, pop's arp moves over a pad that does not.

@@ -17,11 +17,6 @@ enum Instrument { Trumpet, Sax, Organ, Trombone }
 
 public sealed partial class MusicGen
 {
-	// The pop hook: a two-bar motif drawn ONCE per song and then repeated. No other genre repeats
-	// a motif, and a pop song that never does reads as an improvisation over a pop backing. Built
-	// off its own stream, so having one shifts nothing else in the song.
-	List<(int Tick, int Degree, int Len)> _hook;
-
 	/// <summary>One lead phrase, in the genre's own grammar.</summary>
 	void RenderLeadPhrase( int barTick, int barTicks, int chord, Rng rng, Rng exprRng )
 	{
@@ -32,7 +27,9 @@ public sealed partial class MusicGen
 			case LeadStyle.Shred: RenderShredPhrase( barTick, span, chord, rng, exprRng ); break;
 			case LeadStyle.DoubleStop: RenderDoubleStopPhrase( barTick, span, chord, rng, exprRng ); break;
 			case LeadStyle.Unison: RenderUnisonPhrase( chord, exprRng ); break;
-			case LeadStyle.Hook: RenderHookPhrase( barTick, span, chord, exprRng ); break;
+			// Pop's Hook style is the tune everywhere (see Melody) — where a pop section has no
+			// tune to sing it lays out rather than improvising, which is what a drop is.
+			case LeadStyle.Hook:
 			case LeadStyle.Bluesy: RenderSungPhrase( barTick, span, chord, rng, exprRng, sparse: true ); break;
 			default: RenderSungPhrase( barTick, span, chord, rng, exprRng, sparse: false ); break;
 		}
@@ -186,49 +183,6 @@ public sealed partial class MusicGen
 		}
 	}
 
-	/// <summary>Pop: the hook. The SAME two-bar motif every phrase, transposed onto the current
-	/// chord — that repetition is the whole difference between a pop lead and a solo.</summary>
-	void RenderHookPhrase( int barTick, int span, int chord, Rng exprRng )
-	{
-		_hook ??= BuildHook( new Rng( $"{_tag}:hook" ), span );
-		int melBase = LeadBase();
-		float amp = _c.LeadGtrVol * _c.LeadGtrBalance * _midMul;
-		var ex = Expr( "LEAD GTR" );
-		int prev = NoPrev;
-		foreach ( var (offset, degree, len) in _hook )
-		{
-			int t = barTick + offset;
-			if ( offset >= span ) break;
-			int midi = ScaleMidi( melBase, _prog[chord] + degree );
-			var vc = Roll( ex, midi, prev, exprRng );
-			prev = midi;
-			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi,
-				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, len ) * 0.7, _c.LeadGtrDrive, vc );
-		}
-	}
-
-	/// <summary>Draw the song's hook: a handful of notes over the phrase, aligned to the eighth
-	/// grid and ending on a chord tone so every repetition lands.</summary>
-	static List<(int, int, int)> BuildHook( Rng rng, int span )
-	{
-		var hook = new List<(int, int, int)>();
-		int degree = 0;
-		for ( int t = 0; t < span; )
-		{
-			int len = (1 + rng.Int( 3 )) * Timing.TicksPerEighth;
-			if ( !rng.Chance( 0.25f ) ) hook.Add( (t, degree, len) );
-			degree += rng.Chance( 0.35f ) ? (rng.Chance( 0.5f ) ? 2 : -2) : (rng.Chance( 0.5f ) ? 1 : -1);
-			degree = Math.Clamp( degree, -3, 9 );
-			t += len;
-		}
-		if ( hook.Count > 0 )
-		{
-			var last = hook[^1];
-			hook[^1] = (last.Item1, 0, last.Item3);                 // resolve home
-		}
-		return hook;
-	}
-
 	/// <summary>A run of evenly-spaced notes around the current degree — the sung line's ornament.
 	/// Returns the tick the phrase continues from.</summary>
 	int RenderLeadRun( int t, int chord, int degree, int melBase, float amp, float drive,
@@ -271,10 +225,24 @@ public sealed partial class MusicGen
 		return best;
 	}
 
+	/// <summary>Per-genre lead level (measured with `--levels`). The lead sings the tune now
+	/// rather than filling the odd phrase, so it is playing far more of the song than the
+	/// balances were set for — a melody that is 6 dB over the kit stops being a melody and starts
+	/// being the whole record.</summary>
+	float LeadLevel() => _genre switch
+	{
+		2 => 0.50f,   // country: doubled in thirds, so two notes per melody note
+		3 => 0.95f,   // metal: it is supposed to be on top
+		4 => 0.45f,   // punk: it doubles the guitar, and two of everything is loud
+		5 => 0.95f,   // pop: the hook IS the song
+		_ => 0.65f,   // ska horn, rock
+	};
+
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,
 	// otherwise the ska horn (RenderLead → trumpet).
 	void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
 	{
+		amp *= LeadLevel();
 		if ( !_hornLead )
 		{
 			// Twang = a bright cutoff-envelope snap on each pick (high CutEnv, decays fast) through

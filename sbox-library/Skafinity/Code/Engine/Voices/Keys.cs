@@ -19,6 +19,10 @@ public sealed partial class MusicGen
 		? 1f + 0.2f * MathF.Max( 1f, _c.KeysDrive )
 		: MathF.Max( 1f, _c.KeysDrive );
 
+	/// <summary>Per-genre level (measured with `--levels`). Pop's pad is a held chord and pours
+	/// far more energy into the mix than country's stabs at the same balance.</summary>
+	float KeysLevel() => _genre == 5 ? 0.75f : 1f;
+
 	void EmitKeys( int tick, int durTicks, int midi, float vel, bool ring, int voices, Voicing vc )
 	{
 		int dur = _time.SpanSamples( tick, durTicks );
@@ -26,7 +30,7 @@ public sealed partial class MusicGen
 		var keys = new Patch
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-			Amp = _c.KeysVol * _c.KeysBalance * _midMul / Math.Max( 1, voices ) * NoteGain( tick, vel ),
+			Amp = _c.KeysVol * _c.KeysBalance * KeysLevel() * _midMul / Math.Max( 1, voices ) * NoteGain( tick, vel ),
 			Attack = 0.004f, Decay = dec, Sustain = ring ? 0.6f : 0.2f, Sustained = ring,
 			Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
 			Drive = KeysDriveFor(), Pan = 0f,
@@ -48,7 +52,7 @@ public sealed partial class MusicGen
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
-			int len = Math.Max( 1, (int)(h.SpanTicks * Math.Max( 0.25f, 1f - 0.7f * chug )) );
+			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, ring ) * Math.Max( 0.25f, 1f - 0.7f * chug )) );
 			foreach ( var d in degs )
 				EmitKeys( h.Tick, len, ScaleMidi( kBase, d ), h.Vel, ring, degs.Length, vc );
 		}
@@ -64,7 +68,7 @@ public sealed partial class MusicGen
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
-			int len = Math.Max( 1, (int)(h.SpanTicks * 0.45f) );
+			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, false ) * 0.9f) );
 			foreach ( var d in degs )
 				EmitKeys( h.Tick, len, ScaleMidi( kBase, d ), h.Vel, false, degs.Length + 1, vc );
 			EmitKeys( h.Tick, len, ScaleMidi( kBase, degs[0] ) - 12, h.Vel * 0.8f, false,

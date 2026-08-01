@@ -74,6 +74,28 @@ public sealed partial class MusicGen
 	/// <see cref="RenderPitchedRange"/> window has finished.</summary>
 	public short[] FinishStereo() => ToShorts( Master() );
 
+	/// <summary>
+	/// The rendered mix's level BEFORE the master bus — peak, and RMS over everything above
+	/// silence.
+	///
+	/// This is the instrument the per-voice <c>*Balance</c> values are tuned with, and the reason
+	/// it exists: the master bus peak-normalizes, so rendering one voice on its own and measuring
+	/// the OUTPUT tells you nothing about how loud that voice sits in a mix — every solo comes
+	/// back normalized to the same peak. Measure here, between the render and the master.
+	/// Call after <see cref="RenderPitchedRange"/>, instead of <see cref="FinishStereo"/>.
+	/// </summary>
+	internal (float Peak, double Rms) RawLevels()
+	{
+		float peak = 0; double sum = 0; int n = 0;
+		for ( int i = 0; i < _bufL.Length; i++ )
+		{
+			float a = Math.Max( MathF.Abs( _bufL[i] ), MathF.Abs( _bufR[i] ) );
+			peak = Math.Max( peak, a );
+			if ( a > 0.0005f ) { sum += (double)_bufL[i] * _bufL[i] + (double)_bufR[i] * _bufR[i]; n += 2; }
+		}
+		return (peak, n > 0 ? Math.Sqrt( sum / n ) : 0);
+	}
+
 	GenreProfile _prof;      // the genre's character table — every per-genre decision reads this
 	int[] _scale, _prog;
 	int[] _voicing;          // the song's chord voicing, in scale-degree offsets (Harmony)
@@ -87,8 +109,11 @@ public sealed partial class MusicGen
 	bool _hasHorns;
 	Pattern _hornFig;        // the horn section's 2-bar call-and-response figure
 	Pattern _bassPat;        // the song's bass line — a Pattern, so it can be a 2- or 4-bar phrase
-	Pattern _compFig;        // the main chordal voice's comp figure
+	Pattern _compFig;        // the main chordal voice's comp figure (the CURRENT section's)
 	Pattern _keysFig;        // the second chordal voice's figure (null where the genre has none)
+	// The song's own figures — what its choruses play. Other sections draw their own against a
+	// stream keyed by section type, so the backing contrasts instead of looping one cell all song.
+	Pattern _songComp, _songKeys, _songBass;
 	DrumGroove _groove;      // the song's groove — per-genre tables, not a shared switch default
 	bool _riffBass;          // the bass reads the riff's onsets instead of playing its own pattern
 	readonly List<Hit> _riffOnsets = new(); // this bar's riff, for the bass to double

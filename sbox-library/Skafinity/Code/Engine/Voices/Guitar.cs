@@ -17,25 +17,29 @@ public sealed partial class MusicGen
 	// rather than in GenreProfile: it is the sound of one instrument, not the identity of the
 	// genre. Country is a clean bright strum, rock an overdriven chunk, punk brighter and
 	// snottier, metal heavy and tight.
-	(float Drive, float CutEnv, float Reso) RhythmGtrTone() => _genre switch
+	// Level, like the bass's, is measured rather than guessed (`--levels`): punk's constant
+	// downstrokes put 5 dB more energy into the mix than rock's placed riff at the same balance,
+	// which is exactly the "the backing is too loud" the comp rewrite exposed. The comp is meant
+	// to sit UNDER the kit — it is the bed, not the song.
+	(float Drive, float CutEnv, float Reso, float Level) RhythmGtrTone() => _genre switch
 	{
-		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 2600f, 0.8f),
-		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1100f, 0.7f),
-		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2000f, 0.75f),
-		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1400f, 0.8f),
+		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 2600f, 0.8f, 0.55f), // country strum
+		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1100f, 0.7f, 0.80f),          // metal riff
+		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2000f, 0.75f, 0.35f),       // punk downstrokes
+		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1400f, 0.8f, 0.50f),        // rock riff
 	};
 
 	/// <summary>One guitar note. Everything above funnels through here so the accent/energy
 	/// scaling (and the genre's mix trim) is applied in exactly one place.</summary>
 	void EmitGuitar( int tick, int durTicks, int midi, float vel, bool ring, int voices )
 	{
-		var (drive, cutEnv, reso) = RhythmGtrTone();
+		var (drive, cutEnv, reso, level) = RhythmGtrTone();
 		int dur = _time.SpanSamples( tick, durTicks );
 		double dec = _time.SpanSeconds( tick, durTicks ) * (ring ? 0.8 : 0.3);
 		RenderPatch( _time.TickToSample( tick ), dur, Midi( midi ), new Patch
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * _midMul / Math.Max( 1, voices )
+			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / Math.Max( 1, voices )
 				* NoteGain( tick, vel ),
 			Attack = 0.002f, Decay = dec, Sustain = ring ? 0.45f : 0f, Sustained = ring,
 			Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso,
@@ -61,7 +65,8 @@ public sealed partial class MusicGen
 					root, h.Vel * 0.65f, false, 1 );
 				continue;
 			}
-			int len = (int)(h.SpanTicks * (h.Value == CompFigure.Ring ? 1f - 0.4f * chug : 0.45f));
+			int len = (int)(CompLen( h.SpanTicks, h.Value == CompFigure.Ring )
+				* (h.Value == CompFigure.Ring ? 1f - 0.4f * chug : 0.9f));
 			foreach ( var d in degs )
 				EmitGuitar( h.Tick, Math.Max( 1, len ), ScaleMidi( triBase, d ), h.Vel, ring, degs.Length );
 		}
@@ -77,7 +82,7 @@ public sealed partial class MusicGen
 		var degs = ChordDegrees( chord );
 		foreach ( var h in hits )
 		{
-			int len = Math.Max( 1, (int)(h.SpanTicks * (0.7f - 0.4f * chug)) );
+			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.7f - 0.4f * chug)) );
 			// A strum is not a block chord: the strings sound in sequence. A couple of ticks per
 			// string is enough for the ear to hear a pick moving across them.
 			for ( int i = 0; i < degs.Length; i++ )
@@ -96,7 +101,7 @@ public sealed partial class MusicGen
 		int triBase = _rootMidi + _keyShift + 12;
 		foreach ( var h in hits )
 		{
-			int len = Math.Max( 1, (int)(h.SpanTicks * (0.85f - 0.35f * chug)) );
+			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.85f - 0.35f * chug)) );
 			foreach ( var d in degs )
 				EmitGuitar( h.Tick, len, ScaleMidi( triBase, d ), h.Vel, true, degs.Length );
 		}
@@ -119,7 +124,7 @@ public sealed partial class MusicGen
 					root, h.Vel * 0.6f, false, 1 );
 				continue;
 			}
-			int len = Math.Max( 1, (int)(h.SpanTicks * 0.9f) );
+			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * 0.9f) );
 			foreach ( var d in degs )
 				EmitGuitar( h.Tick, len, ScaleMidi( triBase, d ), h.Vel, true, degs.Length );
 		}

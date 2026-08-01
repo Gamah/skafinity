@@ -78,6 +78,7 @@ skafinity/
         Rng.cs            #   xmur3 → mulberry32, the root of every musical choice
         Harmony.cs        #   per-genre scale/progression/voicing/bass tables + degree→pitch
         Pattern.cs        #   THE RHYTHMIC UNIT: a figure with its own LengthTicks
+        Melody.cs         #   THE TUNE: call-and-answer motifs per section type
         CompFigure.cs     #   the comp figures — what rhythm each genre's chordal voices play
         Structure.cs      #   Section, Part (energy/feel/key/tempo), the per-genre song forms
         GenreProfile.cs   #   per-genre character that is NOT a knob (form, grooves, accents…)
@@ -153,6 +154,16 @@ a tripwire for refactors that are *meant* to be pure, not a golden-audio contrac
 `make test-engine-bless` before a mechanical change, `make test-engine` after, and expect
 silence. **Any deliberate audible change re-blesses in the same commit** — a digest diff is
 information, never a failure to be argued with.
+
+**Balancing the mix is a measurement, not a guess.** `dotnet run --project test/engine -c Release
+-- --levels` renders every genre with one voice soloed and prints its level in dB relative to that
+genre's drums. It reads `MusicGen.RawLevels()` — **pre-master**, because the master bus
+peak-normalizes, so a soloed voice measured at the OUTPUT tells you nothing (every solo comes back
+at the same peak). Re-measure after changing what a part plays: the `*Balance` values and the
+per-genre `Level` entries in `BassTone`/`RhythmGtrTone`/`KeysLevel`/`LeadLevel` are measured
+numbers and they go stale when the part they were tuned for is replaced. The suite asserts the
+outcome — comp under the kit, lead not dominating, bass present, and silence when every voice is
+muted.
 
 `make test` is the other half: it boots the *published wasm* runtime under node and checks the
 JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
@@ -379,6 +390,33 @@ length) and `Vel`.
 
 ---
 
+## The tune (`Engine/Melody.cs`)
+
+**A song is a melody, not a backing track.** Before this the chordal voices played a rhythm figure
+and the lead improvised a fresh phrase every two bars — nothing recurred, so there was nothing to
+hum. Every genre now draws two tunes per song, off their own streams (`{tag}:tune:chorus` /
+`:verse`), and a section SINGS its tune rather than inventing a line:
+
+- A tune is a `Pattern` whose cell values are **scale degrees relative to the key's tonic**, not to
+  the current chord — that is what lets the line keep its shape while the harmony moves under it.
+  `RenderTune` resolves a degree to the nearest chord tone **on the strong beats only**; snapping
+  every note would rewrite the tune chord by chord, which is the "improvisation over the changes"
+  this replaces.
+- `Melody.Draw` writes **call and answer**: the second phrase repeats the first's rhythm exactly
+  and resolves home. The rhythm is drawn before the pitches for that reason — a fresh random phrase
+  never sounds composed however good its notes are.
+- The chorus tune is the hook: **identical every chorus**, which is what makes a chorus a chorus.
+  Verses get their own, sparser tune. `TuneFor(section)` returns null where a section is not a
+  place for one — a solo is where the genre's `LeadStyle` grammar improvises, an intro is a
+  build-in, the ending has resolved. Metal is the one riff-led genre: chorus tune only.
+- The genre's hand shows in ORNAMENT, not in a different melody: country harmonises the tune in
+  double-stops, metal runs between its notes. `LeadStyle` still owns the improvised sections.
+
+The ska skank is one comp style among six, not the model for the others — the chordal voice is the
+bed under the tune in every genre, including ska.
+
+---
+
 ## Sections carry state (`Engine/Structure.cs`, `SongForm`)
 
 `BuildStructure(genre)` returns the genre's OWN form — a metal song and a pop song no longer share
@@ -398,6 +436,14 @@ one hardcoded list. A `Part` carries `Energy`, `Feel`, `TempoMul`, `KeyShift`, `
   draw (a beat ≈ 55% … two bars ≈ 5%) and the ≥1-bar options are gated to boundaries that earn them
   (into a chorus, out of a breakdown). The KIT stops where the fill starts; the melodic voices play
   through it, the way a band does.
+- **Figures are drawn per SECTION, not per song.** A chorus plays the song's own figure (`_songComp`
+  / `_songKeys` / `_songBass` — that is the song's identity, and every chorus must agree); other
+  sections draw their own off a stream keyed by section type, so a verse contrasts while both
+  verses still match. Drawing once per song meant a two-bar figure really was everything a listener
+  ever heard.
+- **Comp notes do not ring to the next onset.** `CompLen(span, ring)` caps a chord at two beats and
+  a stab at an eighth. Without it, a figure with uneven gaps produced an uneven note *every bar*,
+  which is the "short, longggg" shape that read as one repeated cell.
 - **Render order is a feature.** Where the bass follows the riff (`RiffBassChance` — metal's pedal
   vs doubling, punk's unison), the chordal voice renders FIRST and the bass reads `_riffOnsets`.
   Both real metal-bass modes are relational, so no table can express them.

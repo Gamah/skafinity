@@ -15,14 +15,20 @@ public sealed partial class MusicGen
 	// they live next to it rather than in GenreProfile. The line's REGISTER is not here: it comes
 	// out of the pattern's own octave cells, which is where a bass player's register decisions
 	// actually live.
-	(int Osc, float Sustain, float Cutoff, float Drive) BassTone() => _genre switch
+	// Level is part of the tone here for a real reason: a short, tight bass note carries far less
+	// energy than a held legato one, so the genres whose bass is picked and staccato (metal, punk)
+	// measured 10 dB under the kit at the same balance, while pop's sustained synth sub measured
+	// 4 dB over it. The one global BassBalance cannot express that — it is the same instrument at
+	// the same level playing a different way. Measured with `--levels`; re-measure after changing
+	// a bass pattern or its sustain.
+	(int Osc, float Sustain, float Cutoff, float Drive, float Level) BassTone() => _genre switch
 	{
-		0 => (3, 0.60f, 1.0f, 1.0f),    // ska: round, deep, legato
-		1 => (3, 0.50f, 1.15f, 1.15f),  // rock: fingered, a touch brighter
-		2 => (3, 0.35f, 0.95f, 0.9f),   // country: short, plummy, out of the way
-		3 => (1, 0.45f, 1.45f, 1.6f),   // metal: a saw with bite, so it cuts under the riff
-		4 => (1, 0.40f, 1.35f, 1.4f),   // punk: picked and clanky
-		_ => (2, 0.30f, 1.25f, 1.05f),  // pop: a tight square synth sub
+		0 => (3, 0.60f, 1.0f, 1.0f, 1.00f),   // ska: round, deep, legato
+		1 => (3, 0.50f, 1.15f, 1.15f, 1.05f), // rock: fingered, a touch brighter
+		2 => (3, 0.35f, 0.95f, 0.9f, 1.00f),  // country: short, plummy, out of the way
+		3 => (1, 0.45f, 1.45f, 1.6f, 2.20f),  // metal: a saw with bite, so it cuts under the riff
+		4 => (1, 0.40f, 1.35f, 1.4f, 2.10f),  // punk: picked and clanky
+		_ => (2, 0.30f, 1.25f, 1.05f, 0.70f), // pop: a tight square synth sub
 	};
 
 	// ── Bass ──
@@ -119,12 +125,12 @@ public sealed partial class MusicGen
 
 	void EmitBass( int at, int dur, int midi, double decaySec, float gain, in Voicing vc )
 	{
-		var (osc, sustain, cutoff, drive) = BassTone();
+		var (osc, sustain, cutoff, drive, level) = BassTone();
 		// Triangle body for a round, deep reggae/dub bass (saw alone read as too buzzy) — but
 		// triangle alone was too subtle, so layer a quieter square underneath for presence. The
 		// genre's own oscillator replaces the body where the genre wants bite; both layers share
 		// the bass low-pass so the tone stays warm.
-		float amp = _c.BassVol * _c.BassBalance * MixTrim( _prof.Mix.Low ) * gain;
+		float amp = _c.BassVol * _c.BassBalance * level * MixTrim( _prof.Mix.Low ) * gain;
 		var body = new Patch
 		{
 			Osc = osc, Voices = 2, Detune = _c.Detune * 0.4f,

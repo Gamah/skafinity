@@ -29,6 +29,7 @@ static class Program
 	static int Main( string[] args )
 	{
 		bool bless = Array.IndexOf( args, "--bless" ) >= 0;
+		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
 
 		Banner( "prng + determinism" );
 		DeterminismTests();
@@ -41,6 +42,9 @@ static class Program
 
 		Banner( "patterns" );
 		PatternTests();
+
+		Banner( "melody" );
+		MelodyTests();
 
 		Banner( "genre feel" );
 		GenreProfileTests();
@@ -696,6 +700,54 @@ static class Program
 		Check( "some section runs an anomalous (short) bar", shortBar );
 	}
 
+	/// <summary>The tune — the thing a listener hums back. What matters is that it is a real
+	/// melodic line with call-and-answer structure, and that it REPEATS: a chorus that sings a
+	/// different line every time is not a chorus.</summary>
+	static void MelodyTests()
+	{
+		int bar = 4 * Timing.TicksPerBeat;
+		var tune = Melody.Draw( new Rng( "tune:a" ), 4, bar, 0.4f, 0.2f );
+
+		Check( "a tune is as long as it was asked to be", tune.LengthTicks == 4 * bar );
+		Check( "a tune has notes in every bar", tune.Count >= 4 );
+		Check( "a tune is reproducible from its seed",
+			SameTune( tune, Melody.Draw( new Rng( "tune:a" ), 4, bar, 0.4f, 0.2f ) ) );
+		Check( "a different seed writes a different tune",
+			!SameTune( tune, Melody.Draw( new Rng( "tune:b" ), 4, bar, 0.4f, 0.2f ) ) );
+
+		// Call and answer: the second phrase repeats the FIRST phrase's rhythm exactly (that
+		// symmetry is what makes a line sound composed), and resolves home on the last note.
+		var all = tune.Slice( 0, 4 * bar );
+		var call = all.FindAll( h => h.Tick < 2 * bar );
+		var answer = all.FindAll( h => h.Tick >= 2 * bar );
+		Check( "the answer repeats the call's rhythm", call.Count == answer.Count );
+		bool sameRhythm = call.Count == answer.Count;
+		for ( int i = 0; sameRhythm && i < call.Count; i++ )
+			sameRhythm &= answer[i].Tick - 2 * bar == call[i].Tick;
+		Check( "the answer lands on the call's own beats", sameRhythm );
+		Check( "the answer resolves home", answer.Count > 0 && answer[^1].Value == 0 );
+
+		// Singable: degrees stay inside a range a voice could actually reach.
+		bool inRange = true;
+		foreach ( var h in all ) inRange &= h.Value >= -3 && h.Value <= 10;
+		Check( "a tune stays in a singable range", inRange );
+
+		// Density is a real control — a punk tune must be sparser than a ska horn line.
+		int sparse = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.2f, 0.2f ).Count;
+		int busy = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.9f, 0.2f ).Count;
+		Check( "density controls how much a tune moves", busy > sparse, $"{busy} vs {sparse} notes" );
+	}
+
+	static bool SameTune( Pattern a, Pattern b )
+	{
+		var x = a.Slice( 0, a.LengthTicks );
+		var y = b.Slice( 0, b.LengthTicks );
+		if ( x.Count != y.Count ) return false;
+		for ( int i = 0; i < x.Count; i++ )
+			if ( x[i].Tick != y[i].Tick || x[i].Value != y[i].Value ) return false;
+		return true;
+	}
+
 	/// <summary>A pattern owns its LENGTH and free-runs against the bar line — the fix for "bar 2
 	/// is bar 1". These check the mechanism itself, since every voice now depends on it.</summary>
 	static void PatternTests()
@@ -908,6 +960,35 @@ static class Program
 			Check( $"genre {g} is not clipped to a square wave", clipped < pcm.Length / 100 );
 		}
 
+		// ── the balance of the mix ──
+		// The comp is the BED. It measured 5 dB over the kit after the figures were rewritten —
+		// the balances had been peak-tuned for parts the engine no longer plays — and a loud
+		// backing is what makes a repeated figure sound like the whole song. Measured pre-master
+		// (see MusicGen.RawLevels), because the master bus normalizes every solo to one peak.
+		// Retune with `dotnet run --project test/engine -- --levels`.
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			double drums = SoloRms( g, c => c.DrumVol = 1f );
+			double comp = Math.Max(
+				Math.Max( SoloRms( g, c => c.RhythmGtrVol = 1f ), SoloRms( g, c => c.KeysVol = 1f ) ),
+				SoloRms( g, c => c.SkankVol = 1f ) );
+			double lead = Math.Max( SoloRms( g, c => c.LeadGtrVol = 1f ), SoloRms( g, c => c.MelodyVol = 1f ) );
+			double bass = SoloRms( g, c => c.BassVol = 1f );
+
+			Check( $"genre {g} comp sits under the kit", comp < drums * 0.85,
+				$"comp {Db( comp, drums ):0.0} dB" );
+			Check( $"genre {g} lead does not dominate", lead < drums * 1.6,
+				$"lead {Db( lead, drums ):0.0} dB" );
+			Check( $"genre {g} bass is present", bass > drums * 0.4, $"bass {Db( bass, drums ):0.0} dB" );
+			// Nothing may be inaudible either — a voice a genre plays must actually arrive.
+			Check( $"genre {g} comp is audible", comp > drums * 0.15, $"comp {Db( comp, drums ):0.0} dB" );
+		}
+
+		// Muting everything must give silence. The ending chord used to carry a hardcoded level,
+		// so a listener with every instrument at zero still heard a chord at the end of the song.
+		Check( "muting every voice renders silence", SoloRms( 0, _ => { } ) < 0.0005,
+			$"rms {SoloRms( 0, _ => { } ):0.00000}" );
+
 		// ── dynamics ──
 		// Loudness used to be a per-patch constant with two ad-hoc exceptions, so a song was as
 		// flat at the end as at the start. Velocity + the section energy contour must reach the
@@ -939,6 +1020,65 @@ static class Program
 		for ( int i = end.Length - 2; i >= 0 && Math.Abs( end[i] / 32768.0 ) < 0.001; i -= 2 ) silentTail++;
 		Check( "the song decays into its reserved tail rather than being cut off",
 			silentTail > 0 && silentTail < esr * 4, $"{silentTail} silent frames" );
+	}
+
+	// ── the mix balancing tool (`--levels`) ────────────────────────────────────────────────
+	// Every voice muted but one, measured BEFORE the master bus (the master peak-normalizes, so
+	// a soloed voice measured at the output tells you nothing). Prints dB relative to the drums,
+	// which is the reference the kit balances were set against. Use it when a part changes shape
+	// — the *Balance values are peak-tuned numbers and they go stale when the part they were
+	// tuned for is replaced.
+	static readonly (string Name, Action<MusicGen.Config> Solo)[] Voices =
+	{
+		("DRUMS",    c => c.DrumVol = 1f),
+		("BASS",     c => c.BassVol = 1f),
+		("SKANK",    c => c.SkankVol = 1f),
+		("ORGAN",    c => c.OrganVol = 1f),
+		("HORN LEAD",c => c.MelodyVol = 1f),
+		("HORNS",    c => c.HornVol = 1f),
+		("KEYS",     c => c.KeysVol = 1f),
+		("RHY GTR",  c => c.RhythmGtrVol = 1f),
+		("LEAD GTR", c => c.LeadGtrVol = 1f),
+	};
+
+	/// <summary>Pre-master RMS of one genre with every voice muted but the ones
+	/// <paramref name="solo"/> turns back on.</summary>
+	static double SoloRms( int genre, Action<MusicGen.Config> solo )
+	{
+		var cfg = new MusicGen.Config { Genre = genre, SampleRate = 16000 };
+		cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
+			cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
+		solo( cfg );
+		var g = MusicGen.BeginPlan( $"mix:{genre}", cfg );
+		g.RenderPitchedRange( 0, g.TotalSamples );
+		return g.RawLevels().Rms;
+	}
+
+	static double Db( double a, double b ) => 20 * Math.Log10( Math.Max( 1e-9, a ) / Math.Max( 1e-9, b ) );
+
+	static void Levels()
+	{
+		Console.WriteLine( "voice levels, dB relative to that genre's drums (pre-master)" );
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			Console.WriteLine();
+			Console.WriteLine( $"── genre {g} ({VibeCodec.Genres[g]}) ──" );
+			double reference = 0;
+			foreach ( var (name, solo) in Voices )
+			{
+				var cfg = new MusicGen.Config { Genre = g, SampleRate = 22050 };
+				cfg.DrumVol = cfg.BassVol = cfg.SkankVol = cfg.OrganVol = cfg.MelodyVol =
+					cfg.HornVol = cfg.KeysVol = cfg.RhythmGtrVol = cfg.LeadGtrVol = 0f;
+				solo( cfg );
+				var g2 = MusicGen.BeginPlan( $"levels:{g}", cfg );
+				g2.RenderPitchedRange( 0, g2.TotalSamples );
+				var (peak, rms) = g2.RawLevels();
+				if ( name == "DRUMS" ) reference = rms;
+				if ( rms <= 0 ) { Console.WriteLine( $"  {name,-9}  —" ); continue; }
+				double db = 20 * Math.Log10( rms / Math.Max( 1e-9, reference ) );
+				Console.WriteLine( $"  {name,-9}  rms {rms:0.0000}  peak {peak:0.00}  {db,6:0.0} dB" );
+			}
+		}
 	}
 
 	static void WavTests()
