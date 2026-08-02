@@ -86,14 +86,15 @@ static class Audition
 		var L = new List<float>();
 		var R = new List<float>();
 		var script = new StringBuilder();
-		script.AppendLine( "AUDITION — skafinity drum kit, round 7: THE RIDE AS PURE WAVEFORMS" );
+		script.AppendLine( "AUDITION — skafinity drum kit, round 8: THE MEASURED CYMBAL" );
 		script.AppendLine( "One kit part per line. Each line is a figure played by that voice alone." );
 		script.AppendLine( "Dry: no tone lean, no genre mix, no reverb, no master. Centred except where noted." );
-		script.AppendLine( "Round 7 abandons filtered noise entirely: the cymbal is a bank of ~80 inharmonic" );
-		script.AppendLine( "sine partials, each with its own ring time, many twinned a few Hz apart so they" );
-		script.AppendLine( "beat. Every hit draws fresh phases and level jitter, and soft strokes darken." );
-		script.AppendLine( "The only noise left is the 4 ms stick contact. Bows first, then bells alone," );
-		script.AppendLine( "then bell-and-bow together, then the patterns." );
+		script.AppendLine( "Round 8's spectrum is measured, not invented: a real ride was analysed (Virtuosity" );
+		script.AppendLine( "Drums, CC0) and reduced to three laws — ring time 39/sqrt(f), a mode forest at" );
+		script.AppendLine( "constant density with beating pairs, and each strike position as a spectral bump." );
+		script.AppendLine( "The splash is back: the measured attack is a broadband burst, with a noise wash" );
+		script.AppendLine( "between the partials. Bow and bell are ONE forest through two different bumps," );
+		script.AppendLine( "so the bell belongs to its cymbal. The ring is long because the measurement says so." );
 		script.AppendLine( "--audition kick|snare|toms|hats|crash still plays the settled voices." );
 		script.AppendLine();
 
@@ -439,11 +440,12 @@ static class Audition
 	}
 
 	// ── RIDE ──
-	// Generation 5: pure waveforms (see RideModal in Kit.cs). Every noise-based generation —
-	// four of them — came back "hats in weird states", and the listener's instruction was
-	// explicit: a novel tone, synthesised as waveforms, not existing sounds with tweaked knobs.
-	// So the cymbal is now a dense bank of inharmonic sine partials with per-partial ring times,
-	// beating twins and per-hit phase/level variation; the only noise is the stick contact.
+	// Generation 6: the measured cymbal (see RideModal in Kit.cs). Generation 5's pure sine
+	// banks read as church bells — an authored spectrum, however dense, put the energy where a
+	// bell has it rather than where a ride does. So a real ride was measured (Virtuosity Drums,
+	// CC0) and the measurement reduced to three laws: τ·√f constant, constant modal density,
+	// strike position as a spectral bump. The splash is back too — the measured attack is a
+	// broadband burst, and the listener asked for it in as many words.
 
 	static void Ride( List<Line> into )
 	{
@@ -454,8 +456,14 @@ static class Audition
 				t.G.RenderRideModal( t.At( i * 0.5 ), (i & 1) == 0 ? 1f : 0.62f, m );
 			t.G.RenderRideModal( t.At( 4 ), 1f, m );
 		}
-		// A bell alone first — the attack and the ring are the whole question — then judged the
-		// way it is played: bell on beats 1 and 3, bow eighths between, landing on the bell.
+		// The single hit, left to ring: the one figure where the point IS the hit, because the
+		// ring is the instrument and it has to be heard uncovered at least once. It repeats.
+		void Alone( Take t, in RideModal m )
+		{
+			t.G.AuditionPan = 0.25f;
+			t.G.RenderRideModal( t.At( 0 ), 1f, m );
+			t.G.RenderRideModal( t.At( 4 ), 1f, m );
+		}
 		void Quarters( Take t, in RideModal m )
 		{
 			t.G.AuditionPan = 0.25f;
@@ -476,41 +484,30 @@ static class Audition
 		var bow = RideModal.Bow();
 		var bell = RideModal.Bell();
 
-		// The bow, and its three axes: shimmer density, shimmer level, ring length.
-		Add( into, "ride", "BOW — the cymbal (~80 partials), straight eighths", 128, 5,
-			t => Straight( t, bow ), 1.6 );
-		Add( into, "ride", "BOW — sparser shimmer (half the high partials)", 128, 5,
-			t => Straight( t, RideModal.Bow( density: 0.5f ) ), 1.6 );
-		Add( into, "ride", "BOW — denser shimmer (1.6×)", 128, 5,
-			t => Straight( t, RideModal.Bow( density: 1.6f ) ), 1.6 );
-		Add( into, "ride", "BOW — shimmer forward (highs 1.6× louder)", 128, 5,
-			t => Straight( t, RideModal.Bow( shimmer: 1.6f ) ), 1.6 );
-		Add( into, "ride", "BOW — dark and dry (ring 0.6×, shimmer 0.7×)", 128, 5,
-			t => Straight( t, RideModal.Bow( shimmer: 0.7f, ring: 0.6f ) ), 1.2 );
-		Add( into, "ride", "BOW — washy (ring 1.7×)", 128, 5,
-			t => Straight( t, RideModal.Bow( ring: 1.7f ) ), 2.2 );
+		Add( into, "ride", "BOW — one hit, left to ring (twice)", 60, 5,
+			t => Alone( t, bow ), 2.6 );
+		Add( into, "ride", "BOW — straight eighths, as measured", 128, 5,
+			t => Straight( t, bow ), 1.8 );
+		Add( into, "ride", "BOW — splash halved", 128, 5,
+			t => Straight( t, RideModal.Bow( splash: 0.5f ) ), 1.8 );
+		Add( into, "ride", "BOW — splash 1.8×", 128, 5,
+			t => Straight( t, RideModal.Bow( splash: 1.8f ) ), 1.8 );
+		Add( into, "ride", "BOW — wash 1.8× (more air between the partials)", 128, 5,
+			t => Straight( t, RideModal.Bow( wash: 1.8f ) ), 1.8 );
+		Add( into, "ride", "BOW — ring 1.4× (longer than measured)", 128, 5,
+			t => Straight( t, RideModal.Bow( ring: 1.4f ) ), 2.4 );
 
-		// The bell alone: f0 and stretch are its two characters.
-		Add( into, "ride", "BELL — f0 840 Hz, quarter notes", 116, 5,
-			t => Quarters( t, bell ), 2.8 );
-		Add( into, "ride", "BELL — f0 700, stretched clangier (1.08)", 116, 5,
-			t => Quarters( t, RideModal.Bell( f0: 700f, stretch: 1.08f ) ), 2.8 );
-		Add( into, "ride", "BELL — f0 1000, squeezed purer (0.94)", 116, 5,
-			t => Quarters( t, RideModal.Bell( f0: 1000f, stretch: 0.94f ) ), 2.8 );
-		Add( into, "ride", "BELL — f0 840, short (ring 0.5×) — a stab, not a toll", 116, 5,
-			t => Quarters( t, RideModal.Bell( ring: 0.5f ) ), 1.6 );
+		Add( into, "ride", "BELL — one hit, left to ring (twice)", 60, 5,
+			t => Alone( t, bell ), 2.6 );
+		Add( into, "ride", "BELL — quarter notes, as measured (clang 2.3 kHz)", 116, 5,
+			t => Quarters( t, bell ), 2.4 );
+		Add( into, "ride", "BELL — darker clang (2.0 kHz)", 116, 5,
+			t => Quarters( t, RideModal.Bell( clang: 2000f ) ), 2.4 );
+		Add( into, "ride", "BELL — brighter clang (2.6 kHz)", 116, 5,
+			t => Quarters( t, RideModal.Bell( clang: 2600f ) ), 2.4 );
 
-		// Together, as played.
-		Add( into, "ride", "BELL+BOW — 840 bell over the bow", 116, 5,
-			t => BellBow( t, bell, bow ), 2.8 );
-		Add( into, "ride", "BELL+BOW — 700 clangy bell over the shimmer-forward bow", 116, 5,
-			t => BellBow( t, RideModal.Bell( f0: 700f, stretch: 1.08f ),
-				RideModal.Bow( shimmer: 1.6f ) ), 2.8 );
-		Add( into, "ride", "BELL+BOW — 1000 purer bell over the dark bow", 116, 5,
-			t => BellBow( t, RideModal.Bell( f0: 1000f, stretch: 0.94f ),
-				RideModal.Bow( shimmer: 0.7f, ring: 0.6f ) ), 2.8 );
-
-		// And in motion.
+		Add( into, "ride", "BELL+BOW — alternating, one cymbal", 116, 5,
+			t => BellBow( t, bell, bow ), 2.4 );
 		Add( into, "ride", "PATTERN — swung ride on the bow", 112, 5, t =>
 		{
 			t.G.AuditionPan = 0.25f;
@@ -518,9 +515,8 @@ static class Audition
 			foreach ( var a in at )
 				t.G.RenderRideModal( t.At( a ), a == Math.Floor( a ) ? 1f : 0.62f, bow );
 			t.G.RenderRideModal( t.At( 4 ), 1f, bow );
-		}, 1.6 );
-		Add( into, "ride", "PATTERN — riding eighths, bell replacing the accent on each downbeat",
-			120, 5, t =>
+		}, 1.8 );
+		Add( into, "ride", "PATTERN — riding eighths, bell on the downbeats", 120, 5, t =>
 		{
 			t.G.AuditionPan = 0.25f;
 			for ( int i = 0; i < 8; i++ )
@@ -529,6 +525,6 @@ static class Audition
 				else t.G.RenderRideModal( t.At( i * 0.5 ), 0.62f, bow );
 			}
 			t.G.RenderRideModal( t.At( 4 ), 1f, bell );
-		}, 2.8 );
+		}, 2.4 );
 	}
 }

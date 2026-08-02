@@ -670,23 +670,30 @@ readonly struct RideTone
 }
 
 /// <summary>
-/// THE CYMBAL AS PURE WAVEFORMS — generation 5, and a different instrument from RenderRide.
+/// THE MEASURED CYMBAL — generation 6, and the first one whose spectrum is not invented.
 ///
-/// Every noise-based generation read as a hat, because filtered noise IS a hat: the ear
-/// identifies a cymbal's sustain by its spectrum being a fixed comb of inharmonic partials that
-/// ring and beat, not by its short-time colour. So this voice is a BANK OF SINE PARTIALS —
-/// dozens of them, inharmonically spaced, each with its own ring time, many doubled a few Hz
-/// apart so the pairs beat. The only noise anywhere is the 4 ms stick contact.
+/// A ride's identity lives in its mode forest, and authoring one from first principles produced
+/// church bells (a sparse low cluster) where a real ride keeps its sustained energy in a DENSE
+/// thicket of inharmonic partials at 1–3.5 kHz, over a handful of quiet lows. A real ride was
+/// therefore measured — and the measurement collapsed into three closed-form laws (below):
+/// τ·√f constant for the ring, constant modal density for the forest, and a strike position as
+/// a log-Gaussian spectral bump. The bow and the bell are the SAME forest — one piece of
+/// metal — seen through two different bumps, which is what a bell that belongs to its own
+/// cymbal means.
 ///
-/// What keeps it from being a pitched "ding" (the gen-1 failure) is DENSITY and VARIATION, not
-/// gain: ~80 randomly-spaced partials have no fundamental to latch onto, and every hit draws
-/// its own phases, per-partial level jitter and strike tilt from the hit-seeded LFSR, so no two
-/// strokes ring identically. The bell keeps a dominant cluster on purpose — a bell HAS a pitch
-/// centre — but its partials are stretched-inharmonic and twinned, which is what separates a
-/// struck bell from an organ note.
+/// Provenance (the sample set is NOT vendored and must not become a dependency — what lands is
+/// the constants and this citation): Virtuosity Drums by Versilian Studios & Karoryfer
+/// Samples, github.com/sfzinstruments/virtuosity_drums, CC0-1.0. Measured 2026-08-02 from the
+/// overhead-mic ride samples (oh_ride_ride_vl3_rr1/rr2 for the bow, oh_ride_bell_vl3_rr1/rr2
+/// for the bell): sustained partials from a 131072-point FFT starting 0.33 s after onset
+/// (peaks ≥ 12 dB over the local floor, takes merged within 5 Hz); per-band ring times from
+/// exponential fits over a 4096/1024 STFT.
 ///
-/// The banks are built ONCE, deterministically, from a fixed-seed Rng: the cymbal is one
-/// physical object, so its partial set must not change between hits or between songs.
+/// The partials alone are still not a cymbal — the measured attack is a broadband SPLASH, and
+/// between the partials sits a noise wash that decays with the same band fits. Both ride under
+/// the mode bank as shaped-noise layers. The old lesson that filtered noise reads as a hat
+/// applies to noise as the IDENTITY; as the bed under a measured forest it is the thing the
+/// pure-sine generation was missing.
 /// </summary>
 readonly struct RideModal
 {
@@ -698,103 +705,115 @@ readonly struct RideModal
 	public readonly float Level;    // energy-normalised, so candidates land comparably loud
 	public readonly float Stick;
 	public readonly float StickCut;
+	public readonly float SplashLvl;   // broadband strike burst, rel. the normalised mode bank
+	public readonly float SplashTau;
+	public readonly float WashLvl;     // the air between the partials
+	public readonly float WashTau;
 
 	RideModal( float[] hz, float[] amp, float[] tau, float[] pan, float dur, float level,
-		float stick, float stickCut )
+		float stick, float stickCut, float splashLvl, float splashTau, float washLvl,
+		float washTau )
 	{
 		Hz = hz; Amp = amp; Tau = tau; Pan = pan; Dur = dur; Level = level;
 		Stick = stick; StickCut = stickCut;
+		SplashLvl = splashLvl; SplashTau = splashTau; WashLvl = washLvl; WashTau = washTau;
 	}
 
-	/// <summary>THE BOW. Three regions: a low body (285–900 Hz — the large piece of metal),
-	/// the ping region (900–3000 — where the stick speaks), and the shimmer (3000–11500 — a
-	/// dense sprinkle of short-ringing partials that is the "cymbal" of the sound). Body and
-	/// ping partials carry a beating twin about half the time.</summary>
-	/// <param name="density">scales the shimmer partial count — sparser vs denser cymbal.</param>
-	/// <param name="shimmer">level of the shimmer region.</param>
-	/// <param name="ring">scales every ring time — dry ride vs washy ride.</param>
-	public static RideModal Bow( float density = 1f, float shimmer = 1f, float ring = 1f )
+	// ── The three laws the measurement collapsed into ──
+	// The analysis produced 76 sustained partials with per-strike amplitudes and per-band decay
+	// fits, and all of it reduces to closed forms with a handful of named constants — the table
+	// itself does not ship, because it was one factory's cymbal and the physics is the design.
+
+	/// <summary>LAW 1 — the ring: τ·√f is a constant. Every per-band exponential fit lands on
+	/// τ ≈ 39/√f within take-to-take scatter (230 Hz → 2.6 s, 850 → 1.3, 2.7 k → 0.75,
+	/// 5.7 k → 0.51). The long ring is the instrument — a ride RINGS in the mix — so nothing
+	/// here shortens it for tidiness.</summary>
+	const float TauRootF = 39f;
+	static float RingTau( float hz ) => TauRootF / MathF.Sqrt( hz );
+
+	/// <summary>LAW 2 — the forest: a thin plate's flexural modal density is CONSTANT in
+	/// frequency (the textbook plate result — mode count per kHz does not depend on f), so the
+	/// mode positions are uniform random at the measured density, and a fraction of them split
+	/// into near-degenerate pairs a few Hz apart — a real plate's ± mode pairs, split by
+	/// asymmetry, and the source of the slow beating in the ring.</summary>
+	const float ModesPerKHz = 27f;          // resolved sustained peaks per kHz in the analysis
+	// The top is 11 kHz because the SIZZLE IS MODES TOO: the measured sustain holds -9..-14 dB
+	// of energy at 5–10 kHz ringing at ~0.5 s — exactly what τ=39/√f predicts — and cutting the
+	// forest at 4 kHz measured 10–15 dB light up there against the reference.
+	const float ForestLo = 210f, ForestHi = 11000f;
+	const float PairChance = 0.35f;         // measured clusters: 2166/2170/2177 and kin
+
+	/// <summary>LAW 3 — a strike position is a spectral bump. On a log-frequency axis each
+	/// strike's excitation is Gaussian: the bow is one WIDE bump (the measured sustain is flat
+	/// from 300 Hz to 3.2 kHz with soft edges), the bell is a NARROW clang plus a small low
+	/// knock where the stick shocks the cup. Same forest, different window onto it — which is
+	/// why the bell unmistakably belongs to its own cymbal.</summary>
+	static float LogBump( float f, float centre, float width )
 	{
-		var r = new Rng( "skafinity:ride:lathe" );
+		float u = MathF.Log( f / centre ) / width;
+		return MathF.Exp( -0.5f * u * u );
+	}
+	static float BowWeight( float f ) => LogBump( f, 1200f, 1.1f );
+	static float BellWeight( float f, float clang )
+		=> LogBump( f, clang, 0.45f ) + 0.30f * LogBump( f, 290f, 0.25f );
+
+	/// <summary>The bow.</summary>
+	/// <param name="splash">the broadband strike burst — the measured attack is nearly flat
+	/// across the whole band, and this is most of what "cymbal" means at the moment of contact.</param>
+	/// <param name="wash">the sustained air between the partials.</param>
+	/// <param name="ring">scales every ring time; 1 is as measured.</param>
+	public static RideModal Bow( float splash = 1f, float wash = 1f, float ring = 1f )
+		=> Build( bell: 0f, splash: 0.55f * splash, splashTau: 0.10f,
+			washLvl: 0.060f * wash, washTau: 0.70f * ring, ring: ring,
+			stick: 0.30f, stickCut: 5500f );
+
+	/// <summary>The bell. A ride bell is NOT a church bell: no harmonic ratio stack, no low
+	/// fundamental — the measurement puts its energy in a clang cluster around 2.3 kHz over the
+	/// same metal as the bow.</summary>
+	/// <param name="clang">the clang bump's centre — darker or brighter bell.</param>
+	public static RideModal Bell( float splash = 1f, float ring = 1f, float clang = 2300f )
+		=> Build( bell: clang, splash: 0.40f * splash, splashTau: 0.05f,
+			washLvl: 0.030f, washTau: 0.55f * ring, ring: ring,
+			stick: 0.40f, stickCut: 6500f );
+
+	/// <param name="bell">0 for the bow weighting; else the bell's clang centre.</param>
+	static RideModal Build( float bell, float splash, float splashTau, float washLvl,
+		float washTau, float ring, float stick, float stickCut )
+	{
+		// ONE cymbal: the forest is grown from a fixed seed, so both strikes ring the same
+		// metal and every hit of every song is the same instrument. Per-strike randomness
+		// (which modes this weighting favours) comes off the same stream, drawn per mode.
+		var r = new Rng( "skafinity:ride:forest" );
 		var hz = new List<float>(); var am = new List<float>();
 		var ta = new List<float>(); var pn = new List<float>();
-		void Add( float f, float a, float t )
-		{
-			hz.Add( f ); am.Add( a ); ta.Add( Math.Clamp( t, 0.05f, 3.0f ) );
-			pn.Add( (r.Next() * 2f - 1f) * 0.30f );
-		}
-		// A near-degenerate pair a few Hz wide: real cymbal modes come in split pairs, and the
-		// slow beat between them is most of what reads as "alive" rather than "a tone".
-		void AddPair( float f, float a, float t, float chance )
-		{
-			Add( f, a, t );
-			if ( r.Next() < chance )
-				Add( f + 0.8f + r.Next() * 5f, a * 0.65f, t * (0.75f + r.Next() * 0.4f) );
-		}
-
-		for ( float f = 285f; f < 900f; f *= 1.10f + r.Next() * 0.09f )
-			AddPair( f * (1f + (r.Next() - 0.5f) * 0.04f), 0.42f + r.Next() * 0.25f,
-				ring * (2.6f - 1.2f * (f / 900f)), 0.55f );
-		for ( float f = 950f; f < 3000f; f *= 1.10f + r.Next() * 0.08f )
-			AddPair( f * (1f + (r.Next() - 0.5f) * 0.03f), 0.65f + r.Next() * 0.30f,
-				ring * (1.5f - 0.7f * (f / 3000f)), 0.45f );
-		int nHi = (int)(45 * density);
-		for ( int i = 0; i < nHi; i++ )
-		{
-			float u = (i + r.Next() * 0.9f) / nHi;
-			float f = 3000f * MathF.Pow( 11500f / 3000f, u );
-			Add( f, shimmer * (0.30f + r.Next() * 0.25f) * MathF.Pow( 3000f / f, 0.55f ),
-				ring * (0.30f + r.Next() * 0.55f) );
-		}
-		return Finish( hz, am, ta, pn, stick: 0.40f, stickCut: 5500f );
-	}
-
-	/// <summary>THE BELL — a dominant stretched-inharmonic cluster over f0, every partial
-	/// twinned so the whole chord beats, with a small high sparkle for the strike. The ratio
-	/// set leans on struck-bell practice (a low half-partial, the clang region around 2–3×),
-	/// but stretched: a ride bell is clangier than a church bell.</summary>
-	/// <param name="stretch">exponent on the ratios — >1 pulls the intervals wider (clangier),
-	/// <1 squeezes them toward harmonic (purer).</param>
-	public static RideModal Bell( float f0 = 840f, float stretch = 1f, float ring = 1f )
-	{
-		var r = new Rng( "skafinity:ride:bell" );
-		var hz = new List<float>(); var am = new List<float>();
-		var ta = new List<float>(); var pn = new List<float>();
-		void Add( float f, float a, float t )
-		{
-			hz.Add( f ); am.Add( a ); ta.Add( Math.Clamp( t, 0.05f, 3.0f ) );
-			pn.Add( (r.Next() * 2f - 1f) * 0.18f );
-		}
-
-		float[] ratio = { 0.50f, 1.00f, 1.188f, 1.530f, 2.00f, 2.47f, 2.61f, 3.05f, 3.54f,
-			4.20f, 5.41f, 6.80f };
-		float[] amp = { 0.35f, 1.00f, 0.75f, 0.50f, 0.85f, 0.40f, 0.50f, 0.45f, 0.30f,
-			0.33f, 0.18f, 0.12f };
-		for ( int i = 0; i < ratio.Length; i++ )
-		{
-			float f = f0 * MathF.Pow( ratio[i], stretch );
-			float t = ring * 2.4f * MathF.Pow( f0 / f, 1.05f );
-			Add( f, amp[i], t );
-			// The twin. Its detune is the bell's warble rate; its slightly different decay is
-			// why the warble slows and deepens as the bell dies, the way a real one does.
-			Add( f + 1.2f + r.Next() * 4f, amp[i] * 0.60f, t * (0.80f + r.Next() * 0.35f) );
-		}
-		for ( int i = 0; i < 10; i++ )
-			Add( 4000f + r.Next() * 5000f, 0.05f + r.Next() * 0.06f, 0.07f + r.Next() * 0.10f );
-		return Finish( hz, am, ta, pn, stick: 0.30f, stickCut: 6000f );
-	}
-
-	static RideModal Finish( List<float> hz, List<float> am, List<float> ta, List<float> pn,
-		float stick, float stickCut )
-	{
+		int count = (int)((ForestHi - ForestLo) * ModesPerKHz / 1000f);
 		float e = 0f, maxTau = 0f;
-		for ( int i = 0; i < am.Count; i++ ) { e += am[i] * am[i]; maxTau = Math.Max( maxTau, ta[i] ); }
-		// Energy-normalised so a denser bank is not simply a louder one — a candidate's level
-		// must never be an accident of its partial count.
+		for ( int i = 0; i < count; i++ )
+		{
+			float f = ForestLo + (ForestHi - ForestLo) * r.Next();
+			// Both strike amps are drawn for every mode so the stream stays aligned whichever
+			// weighting this instance keeps — the same one-draw discipline as PickWeighted.
+			float depthBow = 0.20f + 0.80f * r.Next();
+			float depthBell = 0.20f + 0.80f * r.Next();
+			bool pair = r.Next() < PairChance;
+			float split = 1.5f + 6.5f * r.Next();
+			float a = bell > 0f ? BellWeight( f, bell ) * depthBell : BowWeight( f ) * depthBow;
+			void Add( float fq, float aq )
+			{
+				hz.Add( fq ); am.Add( aq );
+				float t = ring * RingTau( fq ) * (0.85f + r.Next() * 0.30f);
+				ta.Add( t ); pn.Add( (r.Next() * 2f - 1f) * 0.30f );
+				e += aq * aq; maxTau = Math.Max( maxTau, t );
+			}
+			Add( f, a );
+			if ( pair ) Add( f + split, a * (0.45f + 0.4f * r.Next()) );
+			else { r.Next(); r.Next(); }   // the pair's two draws, kept whether or not it exists
+		}
+		// Energy-normalised so the two strike weightings land comparably loud.
 		float level = 0.55f / MathF.Sqrt( Math.Max( 1e-6f, e ) );
-		float dur = Math.Clamp( maxTau * 1.35f + 0.15f, 1.2f, 3.4f );
+		float dur = Math.Clamp( maxTau * 1.35f + 0.15f, 1.2f, 4.0f );
 		return new RideModal( hz.ToArray(), am.ToArray(), ta.ToArray(), pn.ToArray(),
-			dur, level, stick, stickCut );
+			dur, level, stick, stickCut, splash, splashTau, washLvl, washTau );
 	}
 }
 
@@ -1245,6 +1264,14 @@ public sealed partial class MusicGen
 		int stickLen = (int)(_sr * 0.004f);
 		float sa = m.StickCut > 0f ? LpCoeff( m.StickCut ) : 0f;
 		float lp = 0f;
+		// The noise layers: the splash (the measured attack is broadband and nearly flat — the
+		// strike sprays energy everywhere for an instant) and the wash (the air between the
+		// partials, darker and long). Both from the same hit-local LFSR as everything else.
+		float hpA = HpCoeff( 240f ), washLpA = LpCoeff( 6500f );
+		float nInPrev = 0f, nHpPrev = 0f, washLp = 0f;
+		double splDecay = _sr * (double)Math.Max( 0.005f, m.SplashTau );
+		double washDecay = _sr * (double)Math.Max( 0.02f, m.WashTau );
+		bool noise = m.SplashLvl > 0f || m.WashLvl > 0f;
 		StereoGains( _drumPan, out float sgL, out float sgR );
 		float scale = amp * _c.HatBalance * _drumGain * _drumHighMul;
 		// The longest partials outlive the buffer; a short fade keeps the truncation silent.
@@ -1266,6 +1293,15 @@ public sealed partial class MusicGen
 				if ( m.StickCut > 0f ) { lp += sa * (sn - lp); sn = lp; }
 				float sv = sn * m.Stick * (1f - i / (float)stickLen);
 				sl += sv * sgL; sr += sv * sgR;
+			}
+			if ( noise )
+			{
+				float w = HitNext( ref ns );
+				float hp = hpA * (nHpPrev + w - nInPrev); nInPrev = w; nHpPrev = hp;
+				washLp += washLpA * (hp - washLp);
+				float nz = hp * m.SplashLvl * (float)Math.Exp( -i / splDecay )
+					+ washLp * m.WashLvl * (float)Math.Exp( -i / washDecay );
+				sl += nz * sgL; sr += nz * sgR;
 			}
 			int rem = end - (start + i);
 			float g = scale * (rem < fade ? rem / (float)fade : 1f);
