@@ -218,6 +218,58 @@ public sealed partial class MusicGen
 		return grid.ToArray();
 	}
 
+	/// <summary>A generator with a buffer and a time base but NO SONG — the kit voices can be
+	/// driven straight into it. This is what the <c>--audition</c> diagnostic renders each of its
+	/// lines in: composition is skipped entirely, so what comes out is one drum voice and nothing
+	/// else. Harness-only, like <see cref="RawLevels"/>, <see cref="AudibleNotes"/>,
+	/// <see cref="GridSamples"/> and <see cref="Explain"/>.
+	///
+	/// DRY IS THE POINT, so everything the composer would normally lean on the kit with is set
+	/// neutral here: no tone lean, no genre mix trim, no swing, no kit push, centred. Position is
+	/// the one axis a line can ask for back, and it asks by setting <see cref="AuditionPan"/> —
+	/// which is the same field the STEREO WIDTH slider drives, so a pan line is auditioning the
+	/// real mechanism rather than a stand-in.
+	///
+	/// The caller reads <see cref="AuditionBuffers"/> and does NOT call <c>Master()</c>: the
+	/// master bus peak-normalizes, and a per-line normalize would return every candidate at the
+	/// same level and quietly delete the whole velocity half of the script.</summary>
+	internal static MusicGen ForAudition( Config c, double seconds, int bpm )
+	{
+		var g = new MusicGen( c );
+		g._genre = 1;
+		g._prof = GenreProfile.For( g._genre );
+		int n = Math.Max( 1, (int)(g._sr * seconds) );
+		double samplesPerTick = 60.0 / Math.Max( 1, bpm ) * g._sr / Timing.TicksPerBeat;
+		int totalTicks = (int)(n / samplesPerTick) + Timing.TicksPerBeat * 4;
+		g._time = new Timing( 4, totalTicks, samplesPerTick, swing: 0f, drumPush: 0, sampleRate: g._sr );
+		g._bufL = new float[n];
+		g._bufR = new float[n];
+		g._drumLowMul = g._drumHighMul = g._midMul = 1f;
+		g._drumPan = 0f;
+		g._drumTone = 0.5f;
+		g._energy = 1f;
+		g._feel = 1f;
+		g._barTick = 0;
+		g._sectionTick = 0;
+		g._crashBrightLeft = true;
+		return g;
+	}
+
+	/// <summary>The audition's raw, pre-master buffers.</summary>
+	internal (float[] L, float[] R) AuditionBuffers() => (_bufL, _bufR);
+
+	/// <summary>The audition's time base — a line asks it for the sample position of a tick, the
+	/// same way a voice does.</summary>
+	internal Timing AuditionTiming => _time;
+
+	/// <summary>The kit's stereo spread, for the lines that are about position. 0 is centred.
+	/// </summary>
+	internal float AuditionPan { get => _drumPan; set => _drumPan = value; }
+
+	/// <summary>Which side the bright crash sits on — the two crashes land opposite each other,
+	/// so this is how a line hears them as two cymbals rather than one.</summary>
+	internal bool AuditionCrashBrightLeft { get => _crashBrightLeft; set => _crashBrightLeft = value; }
+
 	internal (float Peak, double Rms) RawLevels()
 	{
 		float peak = 0; double sum = 0; int n = 0;

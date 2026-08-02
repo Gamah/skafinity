@@ -29,6 +29,18 @@ static class Program
 	static int Main( string[] args )
 	{
 		bool bless = Array.IndexOf( args, "--bless" ) >= 0;
+		// --audition [kick|snare|toms|hats|crash|ride] [wavPath]. The voice filter is what makes a
+		// second round cheap: re-render the one voice the notes are about. See DRUMS.md.
+		int ai = Array.IndexOf( args, "--audition" );
+		if ( ai >= 0 )
+		{
+			string only = ai + 1 < args.Length && !args[ai + 1].StartsWith( "-" ) ? args[ai + 1] : null;
+			string wav = ai + 2 < args.Length && !args[ai + 2].StartsWith( "-" ) ? args[ai + 2]
+				: Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ),
+					"audition.wav" );
+			Audition.Run( only, wav, Path.ChangeExtension( wav, ".txt" ) );
+			return 0;
+		}
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }

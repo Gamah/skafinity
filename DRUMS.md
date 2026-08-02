@@ -35,6 +35,43 @@ approved before any of it is wired into the grooves.**
 
 ---
 
+## STATUS — Phase 1 is done except the ride
+
+Five audition rounds have settled the kick, the snare, the toms, the crashes and the hats. **The
+ride is parked and handed off — see `RIDE.md`**, which is self-contained; a session picking up the
+ride does not need to read the rest of this file.
+
+Everything approved is recorded in `KitNuance` in `Engine/Drums/Kit.cs`, and **most of it is
+RANGES**. Round after round came back "all of these work" — the click's corner at 1.8, 3.5 and
+6 kHz; the rimshot's crack at 2.4, 3.2 and 4.2 kHz; both cross-sticks; both foot chicks. That is a
+finding, not an undecided question: a kit is a physical object being hit by a person, the same drum
+never makes the identical sound twice, and a band of values that ALL read as the right drum is what
+nuance is. Picking one point out of it by ear would be throwing the finding away. Phase 2 draws
+from those bands per song, and per hit where `KitNuance` says so.
+
+**Nothing is wired into the grooves yet, and the ten render digests have not moved through any of
+it.** That is the gate Phase 1 was run against and it held: `dotnet run --project test/engine
+-c Release` is 483/483. Every new articulation is reachable only from `--audition` until Phase 2
+deliberately wires it.
+
+Four defects the audition found that were structural rather than tuning, all fixed:
+
+- **The kick's click was 3 ms of full-band white noise**, so the high tick was not part of any body
+  — it was the same broadband transient laid over all of them. A beater is a soft mass on a skin and
+  cannot radiate 15 kHz.
+- **The rimshot and the cross-stick were reaching for their articulation with the shell partials.**
+  Two loud sines with a slow decay are a tom, and a bright short one is a clave, whatever they are
+  labelled. Both are crack-led now; the giveaway in each case was the RING, not the pitch.
+- **The hat's openness map was linear in a quantity the ear reads as a ratio.** Closed to open is a
+  factor of 17, so most of the pedal's travel landed within a few percent of fully open and two
+  positions a third of the range apart were the same hat. It is geometric now.
+- **A resonant band-pass has ~1/Q gain at its centre**, so Q was silently a level control as well as
+  a bandwidth and neither could be tuned against the other. `BandPass.Next` normalises by Q.
+
+One trap worth carrying: **a `float` field widened into a `double` decay is not the same number as
+the `double` literal it replaced.** Parameterising the voices moved all ten digests on the first
+run for exactly that reason, in every voice at once. The tone structs' decay fractions are `double`.
+
 ## Phase 1 — The audition (gates everything else)
 
 One WAV, one script, iterated until approved. Nothing in Phase 2 starts until then.
@@ -167,6 +204,11 @@ bright crash on a section's first downbeat.
 kick is the floor of the groove and should breathe least. Round-robin jitter comes from a **local
 LFSR seeded on `start`**, the pattern `RenderTom` already uses at `Kit.cs:99`, so it costs nothing
 from the shared drum stream.
+
+**Ride — PARKED, whole voice.** See `RIDE.md`: the bell has failed three times in three different
+ways, and the ping only started reading as a ride once it was given low modes, so the ride goes to a
+dedicated session rather than being finished here. It blocks nothing — a riding section keeps playing
+`RideTone.Bow` / `BellDurationOnly`, which is what shipped before this branch. The swell is settled.
 
 **Ride.** Groove-level wiring decided by the audition — in particular whether `bell` stops being
 positional and becomes a cell value (reusing `Open`, which a riding section currently ignores
