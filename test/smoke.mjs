@@ -42,7 +42,7 @@ check('ConfigSize matches DefaultConfig length', cfg.length === E.ConfigSize(), 
 // ── genre ──
 // Derived from the engine rather than hardcoded: adding a genre is an append-only change to
 // VibeCodec, and this boundary test should follow it instead of having to be edited in step.
-const GENRES = ['Ska', 'Rock', 'Country', 'Metal', 'Punk', 'Pop'];
+const GENRES = ['Ska-Punk', 'Rock', 'Country', 'Metal', 'Punk', 'Pop'];
 check('GenreCount matches the known genre list', E.GenreCount() === GENRES.length,
   `${E.GenreCount()} vs ${GENRES.length}`);
 for (let g = 0; g < E.GenreCount(); g++) {

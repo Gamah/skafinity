@@ -39,8 +39,8 @@ sealed class DrumGroove
 	static Pattern E( params int[] c ) => Pattern.Eighths( c );
 	static Pattern S( params int[] c ) => Pattern.Sixteenths( c );
 
-	// ── Ska ──
-	public static readonly DrumGroove[] Ska =
+	// ── Ska-punk ──
+	public static readonly DrumGroove[] SkaPunk =
 	{
 		new()
 		{
@@ -121,10 +121,25 @@ sealed class DrumGroove
 		new()
 		{
 			Name = "double kick",
-			Kick = S( 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ),
+			// DOUBLE KICK IS A BURST, NOT A SETTING. One bar of unbroken sixteenths looped for
+			// three minutes is ~13 hits a second with nothing ever changing, which is why it read
+			// as a blast beat at every tempo and every subdivision: the tell is not the rate, it
+			// is that the rate never moves. A drummer rides an ordinary kick pattern and stands on
+			// the double pedal under a riff — for a beat into a bar line, for a bar at the top of
+			// a phrase — and the contrast is the whole effect.
+			//
+			// Four bars, because Pattern carries its own length: bars 1 and 3 are a played metal
+			// kick, bar 2 bursts over its last beat, and bar 4 is the full double-kick bar the
+			// phrase turns around on. Same one object, no new mechanism.
+			Kick = S( 0, R, R, R, 0, R, R, 0, 0, R, R, R, 0, R, 0, R,
+			          0, R, R, R, 0, R, R, 0, 0, R, R, R, 0, 0, 0, 0,
+			          0, R, R, R, 0, R, R, 0, 0, R, R, R, 0, R, 0, R,
+			          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ),
 			Snare = E( R, R, 0, R, R, R, 0, R ),
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
-			GhostRate = 0f, CrashOnOne = 0.55f,
+			// The kick no longer fills every sixteenth, so the busy layer has somewhere to sit
+			// again — but only just: metal's kit is a wall by design and the ghosts are the mortar.
+			GhostRate = 0.2f, CrashOnOne = 0.55f,
 		},
 		new()
 		{
@@ -249,8 +264,9 @@ public sealed partial class MusicGen
 			RenderSnare( _time.TickToSample( h.Tick ), noise, ghost );
 		}
 
-		// Extra ghosts / toms between the groove's own hits: the "busy" layer. Metal's double
-		// kick already fills every sixteenth, so its groove asks for none (GhostRate 0).
+		// Extra ghosts / toms between the groove's own hits: the "busy" layer. A groove that
+		// already fills its own gaps scales this down through GhostRate rather than being
+		// special-cased here.
 		if ( busy > 0f && !sparse )
 			for ( int t = barTick; t < to; t += Timing.TicksPerEighth / 2 )
 			{

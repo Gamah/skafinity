@@ -6,7 +6,7 @@ namespace Skafinity;
 /// <see cref="Pattern"/>; this says what a hit MEANS when that voice plays it.</summary>
 enum CompStyle
 {
-	/// <summary>Ska: the offbeat chop, short and bright.</summary>
+	/// <summary>Ska-punk: the offbeat chop, short and bright.</summary>
 	Skank,
 	/// <summary>Rock: a two-bar power-chord riff motif — hits that ring, not an eighth-note wall.</summary>
 	Riff,
@@ -38,7 +38,7 @@ enum KeysStyle
 /// most interchangeable thing in the song.</summary>
 enum LeadStyle
 {
-	/// <summary>Ska: the horn line — call in the first phrase, answer in the second.</summary>
+	/// <summary>Ska-punk: the horn line — call in the first phrase, answer in the second.</summary>
 	HornLine,
 	/// <summary>Rock: mid-register, bendy, spare.</summary>
 	Bluesy,
@@ -113,7 +113,7 @@ sealed class GenreProfile
 
 	/// <summary>Chance this song takes a genuine 2:1 TRIPLET SHUFFLE instead of drawing from the
 	/// swing band. A shuffle is a different feel, not a wider swing: widening the band to reach
-	/// ~0.33 would just make ordinary songs sloppy on the way there. Ska and country only.</summary>
+	/// ~0.33 would just make ordinary songs sloppy on the way there. Ska-punk and country only.</summary>
 	public float ShuffleChance { get; init; }
 	public float ShuffleMin { get; init; } = 0.30f;
 	public float ShuffleMax { get; init; } = 0.36f;
@@ -242,9 +242,21 @@ sealed class GenreProfile
 	// Tempo is the same kind of value. One shared 130–185 band made a metal song and a country
 	// song run at the same speed, which is most of what "they all sound alike" was — so each
 	// genre carries its own band and its own uptempo band.
+	//
+	// EACH BAND IS ANCHORED ON RECORDS, AND EVERY ANCHOR NAMES ITS COUNT. The trap is not finding
+	// tempos, it is that a reported bpm does not say which pulse it counted: Slayer's "Raining
+	// Blood" comes back as 89 from the same databases that give its thrash section as 216, and ska
+	// is worse still (see genre 0). A number copied out of an aggregator without deciding where
+	// the backbeat falls is not a measurement, it is a coin flip that LOOKS measured — which is
+	// the failure mode these bands already had once. So each genre below records its anchors, and
+	// a genre whose anchors are ambiguous keeps the band it has until somebody counts them by ear.
+	// Ranges quoted as "the genre tables" are the published per-genre bpm guides, used only to
+	// corroborate an anchor and never on their own.
 	static readonly GenreProfile[] Profiles =
 	{
-		// ── ska — THIRD WAVE (ska-punk): straight and fast, clean skank verses into loud choruses ──
+		// ── ska-punk — THE THIRD WAVE: straight and fast, clean skank verses into loud choruses ──
+		// Era: 90s US ska-punk. The genre is NAMED for it (VibeCodec's "Ska-Punk") rather than
+		// holding "Ska", which is the umbrella and is left free for two-tone and first wave.
 		// Genre 0 was tuned as first-wave/rocksteady — shuffled, 130–175, a melodic reggae bass under
 		// a roomy bass-forward mix and a form that deliberately did not climb. That is a real music
 		// and it is not this one. The waves run ska (late 50s–60s, shuffled, out of American R&B) →
@@ -254,7 +266,7 @@ sealed class GenreProfile
 		new()
 		{
 			SwingChance = 0f,   // 2 Tone dropped the shuffle for punk's straight eighths; the third wave never took it back
-			// Anchored on a record rather than on an adjective. "Ska is fast" first put this band at
+			// Anchored on a record rather than on an adjective. "ska is fast" first put this band at
 			// 150–190, which made a REFERENCE-FAST ska song the median and left the tempo knob no
 			// usable travel upward. Reel Big Fish's "Sell Out" is ~103 bpm as counted, i.e. ~206 in
 			// THIS engine's units — the skank fires once per beat here (the "and" of each beat), so
@@ -266,18 +278,18 @@ sealed class GenreProfile
 			ChordBars = 2, RideLean = 0.20f, HornLead = true,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.Ska,
-			Scales = Harmony.SkaScales, ScaleWeights = Harmony.SkaScaleWeights,
-			Progressions = Harmony.SkaProgressions,
-			Voicings = Harmony.SkaVoicings, VoicingWeights = Harmony.SkaVoicingWeights,
-			BassPatterns = Harmony.SkaBass,
-			CompFigures = CompFigure.Ska, Comp = CompStyle.Skank,
+			Form = SongForm.SkaPunk,
+			Scales = Harmony.SkaPunkScales, ScaleWeights = Harmony.SkaPunkScaleWeights,
+			Progressions = Harmony.SkaPunkProgressions,
+			Voicings = Harmony.SkaPunkVoicings, VoicingWeights = Harmony.SkaPunkVoicingWeights,
+			BassPatterns = Harmony.SkaPunkBass,
+			CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
 			// The dynamic that IS third-wave ska: the skank stops for the chorus and the same voice
 			// plays power chords through a driven amp. LoudComp reuses punk's downstroke because the
 			// technique genuinely is punk's — what keeps the genre distinct is that it only does this
 			// half the time, over ska's harmony, with the horns still on top.
-			LoudCompFigures = CompFigure.SkaLoud, LoudComp = CompStyle.Downstroke,
-			Grooves = DrumGroove.Ska, GrooveWeights = new[] { 3, 2 },
+			LoudCompFigures = CompFigure.SkaPunkLoud, LoudComp = CompStyle.Downstroke,
+			Grooves = DrumGroove.SkaPunk, GrooveWeights = new[] { 3, 2 },
 			Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
 			AccentDown = 0.95f, AccentBack = 1.05f, AccentOff = 1.1f, // the offbeat is still the loud one
 			// Dry and bright — a 90s record, not a 60s room. The high trim is a TIMBRE call and was
@@ -285,7 +297,18 @@ sealed class GenreProfile
 			// because RMS is kick and snare energy and this rides the hats and cymbals on top.
 			Mix = new MixProfile( 0.65f, 1f, 0.95f, 1.05f, 1.15f ),
 		},
-		// ── rock — mid-tempo minor vamps behind a straight backbeat ──
+		// ── rock — 90s/00s ALTERNATIVE: mid-tempo minor vamps behind a straight backbeat ──
+		// Era, written down the way the era lean asks: this is grunge and post-grunge alt-rock,
+		// not 1971. It matters most here of all the genres, because "rock" is the widest umbrella
+		// on the roster and the band was the one the tempo study actually moved.
+		//
+		// Anchored on records (2026-08-02, aggregator tempos cross-checked between songbpm,
+		// tunebat and getsongbpm, all counting the backbeat on 2 and 4 so there is no half/double
+		// ambiguity to resolve): RHCP "Californication" 96, Nirvana "Smells Like Teen Spirit" 117,
+		// Foo Fighters "Everlong" 158. The old 110–160 band excluded the slow anchor outright and
+		// treated the fast one as ORDINARY, which is why every rock song came out driving — so the
+		// ordinary band drops to 95–140 (which is also where the genre tables put alt-rock, 115–130)
+		// and Everlong's 158 becomes what it is, an uptempo rock song.
 		new()
 		{
 			// A quarter of rock songs are shuffle-rock and the rest are dead straight. The old
@@ -293,8 +316,8 @@ sealed class GenreProfile
 			// human push", which a swing warp cannot deliver — the warp moves EVERY offbeat eighth
 			// late by the SAME amount, which is a groove. Human feel is DrumPush and Expression.
 			SwingChance = 0.25f, SwingMin = 0.10f, SwingMax = 0.16f,
-			BpmMin = 110, BpmMax = 160, FastBpmMin = 150, FastBpmMax = 175,
-			TempoFloor = 88, TempoCeil = 185,
+			BpmMin = 95, BpmMax = 140, FastBpmMin = 145, FastBpmMax = 172,
+			TempoFloor = 80, TempoCeil = 185,
 			ChordBars = 2, RideLean = 0.55f,
 			Endings = new[] { EndingStyle.Ring, EndingStyle.StopHit, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
@@ -310,7 +333,13 @@ sealed class GenreProfile
 			AccentDown = 1.05f, AccentBack = 1.1f, AccentOff = 0.8f,
 			Mix = new MixProfile( 1f, 1f, 1f, 1.05f, 1f ),
 		},
-		// ── country — the slowest band; a light shuffle under the train beat ──
+		// ── country — 90s/00s NASHVILLE: the slowest band; a light shuffle under the train beat ──
+		// Era: the Garth Brooks / Shania Twain / Brooks & Dunn radio decade, not the Bakersfield
+		// 60s and not modern bro-country. Band UNCHANGED by the tempo study — the published
+		// country range (80–120) sits under this one, but it averages in the ballads and the
+		// old-time material this genre is not, and 95–130 with a 130–150 uptempo band is where the
+		// two-step singles of that decade actually sit. Left alone deliberately rather than
+		// dragged down to a number that describes a different country.
 		new()
 		{
 			// The genre that kept the shuffle. Straight country is real country, so this is not 1.
@@ -332,7 +361,13 @@ sealed class GenreProfile
 			AccentDown = 1f, AccentBack = 1.05f, AccentOff = 1f,    // boom AND chick carry weight
 			Mix = new MixProfile( 0.75f, 0.85f, 1f, 1.05f, 0.95f ), // dry and centred
 		},
-		// ── metal — the widest band: doom-slow through thrash, under a double-kick ──
+		// ── metal — 90s/00s GROOVE AND THRASH: the widest band, doom-slow through thrash ──
+		// Era: Pantera, late Metallica, the turn-of-the-century groove/nu lineage. Anchors
+		// (2026-08-02): Pantera "Walk" 118, Metallica "Enter Sandman" 123 — both squarely inside
+		// the ordinary band, which is the corroboration. The band is UNCHANGED, and the reason the
+		// uptempo end is not pushed further on evidence is the count: "Raining Blood" is reported
+		// at 89 and played at 216, and until someone decides by ear which pulse a thrash record is
+		// in, 160–200 is a judgement rather than a measurement and is honest about being one.
 		new()
 		{
 			SwingChance = 0f,   // machine-straight; the old 0–0.02 band was ~3 ms and claimed a feel it never had
@@ -353,7 +388,11 @@ sealed class GenreProfile
 			AccentDown = 1f, AccentBack = 1f, AccentOff = 0.95f,    // deliberately flat: it's a wall
 			Mix = new MixProfile( 0.45f, 1f, 1.05f, 0.85f, 1.05f ), // dry, mid-scooped
 		},
-		// ── punk — always hot, and a chord per bar so the four-chord loop IS the hypermeasure ──
+		// ── punk — 90s SKATE PUNK: always hot, a chord per bar so the loop IS the hypermeasure ──
+		// Era: NOFX / Bad Religion / Rancid, the melodic-hardcore end of the decade rather than
+		// 1977 or pop-punk radio. Band UNCHANGED: the published punk range (150–180) is the
+		// umbrella, and skate punk lives at the top of it and past it, which is what 165–200
+		// already says.
 		new()
 		{
 			SwingChance = 0f,   // machine-straight
@@ -374,7 +413,10 @@ sealed class GenreProfile
 			AccentDown = 1.1f, AccentBack = 1.15f, AccentOff = 0.9f,
 			Mix = new MixProfile( 0.7f, 0.95f, 0.95f, 1.1f, 1f ),
 		},
-		// ── pop — dance tempo over four-on-the-floor, a chord per bar ──
+		// ── pop — 90s/00s RADIO POP: dance tempo over four-on-the-floor, a chord per bar ──
+		// Era: the teen-pop and post-teen-pop singles decade. Band UNCHANGED: 100–128 with a
+		// 124–140 uptempo band is exactly the published pop range (100–130, clustering 118–128),
+		// which is the one genre where the guess and the evidence already agreed.
 		new()
 		{
 			SwingChance = 0f,   // quantised by construction — the grid is the genre

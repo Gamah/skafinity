@@ -97,14 +97,14 @@ public sealed partial class MusicGen
 	/// <summary>The tune this section sings, or null where the section is not a place for one:
 	/// a solo is where the genre's lead grammar improvises, an intro is a build-in, and the
 	/// ending has already resolved.</summary>
-	Pattern TuneFor( Section s ) => s switch
-	{
-		Section.Chorus => _chorusTune,
-		Section.Verse => _verseTune,
-		Section.PreChorus => _verseTune,
-		Section.Bridge => _verseTune,
-		_ => null,
-	};
+	Pattern TuneFor( Section s ) => !SectionSingsTune( s ) ? null
+		: s == Section.Chorus ? _chorusTune : _verseTune;
+
+	/// <summary>Whether a section TYPE is a place for a tune at all. Static because it is a
+	/// property of the form rather than of a drawn song — which is what lets a form be checked for
+	/// putting its feel changes somewhere the melody can contrast with them.</summary>
+	internal static bool SectionSingsTune( Section s ) =>
+		s is Section.Chorus or Section.Verse or Section.PreChorus or Section.Bridge;
 
 	/// <summary>Draw the song's tunes — one for choruses, a sparser one for verses. Every genre
 	/// gets both: "riff-led" does not mean melody-free, and metal verses with no tune left four
@@ -157,7 +157,14 @@ public sealed partial class MusicGen
 		int anchor = _sectionTicks > 0 && _sectionTicks < tune.LengthTicks
 			? _sectionTick - (tune.LengthTicks - _sectionTicks)
 			: _sectionTick;
-		foreach ( var h in tune.Slice( barTick, barTick + barTicks, anchor, _feel ) )
+		// THE TUNE IS EXEMPT FROM THE SECTION'S FEEL, and that exemption IS half/double time.
+		// Part.Feel is the RHYTHM SECTION's pattern rate: when a section halves or doubles, the
+		// band changes rate underneath a vocal that stays exactly where it was — that contrast is
+		// the entire gesture, and it is what makes a double-time chorus lift rather than sound
+		// like the tape sped up. Scaling the hook by the same multiplier deletes the gesture and
+		// leaves only a faster song. So the tune slices at the nominal rate; every other voice
+		// (comp, keys, bass, horns, kit) reads _feel.
+		foreach ( var h in tune.Slice( barTick, barTick + barTicks, anchor ) )
 		{
 			int degree = h.Value;
 			int len = Math.Min( h.SpanTicks, Timing.TicksPerBeat * 2 );

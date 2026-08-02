@@ -107,7 +107,7 @@ public sealed partial class MusicGen
 		DrawTunes( beatsPerBar * Timing.TicksPerBeat );
 
 		// Swing is the genre's own feel, drawn per song from its band exactly the way tempo is —
-		// not a knob, so a reroll can never hand metal a shuffle. Ska and country may instead
+		// not a knob, so a reroll can never hand metal a shuffle. Ska-punk and country may instead
 		// draw a genuine 2:1 triplet shuffle, which is a different feel rather than more swing.
 		float swing = prof.DrawSwing( rng, _fast );
 		double secPerEighth = 60.0 / bpm / 2.0;

@@ -12,7 +12,7 @@ namespace Skafinity;
 public sealed partial class MusicGen
 {
 	// ── Skank guitar (the signature) + reggae organ bubble — offbeats, centered ──
-	// The chop lands where the figure says (CompFigure.Ska), which is normally every offbeat but
+	// The chop lands where the figure says (CompFigure.SkaPunk), which is normally every offbeat but
 	// may be a two-bar figure that pushes into the next bar. The rocksteady 7th/9th voicings the
 	// song drew are what make the chop read as ska rather than as a bright rock stab.
 	void RenderSkankBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )

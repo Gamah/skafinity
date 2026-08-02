@@ -278,7 +278,7 @@ explicitly because its members are not.
   seed string is **`"{tag}:{n}"`** (empty tag ⇒ `"rotaliate"`).
 - `n` — song index in the infinite sequence (0, 1, 2 …). Prev/Next step `n`.
 - `vibe` — a base-36 string at **16 levels/knob** (`VibeCodec.Levels`), encoding the genre + knob
-  overrides. The **first char is the genre** (0 = Ska, 1 = Rock, 2 = Country, 3 = Metal, 4 = Punk, 5 = Pop); the rest
+  overrides. The **first char is the genre** (0 = Ska-Punk, 1 = Rock, 2 = Country, 3 = Metal, 4 = Punk, 5 = Pop); the rest
   follow the fixed wire grid below. Empty/absent ⇒ default knobs (genre 0).
 
 Parsing (in `web/engine.js`, `parseSeed`) mirrors the controller: accept `vibe:tag:n`,
@@ -294,7 +294,7 @@ where the grid reserves up to `MaxInstruments` (8) blocks of 4 columns
 existing position. **Append-only means**: append global knobs, append instrument slots
 (≤ 8), and only ever append columns past the 4th — never reorder/remove. `Apply` ignores
 trailing positions a shorter string lacks (older/other-genre seeds degrade gracefully). Each
-genre defines its own instrument grid (Ska 6 instruments, Rock 4). The JS UI reads the field
+genre defines its own instrument grid (Ska-Punk 6 instruments, Rock 4). The JS UI reads the field
 list — including each field's `voice`/`column` — straight from the wasm exports
 (`VibeFieldName/Min/Max/IsInt/Voice/Column/Choices`, all genre-parameterized) and lays out
 the matrix generically, so there's no second field table to keep in lockstep — just edit
@@ -303,6 +303,25 @@ the matrix generically, so there's no second field table to keep in lockstep —
 ---
 
 ## Genre character vs. knobs (`Engine/GenreProfile.cs`)
+
+**The era lean is the 90s and 00s.** A genre is not one music, it is one music *at a moment*, and
+every genre here is a broad umbrella that gets tuned to some era whether or not anyone chooses one
+— genre 0 spent its whole life tuned as 1960s rocksteady because nobody had said out loud which ska
+it was. So it is said: **when a genre or a split has a real choice of era, take the 90s/00s one.**
+A roster whose ska is 1995 and whose rock is 1971 is a compilation across three decades rather than
+one radio station, which is the "they all sound alike" problem from the other direction. Two
+qualifications: it is a **lean, not a law** (some genres ARE their era — two-tone is 1979, roots
+reggae is the 70s — and those are worth having anyway; the rule only decides the cases where a
+genuine choice exists), and it applies to **retunes as much as to new genres**. Every genre's
+profile comment block names its era; a genre added or retuned without one is not finished.
+
+**Genre 0 is `Ska-Punk`, and "Ska" is deliberately not taken.** Genre 0 is the third wave —
+straight, fast, clean-skank verses into distorted choruses — and calling it the umbrella is what
+would block two-tone or a first-wave/rocksteady genre from ever being added under an honest name.
+The seed's genre is an INDEX (the first base-36 char of the vibe), so the display name is
+display-only and renaming one breaks no seed; the C# identifiers match it (`VibeCodec.SkaPunk()`,
+`Harmony.SkaPunk*`, `CompFigure.SkaPunk`/`SkaPunkLoud`, `DrumGroove.SkaPunk`, `SongForm.SkaPunk`).
+The repo stays *skafinity*: it is ska + infinity, and the toy is still a ska toy.
 
 Not everything per-genre is a *preference*. Some things a genre simply **is**, and exposing them
 as knobs makes a reroll able to produce nonsense — swing was the example: a global 0–0.4 slider
@@ -459,6 +478,18 @@ and nothing else** — the suite asserts the mechanism (a genre's own bands sit 
 saturation, the knob's ends never leave it, and the clamp is not vacuous), never that a particular
 bpm is correct. Sweep the knob at a fixed seed per genre; `--seed` prints the drawn tempo, the
 genre's range and whether the knob saturated.
+
+**A tempo band is anchored on records, and an anchor is worthless until its COUNT is decided.**
+Every genre's profile records the tracks its band was set against; the trap is that a reported bpm
+never says which pulse it counted. Slayer's "Raining Blood" comes back from the same databases at
+89 and at 216, and ska is worse — the engine's skank fires once per beat, so genre 0 counts the
+double-time reading and every ska tempo has to be converted before it means anything (see the
+comment on genre 0). **A number copied out of an aggregator without deciding where the backbeat
+falls is not a measurement, it is a coin flip that looks like one** — which is exactly how these
+bands were wrong the first time. Published per-genre bpm tables corroborate an anchor; they never
+set a band on their own, because they average in every era and every subgenre under the umbrella.
+A genre whose anchors are ambiguous **keeps the band it has** and says so, rather than trading a
+guess for a guess with a citation on it.
 
 **When something reads as too dense, suspect the tempo before you thin a part.** The knob is the
 usual culprit, and a genre's own band is the next one. Adding a gate somewhere is almost always the
@@ -718,6 +749,13 @@ chord arrived as a flam with its own root; and being constant it never re-conver
 no dissonance to resolve. `Hemiola` is the metric device that survives — a figure whose length does
 not divide the bar genuinely drifts and comes back.
 
+- **`Feel` is the RHYTHM SECTION's pattern rate, and the tune is exempt from it.** Half and double
+  time are a contrast *between* the band and the melody — the kit and the comp change gear while
+  the vocal holds its ground, which is what makes a double-time chorus lift instead of sounding
+  like the tape sped up. `RenderTune` therefore slices at the nominal rate whatever the section
+  says; every other voice (comp, keys, bass, horns, kit) reads `_feel`. A multiplier applied to
+  both at once expresses nothing, so a form that only ever changes feel on a section with no tune
+  (`MusicGen.SectionSingsTune`) is not using the mechanism — the suite checks that some genre does.
 - **Voices read the state; they never ask "am I in a verse?"** Density and level come from
   `NoteGain(tick, vel)` = the cell's velocity × the genre's accent weight for that metric position
   × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is how the mix got flat and mechanical in

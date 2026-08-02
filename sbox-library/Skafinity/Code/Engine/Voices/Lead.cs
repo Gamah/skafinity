@@ -60,7 +60,7 @@ public sealed partial class MusicGen
 		_ => 3,
 	} );
 
-	// ── Ska (and rock, sparser): a sung line ──
+	// ── Ska-punk (and rock, sparser): a sung line ──
 	// Chord-tone locked on the strong beats so it stays consonant, stepping or leaping between
 	// them. This is the old generator, kept for the two genres whose lead really is a melody —
 	// with ska phrasing its second half as an ANSWER to its first (the horn convention), and rock

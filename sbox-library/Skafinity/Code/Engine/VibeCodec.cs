@@ -193,7 +193,7 @@ public static class VibeCodec
 
 	// Per-genre instrument grids. Each row is volume / tone / character / extra. Order is the
 	// display order AND the wire instrument-slot order — append instruments, never reorder.
-	static GenreDef Ska()
+	static GenreDef SkaPunk()
 	{
 		Field vol( string v, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
 			=> Vol( v, g, s );
@@ -201,7 +201,7 @@ public static class VibeCodec
 			=> F( "TONE", lo, hi, false, g, s, v, 1 );
 		return new GenreDef
 		{
-			Name = "Ska",
+			Name = "Ska-Punk",
 			Grid = new[]
 			{
 				Row( "BASS", vol( "BASS", c => c.BassVol, ( c, v ) => c.BassVol = v ),
@@ -415,7 +415,7 @@ public static class VibeCodec
 		F( "BUSY", 0f, 1f, false, c => c.DrumBusy, ( c, v ) => c.DrumBusy = v, "DRUMS", 2 ),
 		F( "DRIVE", 0f, 1f, false, c => c.DrumDrive, ( c, v ) => c.DrumDrive = v, "DRUMS", 3 ) );
 
-	static readonly GenreDef[] GenreDefs = { Ska(), Rock(), Country(), Metal(), Punk(), Pop() };
+	static readonly GenreDef[] GenreDefs = { SkaPunk(), Rock(), Country(), Metal(), Punk(), Pop() };
 
 	public static int GenreCount => GenreDefs.Length;
 	public static IReadOnlyList<string> Genres

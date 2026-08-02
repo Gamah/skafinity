@@ -38,9 +38,9 @@ static class CompFigure
 	static Pattern S( params int[] cells ) => Pattern.Sixteenths( cells );
 	static Pattern T( params int[] cells ) => Pattern.ThirtySeconds( cells );
 
-	// ── Ska: the skank chop on the offbeats. The second figure answers itself across two bars
+	// ── Ska-punk: the skank chop on the offbeats. The second figure answers itself across two bars
 	// (the push on the "and of 4" pulls into bar 2), which one-bar tables could not express.
-	public static readonly Pattern[] Ska =
+	public static readonly Pattern[] SkaPunk =
 	{
 		E( R, Stab, R, Stab, R, Stab, R, Stab ),
 		E( R, Stab, R, Stab, R, Stab, R, Stab,
@@ -56,12 +56,12 @@ static class CompFigure
 		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,Stab,R,R ),
 	};
 
-	// ── Ska (loud): what the same voice plays once the section is loud — see GenreProfile.LoudComp.
+	// ── Ska-punk (loud): what the same voice plays once the section is loud — see GenreProfile.LoudComp.
 	// The skank stops. These are the guitar part of a third-wave chorus: on the beat, ringing, and
 	// through a driven amp (so RhythmGtrTone's drive takes the third out and they land as power
 	// chords). The offbeat does not vanish from the song — the horns and the kit still carry it,
 	// which is what keeps a loud ska chorus from simply being a punk chorus.
-	public static readonly Pattern[] SkaLoud =
+	public static readonly Pattern[] SkaPunkLoud =
 	{
 		E( Ring, R, Stab, R, Ring, R, Stab, R ),
 		// Two bars, the second pushing back into the first: the chorus figure that answers itself.

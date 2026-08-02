@@ -145,7 +145,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	[Property, Group( "Horns" ), Range( 0f, 1f )] public float HornDensity { get; set; } = 0.35f;
 
 	// ── Genre & rock instruments ──
-	// Genre selects the instrument set: 0 = Ska, 1 = Rock (drums/bass/rhythm-gtr/lead-gtr).
+	// Genre selects the instrument set: 0 = Ska-Punk, 1 = Rock (drums/bass/rhythm-gtr/lead-gtr).
 	[Property, Group( "Genre" ), Range( 0, 1 )] public int Genre { get; set; } = 0;
 	// KEYS — the offbeat-chord comp (was the "rhythm guitar"; it reads as keys).
 	[Property, Group( "Rock" ), Range( 0f, 1.5f )] public float KeysVol { get; set; } = 1.00f;
