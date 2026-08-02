@@ -114,9 +114,10 @@ public sealed partial class MusicGen
 
 			int midi = ScaleMidi( melBase, degree );
 			if ( onChordTone ) midi = NearestSoundingTone( midi, chord, t );
-			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, len ) );
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, len ),
+				BendBias( len, (t - barTick) / (float)span ) );
 			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi,
-				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, len ) * 0.7, drive, vc );
+				amp * NoteGain( 1f ), _time.SpanSeconds( t, len ) * 0.7, drive, vc );
 			prevMidi = midi;
 			t += Math.Max( Timing.TicksPerEighth, len );
 		}
@@ -156,9 +157,10 @@ public sealed partial class MusicGen
 			degree += dir;
 			if ( degree > _prog[chord] + 14 || degree < _prog[chord] - 7 ) { dir = -dir; degree += 2 * dir; }
 			int midi = ScaleMidi( melBase, degree );
-			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, step ) );
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, step ),
+				BendBias( step, (t - barTick) / (float)span ) );
 			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, step * 0.95 ), midi,
-				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, step ) * 0.8,
+				amp * NoteGain( 1f ), _time.SpanSeconds( t, step ) * 0.8,
 				_c.LeadGtrDrive, vc );
 			prevMidi = midi;
 			t += step;
@@ -188,8 +190,9 @@ public sealed partial class MusicGen
 			if ( rng.Chance( 0.25f ) ) { t += len; continue; }       // country leaves space
 
 			int midi = ScaleMidi( melBase, degree );
-			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, len ) );
-			float gain = amp * NoteGain( t, 1f );
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, len ),
+				BendBias( len, (t - barTick) / (float)span ) );
+			float gain = amp * NoteGain( 1f );
 			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi, gain,
 				_time.SpanSeconds( t, len ) * 0.75, _c.LeadGtrDrive, vc );
 			if ( rng.Chance( DoubleStopChance ) ) EmitDoubleStop( t, len, degree, gain );
@@ -236,10 +239,12 @@ public sealed partial class MusicGen
 		{
 			if ( h.Value == CompFigure.Mute ) continue;              // the muted chug is not a note
 			int midi = ScaleMidi( melBase, _prog[chord] );
-			var vc = Roll( ex, midi, prev, exprRng, (float)_time.SpanSeconds( h.Tick, h.SpanTicks ) );
+			// The unison has no phrase of its own — it is the riff's — so the bar is the phrase.
+			var vc = Roll( ex, midi, prev, exprRng, (float)_time.SpanSeconds( h.Tick, h.SpanTicks ),
+				BendBias( h.SpanTicks, (h.Tick - _barTick) / (float)_time.BarTicks ) );
 			prev = midi;
 			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.9 ),
-				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.7,
+				midi, amp * NoteGain( h.Vel ), _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.7,
 				_c.LeadGtrDrive, vc );
 		}
 	}
@@ -265,7 +270,7 @@ public sealed partial class MusicGen
 			// A tuplet divides its own span evenly — it is not warped onto the shuffle grid a
 			// second time (see Timing.EvenSpan).
 			RenderLeadNote( _time.EvenSpan( t, spanTicks, k / (double)n ),
-				_time.SpanSamples( t, spanTicks / (double)n * 0.9 ), m2, amp * NoteGain( t, 1f ),
+				_time.SpanSamples( t, spanTicks / (double)n * 0.9 ), m2, amp * NoteGain( 1f ),
 				_time.SpanSeconds( t, spanTicks ) / n * 0.85, drive, runVc );
 			prevMidi = m2;
 		}
@@ -322,15 +327,21 @@ public sealed partial class MusicGen
 	/// these against the kit while the lead was still filling the odd phrase; it carries the tune
 	/// now, and a melody that sits AT kit level is a melody a listener has to go looking for.
 	/// Every genre measured within a dB of 0 before this, so each is a straight trim to +2 —
-	/// which is also comfortably inside the suite's "the lead does not dominate" ceiling.</summary>
+	/// which is also comfortably inside the suite's "the lead does not dominate" ceiling.
+	///
+	/// Re-measured when the metric accent stopped reaching pitched voices (see NoteGain), which is
+	/// a level change and an UNEVEN one: country's and ska's accent weights all sit above 1, so
+	/// their voices lost level, while rock's and pop's sit below and theirs gained. Punk's is the
+	/// one trim that is not about that change — it had been sitting at the kit's own level rather
+	/// than +2 since well before it, and a fresh measurement is what turned that up.</summary>
 	float LeadLevel() => _genre switch
 	{
-		0 => 1.10f,   // ska horn — re-measured for the third-wave kit, which is brighter and louder
-		1 => 0.86f,   // rock
-		2 => 0.77f,   // country: one note, with the odd double-stop under it
-		3 => 1.24f,   // metal: it is supposed to be on top
-		4 => 0.64f,   // punk: it doubles the guitar, and two of everything is loud
-		_ => 1.21f,   // pop: the hook IS the song
+		0 => 1.19f,   // ska horn — the third-wave kit is brighter and louder than the one before it
+		1 => 0.80f,   // rock
+		2 => 0.67f,   // country: one note, with the odd double-stop under it
+		3 => 1.21f,   // metal: it is supposed to be on top
+		4 => 0.81f,   // punk: it doubles the guitar, and two of everything is loud
+		_ => 1.25f,   // pop: the hook IS the song
 	};
 
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,

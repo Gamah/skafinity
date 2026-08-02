@@ -339,7 +339,8 @@ the four-chord loop *is* the hypermeasure), the ride-vs-hats lean, whether the l
 or a guitar, **what the chordal voice becomes when a section is loud** (`LoudComp`), and **which
 tables the genre draws from for everything else**: harmony (scales + weights, progressions,
 voicings), the `Form` (its section map), the `CompFigures`/`KeysFigures` its chordal voices play,
-its `Grooves`, its `BassPatterns`, its `LeadStyle`, its accent weights and its `Mix`.
+its `Grooves`, its `BassPatterns`, its `LeadStyle`, its accent weights, how busy and how shaped its
+drum fills are (`FillHits`/`FillShapes`), and its `Mix`.
 `Harmony` is just the tables — read `GenreProfile.For(g).Progressions`.
 
 **Swing is a decision before it is a depth.** `SwingChance` says whether a song swings at all and
@@ -538,9 +539,21 @@ say what it counted, and some sources do.** Where no such source exists the band
 move: "Raining Blood" is still not an anchor, and *NSYNC's "Bye Bye Bye" (173 or 86, nothing
 deciding) is deliberately not one either.
 
-**What the method does not reach is the grooves and the accent weights.** There is no equivalent of
-a bpm field for where the kick falls in a train beat or how much louder country's offbeat "chick"
-is than its downbeat, so those are still unchecked against anything — see `PLAN.md`.
+**The grooves and the accent weights are measured too, off a different kind of source.** There is no
+equivalent of a bpm field for where the kick falls in a train beat, so the drum tables are fitted to
+a corpus of played performances instead: Google Magenta's Groove MIDI Dataset, whose every file is
+played to a metronome at a stated tempo and carries per-hit velocity. **One pass answers two
+questions and they must not be confused** — VELOCITY is the accent weight (`GenreProfile`'s accent
+block) and OCCUPANCY is the placement (`DrumGroove`'s header, and `GenreProfile.FillHits` for how
+busy a fill is). Both blocks record the method precisely enough to redo it, because **neither the
+dataset nor the tool that read it is in this repo and neither may become a dependency**: what lands
+is derived numbers and a citation.
+
+Two standing caveats travel with any figure taken from there. **The sample sizes are wildly uneven**
+— rock is 6521 bars and settles rock, country is 120 from two performances and is an indication —
+so a thin row says so rather than trading a guess for a guess with a citation on it. And **metal is
+simply not in the dataset**; its flat accents and its fill density are design calls and are labelled
+as such, not rock's numbers wearing rock's citation. E-GMD is the candidate that would answer it.
 
 **When something reads as too dense, suspect the tempo before you thin a part.** The knob is the
 usual culprit, and a genre's own band is the next one. Adding a gate somewhere is almost always the
@@ -693,7 +706,7 @@ thing to avoid, and it is an authoring judgement rather than something the engin
 ornament REPLACES a note rather than joining it** — a figure that adds four notes to a bar is
 louder as well as busier, and the comp is the bed: the engine suite's single-seed balance check
 catches exactly that, and it caught it here. Where
-they live today: `RenderFill` may run a short fill at 8 per beat, `RenderShredPhrase` breaks its
+they live today: a fill's `Pickup` shape flurries its last beat at 32nds, `RenderShredPhrase` breaks its
 sixteenth run into 4–8-note flurries, and **every genre's chordal table has one figure carrying the
 gesture in its own idiom** — the ska flick off the last chop, the rock riff's pickup into the
 downbeat, country's chicken-pickin' pull-off after the chick, metal's tremolo into the bar line,
@@ -797,6 +810,17 @@ opinion about — rather than the distance the pitch travels. For the same reaso
 released**: a held one replaces the composed note, and the tune's pitch was chosen against its
 chord, so a hook that bends away and stays there is a different hook every statement.
 
+**How OFTEN is a weighting, never a floor.** Country ran at `max(knob, 0.45)` — at least 45% of
+every note long enough to carry a bend, with no position on the slider at which the genre bent
+rarely — and it read as exactly that: the right gesture, too often. A flat per-note chance cannot
+say *where* a player bends, so a smaller constant would only have been a quieter version of the same
+mistake. `MusicGen.BendBias(spanTicks, phraseU)` multiplies note LENGTH by PHRASE POSITION, and the
+position is read over each **half** of the phrase: call and answer land twice, so the end of the
+call is as much a landing as the end of the answer, and reading the whole phrase would put the
+flattest point of the curve on the most bent note in a country lick. Every voice that can bend
+passes it. What a genre's floor is actually for survives — its low end must still read as country
+rather than as a clean guitar — it is just no longer the only thing the number says.
+
 **Not every lead that routes to `"LEAD GTR"` is a guitar.** `Expr` picks that case for everything
 that is not the ska horn section, so pop's plucky synth lands there by elimination — and a synth
 does not bend a string. Pop's vibe knob is even labelled `GLIDE` rather than `BENDINESS`, so
@@ -828,9 +852,18 @@ not divide the bar genuinely drifts and comes back.
   both at once expresses nothing, so a form that only ever changes feel on a section with no tune
   (`MusicGen.SectionSingsTune`) is not using the mechanism — the suite checks that some genre does.
 - **Voices read the state; they never ask "am I in a verse?"** Density and level come from
-  `NoteGain(tick, vel)` = the cell's velocity × the genre's accent weight for that metric position
-  × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is how the mix got flat and mechanical in
-  the first place — route it through `NoteGain`.
+  `NoteGain(vel)` = the cell's velocity × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is
+  how the mix got flat and mechanical in the first place — route it through `NoteGain`.
+- **The metric accent is a DRUMS thing, and `NoteGain` takes no tick so that it stays one.** The
+  genre's `AccentDown`/`AccentBack`/`AccentOff` were measured off drum-hit velocities, and they
+  used to multiply into every voice — so a pitched note's level was decided by where in the bar it
+  landed. A melody is drawn on the eighth grid and therefore alternates on-beat and off-beat
+  continuously, so the lead stepped 3 dB a note in rock and 5 dB in pop out of metric position
+  alone: a drummer's dynamic worn by a singer. `KitGain(tick, vel, depth)` is the only door out of
+  `MetricGain`, and a pitched voice cannot open it — the same trick as `Register(octaves)`, where
+  the wrong version is made unwriteable rather than merely documented. **A phrase-shaped dynamic
+  for the melody is a different and real thing**; it comes off the tune rather than off the grid,
+  so it belongs in `Melody` and it is a `PLAN.md` row.
 - `BarBeats` is the anomalous-measure hook (a 2/4 bar inside a 4/4 section). Bars are laid out per
   section before anything renders, so a short bar is a length, not a special case. **No form uses
   one today**: dropping a beat out of a bar under a melody reads as the song jumping to a downbeat
@@ -845,6 +878,19 @@ not divide the bar genuinely drifts and comes back.
   draw (a beat ≈ 55% … two bars ≈ 5%) and the ≥1-bar options are gated to boundaries that earn them
   (into a chorus, out of a breakdown). The KIT stops where the fill starts; the melodic voices play
   through it, the way a band does.
+- **A fill is a SHAPE, a DENSITY and a set of DYNAMICS, and one number could only ever be the
+  middle one.** `RenderFill` used to play *n* evenly-spaced, equally-loud hits in every beat of its
+  span with a floor of four, so a two-bar fill was 32 hits that never stopped — not fast, just never
+  stopping. The three parts now: **shape** (`FillShape` — a ramp that empties and accelerates, a
+  roll, a pickup that waits and then flurries, a gesture that is three hits and air; weighted per
+  genre, and a fill longer than a bar takes a ramp or a roll whatever it drew, because the kit has
+  handed over and nothing else is keeping the time). **Density** (`GenreProfile.FillHits`, in hits
+  per bar across the whole kit, against a measured rock fill's 13.2; the per-cell occupancy grid is
+  eighths at 1.0 with sixteenth ornament at 0.62, which is what the dataset's histogram is, and a
+  target becomes chances by a **water-fill rather than a scale** — the beats reach certainty first
+  and what a busier drummer adds is ornament). And **dynamics**: it goes through `NoteGain` like
+  every other voice, which it uniquely did not before. `FillCells` fixes the per-beat draw count
+  across all three grids so the TRIPLET knob cannot change how much of the stream a fill spends.
 - **Figures are drawn per SECTION, not per song.** A chorus plays the song's own figure (`_songComp`
   / `_songKeys` / `_songBass` — that is the song's identity, and every chorus must agree); other
   sections draw their own off a stream keyed by section type, so a verse contrasts while both

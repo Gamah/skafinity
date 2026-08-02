@@ -36,7 +36,7 @@ public sealed partial class MusicGen
 				{
 					Osc = 1, Voices = 3, Detune = _c.Detune,
 					Amp = _c.SkankVol * _c.SkankBalance * _midMul / tones.Length
-					* NoteGain( h.Tick, h.Vel ) * _compTrim,
+					* NoteGain( h.Vel ) * _compTrim,
 					Attack = 0.002f, Decay = 0.10,
 					Sustain = 0f, Sustained = false,
 					Cutoff = _c.SkankCutoff, CutEnv = 1500f, Reso = 0.8f,
@@ -51,7 +51,7 @@ public sealed partial class MusicGen
 				{
 					Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
 					Amp = _c.OrganVol * _c.OrganBalance * _midMul / tones.Length
-						* NoteGain( h.Tick, h.Vel ) * _compTrim,
+						* NoteGain( h.Vel ) * _compTrim,
 					Attack = 0.004f, Decay = 0.16,
 					Sustain = 0.3f, Sustained = false,
 					Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,

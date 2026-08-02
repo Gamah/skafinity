@@ -18,7 +18,10 @@ namespace Skafinity;
 
 public sealed partial class MusicGen
 {
-	void RenderKick( int start, Rng noise )
+	// The kit's three struck voices take a LEVEL, defaulting to 1 so the groove path reads
+	// exactly as it did. It exists for the fill, which is a phrase and needs dynamics: an even
+	// stream of equally-loud hits reads as a wall however few of them there are.
+	void RenderKick( int start, Rng noise, float amp = 1f )
 	{
 		if ( _drumGain <= 0f ) return;
 		start = Math.Max( 0, start + _time.DrumPush );
@@ -40,7 +43,7 @@ public sealed partial class MusicGen
 			float body = (float)Math.Tanh( MathF.Sin( (float)(phase * 2 * Math.PI) ) * 1.6f ) * env;
 			float sub = MathF.Sin( (float)(subPhase * 2 * Math.PI) ) * 0.3f * subEnv;
 			float click = i < clickLen ? (noise.Next() * 2f - 1f) * 0.55f * (1f - i / (float)clickLen) : 0f;
-			float v = (body + sub + click) * _c.KickVol * _c.KickBalance * _drumGain * _drumLowMul;
+			float v = (body + sub + click) * amp * _c.KickVol * _c.KickBalance * _drumGain * _drumLowMul;
 			_bufL[start + i] += v; _bufR[start + i] += v;
 		}
 	}
@@ -48,7 +51,7 @@ public sealed partial class MusicGen
 	// One-pole high-pass coefficient (unconditionally stable).
 	float HpCoeff( float fc ) => (float)(1.0 / (1.0 + 2 * Math.PI * fc / _sr));
 
-	void RenderSnare( int start, Rng noise, bool ghost )
+	void RenderSnare( int start, Rng noise, bool ghost, float level = 1f )
 	{
 		if ( _drumGain <= 0f ) return;
 		start = Math.Max( 0, start + _time.DrumPush );
@@ -57,7 +60,7 @@ public sealed partial class MusicGen
 		int dur = (int)(_sr * (ghost ? 0.06f : 0.15f));
 		double decay = dur * (ghost ? 0.3 : 0.32);
 		double phase = 0, phase2 = 0;
-		float amp = _c.SnareVol * _c.SnareBalance * (ghost ? 0.3f : 1f) * _drumGain;
+		float amp = level * _c.SnareVol * _c.SnareBalance * (ghost ? 0.3f : 1f) * _drumGain;
 		float a = HpCoeff( 1350f );           // slightly crisper wire crack (was 1200)
 		float inPrev = 0f, outPrev = 0f;
 		int end = Math.Min( _bufL.Length, start + dur );
@@ -77,7 +80,7 @@ public sealed partial class MusicGen
 		}
 	}
 
-	void RenderTom( int start, float baseFreq, Rng noise )
+	void RenderTom( int start, float baseFreq, Rng noise, float amp = 1f )
 	{
 		if ( _drumGain <= 0f ) return;
 		start = Math.Max( 0, start + _time.DrumPush );
@@ -112,7 +115,7 @@ public sealed partial class MusicGen
 				ns ^= ns << 13; ns ^= ns >> 17; ns ^= ns << 5;
 				click = ((ns & 0xffff) / 32768f - 1f) * 0.45f * (1f - i / (float)clickLen);
 			}
-			float v = (body + snap + click) * _c.TomVol * _c.TomBalance * _drumGain * _drumLowMul;
+			float v = (body + snap + click) * amp * _c.TomVol * _c.TomBalance * _drumGain * _drumLowMul;
 			_bufL[start + i] += v * gL; _bufR[start + i] += v * gR;
 		}
 	}

@@ -195,6 +195,23 @@ sealed class GenreProfile
 	public float LoudFrom { get; init; } = 0.9f;
 
 
+	/// <summary>The genre's FLOURISH: a two-bar variant of its comp figure whose tail breaks into
+	/// thirty-seconds — the ska flick, the rock riff's pickup, country's chicken-pickin' pull-off,
+	/// metal's tremolo into the bar line, punk's turnaround.
+	///
+	/// IT IS NOT AN ENTRY IN <see cref="CompFigures"/>, and that is the whole of this field. It was
+	/// one, and figures are drawn per SECTION — so a song that drew it played the flourish every
+	/// two bars for the length of a chorus, on a schedule, and a song that did not never heard the
+	/// genre's signature gesture at all. A thing that arrives every two bars is not heard as an
+	/// ornament, it is heard as the part; that is the same mistake as harmonising every long note
+	/// (the country double-stop) and as running the double kick as a setting rather than a burst.
+	/// Held out here it becomes a per-occurrence roll instead, which is also how the lead's
+	/// ornaments have always worked.
+	///
+	/// Null where the genre has no such gesture — pop's lives on its arp, not on its pad.</summary>
+	public Pattern CompOrnament { get; init; }
+	public Pattern KeysOrnament { get; init; }
+
 	/// <summary>The second chordal voice — the keys/piano/synth layer, where the genre has one.
 	/// </summary>
 	public Pattern[] KeysFigures { get; init; }
@@ -203,6 +220,21 @@ sealed class GenreProfile
 	/// <summary>The genre's drum grooves (see <see cref="DrumGroove"/>), drawn per song.</summary>
 	public DrumGroove[] Grooves { get; init; }
 	public int[] GrooveWeights { get; init; }
+
+	/// <summary>How busy this genre's fills are, in HITS PER BAR across the whole kit — the target
+	/// occupancy <see cref="MusicGen.RenderFill"/> scales its grid to.
+	///
+	/// MEASURED FOR ROCK AND ONLY FOR ROCK: 13.2 hits per bar over 204 bars of fill performance
+	/// (130 files) in the Groove MIDI Dataset — see the placement block in
+	/// <see cref="DrumGroove"/> for the source and the method. Everything else here is a design
+	/// call ANCHORED on that one number rather than a second measurement wearing the same
+	/// citation, and each says which way it leans and why.</summary>
+	public float FillHits { get; init; } = 13f;
+
+	/// <summary>Weights over <see cref="FillShape"/>, in declaration order — how this genre's fills
+	/// are shaped, which is the half of a fill that density cannot say. Country's vocabulary is a
+	/// lick out of the train beat, pop's is a programmed pickup, metal's is the roll.</summary>
+	public int[] FillShapes { get; init; } = { 4, 3, 2, 1 };
 
 	/// <summary>How the lead phrases.</summary>
 	public LeadStyle Lead { get; init; }
@@ -253,11 +285,15 @@ sealed class GenreProfile
 	//     country    1.04  1.33  1.22      120
 	//     reggae     0.81  0.92  0.84      286
 	//
-	// TWO THINGS THESE NUMBERS ARE NOT. They are DRUM velocities, but MetricGain feeds NoteGain for
-	// every voice, so adopting them scales the guitar's and the keys' offbeats too — a dataset can
-	// say what a drummer does and cannot say what the band does. Pop's 0.57 is where that gap is
-	// widest, and it is the figure to revisit first if a genre reads thin off the beat. And the row
-	// counts are wildly uneven: rock's 6521 bars settle rock, while country's 120 (two
+	// THESE ARE DRUM VELOCITIES AND THEY REACH NOTHING BUT THE DRUMS. A dataset can say what a
+	// drummer does and it cannot say what the band does. MetricGain used to feed NoteGain, so these
+	// weights set the level of every pitched note by where in the bar it fell — and a melody drawn
+	// on the eighth grid alternates on and off the beat continuously, so the lead stepped 3 dB a
+	// note in rock and 5 dB in pop out of metric position alone. Pop's 0.57 was flagged here as the
+	// figure to revisit first if a genre read thin off the beat; what it actually needed was for the
+	// numbers to stay where they were measured. KitGain is the only door out of MetricGain now.
+	//
+	// The row counts are wildly uneven: rock's 6521 bars settle rock, while country's 120 (two
 	// performances) are an INDICATION that its backbeat and its offbeat "chick" both carry more
 	// than the engine gave them — corroborated by its 27 fill performances landing off at 1.12 —
 	// rather than a settled figure. Widen country before trusting it further.
@@ -340,12 +376,16 @@ sealed class GenreProfile
 			Voicings = Harmony.SkaPunkVoicings, VoicingWeights = Harmony.SkaPunkVoicingWeights,
 			BassPatterns = Harmony.SkaPunkBass,
 			CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
+			CompOrnament = CompFigure.SkaPunkFlick,
 			// The dynamic that IS third-wave ska: the skank stops for the chorus and the same voice
 			// plays power chords through a driven amp. LoudComp reuses punk's downstroke because the
 			// technique genuinely is punk's — what keeps the genre distinct is that it only does this
 			// half the time, over ska's harmony, with the horns still on top.
 			LoudCompFigures = CompFigure.SkaPunkLoud, LoudComp = CompStyle.Downstroke,
 			Grooves = DrumGroove.SkaPunk, GrooveWeights = new[] { 3, 2 },
+			// A shade under rock: the horns answer the fill, so it does not have to fill the space
+			// on its own. Ramp-led, with the flick off the last chop that its comp figures carry.
+			FillHits = 12f, FillShapes = new[] { 4, 2, 2, 2 },
 			Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
 			AccentDown = 0.95f, AccentBack = 1.05f, AccentOff = 1.1f, // the offbeat is still the loud one
 			// Dry and bright — a 90s record, not a 60s room. The high trim is a TIMBRE call and was
@@ -383,8 +423,10 @@ sealed class GenreProfile
 			Voicings = Harmony.RockVoicings, VoicingWeights = Harmony.RockVoicingWeights,
 			BassPatterns = Harmony.RockBass,
 			CompFigures = CompFigure.Rock, Comp = CompStyle.Riff,
+			CompOrnament = CompFigure.RockPickup,
 			KeysFigures = CompFigure.RockKeys, Keys = KeysStyle.Stabs,
 			Grooves = DrumGroove.Rock, GrooveWeights = new[] { 3, 2 },
+			FillHits = 13.2f, FillShapes = new[] { 4, 3, 2, 1 },   // measured, 204 bars of fill
 			Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			AccentDown = 0.99f, AccentBack = 1.16f, AccentOff = 0.82f,   // measured, 6521 bars
 			Mix = new MixProfile( 1f, 1f, 1f, 1.05f, 1f ),
@@ -418,8 +460,12 @@ sealed class GenreProfile
 			Voicings = Harmony.CountryVoicings, VoicingWeights = Harmony.CountryVoicingWeights,
 			BassPatterns = Harmony.CountryBass,
 			CompFigures = CompFigure.Country, Comp = CompStyle.BoomChick,
+			CompOrnament = CompFigure.CountryPickOff,
 			KeysFigures = CompFigure.CountryKeys, Keys = KeysStyle.HonkyTonk,
 			Grooves = DrumGroove.Country, GrooveWeights = new[] { 3, 2 },
+			// The sparsest kit on the roster and the most gestural: country's fill vocabulary is a
+			// lick out of the train beat's ghosted snare, not a roll across the toms.
+			FillHits = 10f, FillShapes = new[] { 3, 2, 2, 4 },
 			Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
 			// Boom AND chick carry weight — and the measurement says both carry MORE than this
 			// genre was giving them. Thin (120 bars), so it is an indication rather than settled.
@@ -460,7 +506,12 @@ sealed class GenreProfile
 			Voicings = Harmony.MetalVoicings, VoicingWeights = Harmony.MetalVoicingWeights,
 			BassPatterns = Harmony.MetalBass,
 			CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
+			CompOrnament = CompFigure.MetalTremolo,
 			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2 },
+			// The one genre whose fill really is the wall. It is also the genre that showed the
+			// density model up: past ~13.4/bar a flat scale had nothing left to give, so what metal
+			// asks for above rock arrives as sixteenth ornament (see FillChances).
+			FillHits = 14f, FillShapes = new[] { 2, 5, 2, 1 },
 			Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
 			RiffBassChance = 0.75f,
 			AccentDown = 1f, AccentBack = 1f, AccentOff = 0.95f,    // deliberately flat: it's a wall
@@ -491,7 +542,11 @@ sealed class GenreProfile
 			Voicings = Harmony.PunkVoicings, VoicingWeights = Harmony.PunkVoicingWeights,
 			BassPatterns = Harmony.PunkBass,
 			CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
+			CompOrnament = CompFigure.PunkTurnaround,
 			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2 },
+			// Busy, but at punk's tempo a bar of fill is over in a second: the pickup is the shape
+			// that reads there, because there is no room for anything longer to develop.
+			FillHits = 13f, FillShapes = new[] { 3, 4, 3, 1 },
 			Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
 			RiffBassChance = 0.35f,
 			// Punk's offbeat is as loud as its downbeat — the relentless eighth has no dynamic in
@@ -536,7 +591,11 @@ sealed class GenreProfile
 			BassPatterns = Harmony.PopBass,
 			CompFigures = CompFigure.Pop, Comp = CompStyle.Pad,
 			KeysFigures = CompFigure.PopArp, Keys = KeysStyle.Arp,
+			KeysOrnament = CompFigure.PopArpRun,
 			Grooves = DrumGroove.Pop, GrooveWeights = new[] { 3, 2 },
+			// Programmed and sparse — a pop fill is a single reversed crash or a two-hit pickup far
+			// more often than it is a drummer going round the kit.
+			FillHits = 8.5f, FillShapes = new[] { 3, 1, 4, 3 },
 			Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			// The widest gap between what was assumed and what was measured, and the one to
 			// revisit first: a programmed pop kit puts its off-beat hats far under the pulse.

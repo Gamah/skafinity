@@ -63,6 +63,12 @@ public sealed partial class MusicGen
 	/// Clamped, because a table with one outlier figure should not push the whole genre's comp
 	/// around, and because a trim is a correction rather than a mix control.
 	/// </summary>
+	/// <summary>How often a chordal voice plays its genre's flourish over a two-bar window instead
+	/// of the figure it is on. One number for every genre: what makes a gesture read as one is that
+	/// it is occasional, and how occasional is not something a genre has a strong opinion about —
+	/// where genres differ is in what the gesture IS, which is the pattern itself.</summary>
+	const float OrnamentChance = 0.22f;
+
 	internal static float DensityTrim( Pattern fig, Pattern[] table )
 	{
 		if ( table == null || table.Length < 2 ) return 1f;
@@ -96,9 +102,9 @@ public sealed partial class MusicGen
 	/// It never doubles the main voice: rock's organ answers the riff's gaps, country's piano
 	/// hits the backbeat the guitar leaves alone, pop's arp moves over a pad that does not.
 	/// </summary>
-	void RenderKeysVoice( int barTick, int to, int chord, Rng rng, Rng exprRng )
+	void RenderKeysVoice( int barTick, int to, int chord, Rng rng, Rng exprRng, bool ornament )
 	{
-		var hits = _keysFig.Slice( barTick, to, _sectionTick, _feel );
+		var hits = (ornament ? _prof.KeysOrnament : _keysFig).Slice( barTick, to, _sectionTick, _feel );
 		switch ( _prof.Keys )
 		{
 			case KeysStyle.HonkyTonk: RenderHonkyTonkBar( hits, chord, rng, exprRng ); break;

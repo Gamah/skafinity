@@ -181,10 +181,15 @@ public sealed partial class MusicGen
 			// The degree snap chose WHICH chord tone; this puts the note on the pitch the chord
 			// actually sounds, which is not the same thing on every degree (see NearestSoundingTone).
 			if ( resolve ) midi = NearestSoundingTone( midi, chord, h.Tick );
-			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( h.Tick, len ) );
+			// Where this note sits in the TUNE, which is the phrase a bend leans into. The tune's
+			// own length is the cycle, so this is the same 0..1 whatever bar the section is on.
+			float pu = ((h.Tick - anchor) % tune.LengthTicks + tune.LengthTicks)
+					% tune.LengthTicks / (float)tune.LengthTicks;
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( h.Tick, len ),
+					BendBias( len, pu ) );
 			prevMidi = midi;
 			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, len * 0.92 ),
-				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, len ) * 0.8,
+				midi, amp * NoteGain( h.Vel ), _time.SpanSeconds( h.Tick, len ) * 0.8,
 				drive, vc );
 
 			// The genre's own hand on the same tune: country punctuates it with double-stops, metal
@@ -194,13 +199,13 @@ public sealed partial class MusicGen
 			// parallel thirds replaces the melody with a two-note chord (see EmitDoubleStop).
 			if ( _prof.Lead == LeadStyle.DoubleStop && len >= Timing.TicksPerEighth * 2
 				&& rng.Chance( DoubleStopChance ) )
-				EmitDoubleStop( h.Tick, len, degree, amp * NoteGain( h.Tick, h.Vel ) );
+				EmitDoubleStop( h.Tick, len, degree, amp * NoteGain( h.Vel ) );
 			else if ( _prof.Lead == LeadStyle.Shred && len >= Timing.TicksPerBeat && rng.Chance( 0.18f ) )
 				for ( int k = 1; k <= 3; k++ )
 				{
 					int m2 = ScaleMidi( melBase, degree + k );
 					RenderLeadNote( _time.EvenSpan( h.Tick + len / 2, len / 2, (k - 1) / 3.0 ),
-						_time.SpanSamples( h.Tick, len / 8.0 ), m2, amp * 0.8f * NoteGain( h.Tick, h.Vel ),
+						_time.SpanSamples( h.Tick, len / 8.0 ), m2, amp * 0.8f * NoteGain( h.Vel ),
 						_time.SpanSeconds( h.Tick, len / 8.0 ) * 0.8, drive, vc );
 				}
 		}

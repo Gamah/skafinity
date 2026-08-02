@@ -53,6 +53,7 @@ static class Program
 			( "time base",          TimingTests ),
 			( "patterns",           PatternTests ),
 			( "melody",             MelodyTests ),
+			( "bend placement",     BendBiasTests ),
 			( "genre feel",         GenreProfileTests ),
 			( "wired knobs",        WiredKnobTests ),
 			( "structure",          StructureTests ),
@@ -635,7 +636,14 @@ static class Program
 			{
 				if ( table == null || table.Length < 2 ) continue;
 				float loT = float.MaxValue, hiT = 0f, loR = float.MaxValue, hiR = 0f;
-				foreach ( var fig in table )
+				// The flourish is measured WITH the table it drops into, not as part of it. It is
+				// the densest thing the voice plays and it is trimmed against the table's mean, so
+				// leaving it out is how this check would go vacuous — pulling the ornaments out of
+				// the tables took the untrimmed spread from 4 dB to 1.8 and the check said so.
+				var played = new List<Pattern>( table );
+				if ( ReferenceEquals( table, prof.CompFigures ) && prof.CompOrnament != null )
+					played.Add( prof.CompOrnament );
+				foreach ( var fig in played )
 				{
 					float d = MathF.Sqrt( fig.Count / (float)fig.LengthTicks );
 					float t = d * MusicGen.DensityTrim( fig, table );
@@ -651,6 +659,40 @@ static class Program
 			worstTrimmed <= 2f, $"worst {worstTrimmed:0.0} dB at {spreadAt}" );
 		Check( "…and untrimmed they do not, so the trim is not measuring nothing",
 			worstRaw > 2f, $"worst untrimmed {worstRaw:0.0} dB" );
+
+		// ── fill density ──
+		// A genre's FillHits is a TARGET the grid has to be able to reach: the per-cell chances
+		// saturate on the beats first, so a big enough number quietly buys nothing. Rock's is the
+		// one measured figure (13.2/bar) and it is the one that must land exactly; the rest are
+		// design calls and are only asked to be reachable — which they are because the model water-
+		// fills its ornament cells rather than scaling flat, and metal is the genre that proved it
+		// had to (a flat scale played 13.4 of the 14 it asks for).
+		float worstMiss = 0f; string missAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			float want = GenreProfile.For( g ).FillHits;
+			float got = MusicGen.FillDensityOnGrid( want );
+			if ( want - got > worstMiss ) { worstMiss = want - got; missAt = $"genre {g} wants {want:0.0}, plays {got:0.0}"; }
+		}
+		Check( "every genre's fill density is one the fill grid can actually reach",
+			worstMiss <= 0.05f, missAt );
+		Check( "rock's fill plays the density that was measured off the dataset",
+			MathF.Abs( MusicGen.FillDensityOnGrid( GenreProfile.For( 1 ).FillHits ) - 13.2f ) < 0.3f,
+			$"{MusicGen.FillDensityOnGrid( GenreProfile.For( 1 ).FillHits ):0.00}/bar" );
+		// The old floor was 16 hits a bar with no branch anywhere that played fewer, so every
+		// genre must now sit under it — otherwise the whole row bought a rename.
+		bool underOldFloor = true, densitiesDiffer = false;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			underOldFloor &= MusicGen.FillDensityOnGrid( GenreProfile.For( g ).FillHits ) < 16f;
+			densitiesDiffer |= GenreProfile.For( g ).FillHits != GenreProfile.For( 0 ).FillHits;
+			Check( $"genre {g} weights all four fill shapes",
+				GenreProfile.For( g ).FillShapes.Length == 4, null );
+		}
+		Check( "every genre's fill is sparser than the old unconditional sixteenth floor",
+			underOldFloor, null );
+		Check( "…and fill density is per genre rather than one number in six coats",
+			densitiesDiffer, null );
 
 		// Swing is genre character rather than a knob, and it is a YES/NO before it is a depth: a
 		// genre that never swings declares SwingChance 0 and needs no band at all. So a draw is one
@@ -925,10 +967,39 @@ static class Program
 			var p = GenreProfile.For( g );
 			foreach ( var f in p.CompFigures ) anyFine |= MinSpan( f ) <= thirtySecond;
 			foreach ( var f in p.BassPatterns ) anyFine |= MinSpan( f ) <= thirtySecond;
+			// The flourishes are where most of the 32nds live, and they are deliberately NOT in
+			// the figure tables (see GenreProfile.CompOrnament) — so a check that only reads the
+			// tables would have gone quietly vacuous the moment they moved out. It did.
+			if ( p.CompOrnament != null ) anyFine |= MinSpan( p.CompOrnament ) <= thirtySecond;
+			if ( p.KeysOrnament != null ) anyFine |= MinSpan( p.KeysOrnament ) <= thirtySecond;
 			if ( p.KeysFigures == null ) continue;
 			foreach ( var f in p.KeysFigures ) anyFine |= MinSpan( f ) <= thirtySecond;
 		}
 		Check( "some authored figure reaches the thirty-second", anyFine );
+
+		// ── the flourish is a flourish ──
+		// Held out of the table it could quietly become just another figure, so: every genre that
+		// has one is DENSER than the bed it drops into (or it is not an ornament), and no genre
+		// smuggles its ornament back into the table it substitutes for (or the per-occurrence roll
+		// is competing with a per-section draw of the same thing).
+		bool ornDenser = true, ornOutOfTable = true, anyOrn = false;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			foreach ( var (orn, table) in new[] { (p.CompOrnament, p.CompFigures), (p.KeysOrnament, p.KeysFigures) } )
+			{
+				if ( orn == null || table == null ) continue;
+				anyOrn = true;
+				float mean = 0f;
+				foreach ( var f in table ) mean += f.Count / (float)f.LengthTicks;
+				mean /= table.Length;
+				ornDenser &= orn.Count / (float)orn.LengthTicks > mean;
+				foreach ( var f in table ) ornOutOfTable &= !ReferenceEquals( f, orn );
+			}
+		}
+		Check( "a genre's flourish is denser than the bed it drops into", ornDenser );
+		Check( "…and is not also an entry in the table it substitutes for", ornOutOfTable );
+		Check( "…and some genre actually has one", anyOrn );
 
 		// A figure that fine still has to land on the grid the voices are measured against — the
 		// per-voice grid checks below cover the rendered result, this covers the table.
@@ -1168,6 +1239,29 @@ static class Program
 		int sparse = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.2f, 0.2f ).Count;
 		int busy = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.9f, 0.2f ).Count;
 		Check( "density controls how much a tune moves", busy > sparse, $"{busy} vs {sparse} notes" );
+	}
+
+	// ── where a player bends ──
+	// The bend rate stopped being a floor and became a weighting, so what is assertable is the
+	// SHAPE of that weighting: a bender leans on the long note and on the note a phrase lands on,
+	// and passes through the run. None of these is a number chosen to make a check pass — each is
+	// the sentence the row was written to express, turned round.
+	static void BendBiasTests()
+	{
+		int longNote = Timing.TicksPerBeat * 2, shortNote = Timing.TicksPerEighth;
+		float runNote = MusicGen.BendBias( shortNote, 0.2f );
+		float landing = MusicGen.BendBias( longNote, 0.98f );
+		Check( "a long note landing a phrase outweighs a short one mid-run, several times over",
+			landing > runNote * 4f, $"{landing:0.00} vs {runNote:0.00}" );
+		Check( "…and the ordinary note is weighted DOWN, or the rate is still a floor",
+			runNote < 0.6f, $"{runNote:0.00}" );
+		Check( "length alone moves it", MusicGen.BendBias( longNote, 0.5f ) > MusicGen.BendBias( shortNote, 0.5f ), null );
+		Check( "phrase position alone moves it",
+			MusicGen.BendBias( longNote, 0.95f ) > MusicGen.BendBias( longNote, 0.55f ), null );
+		// Call and answer lands TWICE. Reading the position over the whole phrase would make the
+		// end of the call — the most bent note in a country lick — the flattest point of the curve.
+		Check( "the end of the CALL is a landing too, not the middle of one long phrase",
+			MusicGen.BendBias( longNote, 0.48f ) > MusicGen.BendBias( longNote, 0.55f ), null );
 	}
 
 	static bool SameTune( Pattern a, Pattern b )

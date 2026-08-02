@@ -17,6 +17,29 @@ namespace Skafinity;
 /// <see cref="Ghost"/> for a ghost note. A cymbal cell is 0 for the closed/bow articulation and
 /// <see cref="Open"/> for the open hat / ride bell — which of the two instruments plays is the
 /// section's hats-or-ride roll, not the groove's business.
+///
+/// WHERE THE HITS FALL IS MEASURED, the same way the accent weights in
+/// <see cref="GenreProfile"/> are, off the same source: Google Magenta's Groove MIDI Dataset
+/// (CC BY 4.0; verified 2026-08-02, https://magenta.tensorflow.org/datasets/groove). Method, since
+/// neither the dataset nor the reader is in this repo: fold every note-on of every 4/4 performance
+/// of a style onto one bar at the nearest sixteenth and read each drum's OCCUPANCY per metric
+/// position — what fraction of bars carry that drum there. Occupancy answers placement; velocity
+/// answered the accents. The two are separate questions off one pass.
+///
+/// The three placements that disagreed with the tables, and what each one moved:
+///   * country hi-hat — ~84% on the OFFBEAT eighth against ~36% on the beat, while both country
+///     grooves put the cymbal on the pulse and nowhere else. The "chick" is the & and the tables
+///     had it on the beat, which is the single largest mismatch the pass turned up.
+///   * rock kick — far more &-of-1 and &-of-3 than the two-bar backbeat spent, so each bar of the
+///     pair gains one pushed kick.
+///   * punk snare — measures on very nearly every eighth rather than on 2 and 4 alone. It is the
+///     train beat's vocabulary at punk's tempo: the backbeat is struck and everything between it
+///     is ghosted.
+///
+/// MIND THE SAMPLE SIZES, which are wildly uneven and travel with any figure taken from here: rock
+/// is 6521 bars and settles rock, punk 278, country 120 from two performances. Country's is thin
+/// enough that the 84/36 split is an INDICATION — it is acted on because the direction is
+/// unambiguous and the table said the opposite, not because 120 bars settle a number.
 /// </summary>
 sealed class DrumGroove
 {
@@ -70,9 +93,11 @@ sealed class DrumGroove
 		{
 			Name = "backbeat",
 			// Two bars, because a rock backbeat that is byte-identical every bar is a drum
-			// machine. Bar 2 pushes the kick into the "and of 3".
-			Kick = E( 0, R, R, R, 0, R, R, R,
-			          0, R, R, 0, 0, R, R, R ),
+			// machine. Each bar carries one pushed kick and it is a different one: bar 1 pushes the
+			// "and of 1", bar 2 the "and of 2" into the "and of 3". Those pushes are the measured
+			// shape — a rock kick spends far more of its bar on &1 and &3 than two anchor hits.
+			Kick = E( 0, 0, R, R, 0, R, R, R,
+			          0, R, R, 0, 0, 0, R, R ),
 			Snare = E( R, R, 0, R, R, R, 0, R,
 			           R, R, 0, R, R, R, 0, R ),
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, Open ),
@@ -100,7 +125,12 @@ sealed class DrumGroove
 			Kick = E( 0, R, R, R, 0, R, R, R ),
 			Snare = S( Ghost, Ghost, Ghost, Ghost, 0, Ghost, Ghost, Ghost,
 			           Ghost, Ghost, Ghost, Ghost, 0, Ghost, Ghost, Ghost ),
-			Cymbal = E( 0, R, 0, R, 0, R, 0, R ),
+			// The hat is on the "and". Two bars to hold the measured split without a per-hit roll:
+			// 3 of 8 beats carry the hat against 7 of 8 offbeats, which is the 36/84 the dataset
+			// reads. On the pulse it was the one thing in the kit contradicting the genre's own
+			// accent weight — country leans on the offbeat and had nothing there to lean on.
+			Cymbal = E( 0, 0, R, 0, R, 0, R, 0,
+			            R, 0, 0, 0, 0, 0, R, R ),
 			GhostRate = 0.6f, CrashOnOne = 0.2f,
 		},
 		new()
@@ -110,7 +140,9 @@ sealed class DrumGroove
 			// of the bass and the guitar entirely.
 			Kick = E( 0, R, R, R, 0, R, R, R ),
 			Snare = E( R, R, 0, R, R, R, 0, R ),
-			Cymbal = E( 0, R, 0, R, 0, R, 0, Open ),
+			// Lighter than the train beat's hat and still offbeat-led: the "chick" of boom-chick is
+			// the & whichever country feel is playing, and this one just plays fewer of them.
+			Cymbal = E( 0, 0, R, R, 0, 0, R, Open ),
 			GhostRate = 0.5f, CrashOnOne = 0.15f,
 		},
 	};
@@ -161,8 +193,13 @@ sealed class DrumGroove
 			Name = "eighth drive",
 			// The punk engine: eighth-note ride/snare drive at speed. It is not a backbeat with
 			// the tempo turned up — the cymbal hand never stops and the kick pushes every beat.
+			//
+			// The snare hand does not stop either, which is what the measurement says and what the
+			// two-hits-a-bar backbeat could not be: 2 and 4 are struck and every eighth between
+			// them is ghosted. The energy gate on ghost cells thins it back toward the bare
+			// backbeat in a quiet section, so the density is the section's rather than the table's.
 			Kick = E( 0, R, 0, R, 0, R, 0, R ),
-			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Snare = E( Ghost, Ghost, 0, Ghost, Ghost, Ghost, 0, Ghost ),
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
 			GhostRate = 0.4f, CrashOnOne = 0.45f,
 		},
@@ -202,6 +239,48 @@ sealed class DrumGroove
 	};
 }
 
+// ── What a fill is made of ──
+// Every fill this engine ever played was the same object: `per` evenly-spaced, equally-loud
+// hits in EVERY beat of the span, with a floor of four. A two-bar fill was 32 hits that never
+// stopped and never moved, which is the blast-beat read — nothing about it was fast, it simply
+// occupied every subdivision it could reach. Three things were missing and they are separable.
+//
+// DENSITY, and it is measured. A real rock fill averages 13.2 hits per bar across the whole
+// kit (204 bars of fill performance in the Groove MIDI Dataset — see DrumGroove's header for
+// the source and the method), against a FLOOR here of 16 and a 32nd branch of 32. The quietest
+// fill this engine could play was already busier than the average real one. The same histogram
+// says what the shape of a bar is: the "e" and the "a" carry about 0.62 of the occupancy the
+// beats and the "&"s do, so a fill is EIGHTHS WITH SIXTEENTH ORNAMENT, not a sixteenth grid.
+// Density is per genre now, like everything else about the kit (GenreProfile.FillHits).
+//
+// SHAPE, which is what `per` structurally could not express, being one number applied to every
+// beat. See FillShape.
+//
+// DYNAMICS. RenderFill called the kit voices directly and so was the one part of the engine
+// with no accent pattern and no energy scaling — a straight exception to the rule that every
+// voice routes its level through NoteGain. An even stream of equally-loud hits reads as a wall
+// however few of them there are, which is why this is not just a density fix.
+
+/// <summary>The SHAPE of a fill — where its hits sit inside the span. This is the half of a
+/// fill that a density number cannot say, and the reason there was only ever one fill.</summary>
+enum FillShape
+{
+	/// <summary>Sparse at the start and filling up into the downbeat it lands on — a bar that
+	/// empties itself and then accelerates out of the hole. The commonest fill there is.</summary>
+	Ramp,
+	/// <summary>Even across the whole span: the roll. What every fill used to be, kept because
+	/// it is a real shape and metal is mostly made of it.</summary>
+	Rolling,
+	/// <summary>Space, then a flurry over the last beat. THIS IS WHERE THE THIRTY-SECOND LIVES
+	/// — a pickup is short enough to be played and short enough to stay a gesture, which is
+	/// exactly what a bar of unbroken 32nds is not.</summary>
+	Pickup,
+	/// <summary>Two or three hits with air around them: the tom figure, the single flam, the
+	/// bar that does almost nothing. A fill is allowed to be a gesture.</summary>
+	Gesture,
+}
+
+
 // The kit's patterns: which drum lands where. The per-song groove, the section's energy, and
 // the phrase-end fill.
 //
@@ -221,17 +300,28 @@ public sealed partial class MusicGen
 		if ( to <= barTick ) return;
 
 		// The cymbal hand. Which instrument it is was decided per section (_ride); the groove
-		// only says where the hits land and which are "open". A thin section drops the offbeat
-		// cymbal entirely rather than playing quieter — that is what makes a verse read as a
-		// verse and a breakdown as a breakdown.
+		// only says where the hits land and which are "open". A thin section HALVES the cymbal
+		// pattern rather than playing it quieter — that is what makes a verse read as a verse and
+		// a breakdown as a breakdown.
+		//
+		// Half the ONSETS, not "everything off the beat". Those were the same rule while every
+		// groove's cymbal sat on the pulse, and they stop being the same the moment one does not:
+		// country's hat is on the "and", so dropping the offbeats there does not thin the kit, it
+		// deletes the hi-hat from every verse in the genre. Alternate onsets thin any pattern by
+		// half wherever it sits, and for a plain eighth-note cymbal it is exactly what the old rule
+		// did.
 		bool sparse = _energy < 0.4f;
+		int cymIdx = 0;
 		foreach ( var h in _groove.Cymbal.Slice( barTick, to, _sectionTick, _feel ) )
 		{
 			bool onBeat = (h.Tick - barTick) % Timing.TicksPerBeat == 0;
-			if ( sparse && !onBeat ) continue;
+			if ( sparse && (cymIdx++ & 1) == 1 ) continue;
 			int at = _time.TickToSample( h.Tick );
 			bool open = h.Value == DrumGroove.Open;
-			float amp = _c.HatVol * h.Vel * (onBeat ? 1f : 0.75f) * EnergyGain( 0.55f );
+			// The genre's own accent weight decides how a hat off the beat sits against one on it.
+			// A flat 0.75 was a house rule where the measurement is per genre and disagrees in both
+			// directions — country and ska lean ON the offbeat, pop's programmed kit buries it.
+			float amp = _c.HatVol * KitGain( h.Tick, h.Vel, 0.55f );
 			if ( _ride && !open ) RenderRide( at, onBeat, amp, noise );
 			else RenderHat( at, open, amp, noise );
 
@@ -298,39 +388,142 @@ public sealed partial class MusicGen
 		return Math.Max( barTick - barTicks, barTick + barTicks - span );
 	}
 
-	// Roll across a span: tom/snare/cymbal hits, subdivided straight (16ths) or as triplets. The
-	// span is whatever FillStart drew, so the same code plays a one-beat pickup and a two-bar
-	// blow-out. The terminal crash lands on the downbeat the fill is leading into.
+	static readonly FillShape[] FillShapeTable =
+		{ FillShape.Ramp, FillShape.Rolling, FillShape.Pickup, FillShape.Gesture };
+
+	// Occupancy per grid cell within one beat, relative to the beat itself — the measured shape a
+	// bar of fill has. The flurry's grid is the same idea at 32nds, with the eighths inside it
+	// still carrying the weight, so an acceleration still lands on the beats it passes.
+	static readonly float[] FillStraight = { 1f, 0.62f, 1f, 0.62f };
+	static readonly float[] FillTriplet = { 1f, 0.62f, 0.62f };
+	static readonly float[] FillFlurry = { 1f, 0.5f, 0.62f, 0.5f, 1f, 0.5f, 0.62f, 0.5f };
+
+	/// <summary>How many cells a fill rolls for per beat, whatever grid it is actually on — the
+	/// triplet roll, the flurry and the straight sixteenths all pull the same number of values.
+	/// A knob (TRIPLET here) must never decide how much of the stream a fill spends.</summary>
+	const int FillCells = 8;
+
+	/// <summary>The scale factor that turns a grid's position weights into per-cell probabilities
+	/// summing to <paramref name="hitsPerBar"/>.</summary>
+	static float FillCellK( float hitsPerBar, float[] grid )
+	{
+		float perBar = 0f;
+		foreach ( var w in grid ) perBar += w;
+		return hitsPerBar / (perBar * 4f);
+	}
+
+	/// <summary>The per-cell probabilities a density target turns into on a grid.
+	///
+	/// A WATER-FILL RATHER THAN ONE SCALE FACTOR, and that is the difference between a fill getting
+	/// denser and a fill getting louder. The beats reach certainty long before a high target does,
+	/// so a flat scale silently drops everything past that point — metal asked for 14 hits a bar
+	/// and would have played 13.4 whatever number it wrote down. What a busier drummer actually
+	/// adds is ORNAMENT, the "e" and the "a", so the excess goes there. The grid's real ceiling is
+	/// four hits a beat, and no genre is near it.</summary>
+	static float[] FillChances( float hitsPerBar, float[] grid )
+	{
+		var p = new float[grid.Length];
+		float want = hitsPerBar / 4f;                          // per beat
+		float k = FillCellK( hitsPerBar, grid );
+		for ( int pass = 0; pass < 6; pass++ )
+		{
+			float got = 0f, room = 0f;
+			for ( int i = 0; i < p.Length; i++ ) { p[i] = Math.Clamp( k * grid[i], 0f, 1f ); got += p[i]; }
+			for ( int i = 0; i < p.Length; i++ ) if ( p[i] < 1f ) room += grid[i];
+			if ( want - got < 1e-4f || room <= 0f ) break;
+			k += (want - got) / room;
+		}
+		return p;
+	}
+
+	/// <summary>What a density target of <paramref name="hitsPerBar"/> actually plays on the
+	/// straight grid. The engine suite asserts each genre's target against this: a target the model
+	/// cannot reach is a number that quietly buys nothing.</summary>
+	internal static float FillDensityOnGrid( float hitsPerBar )
+	{
+		float hits = 0f;
+		foreach ( var p in FillChances( hitsPerBar, FillStraight ) ) hits += p;
+		return hits * 4f;
+	}
+
+	/// <summary>How dense the fill is at this point in its span, as a multiplier on the genre's
+	/// target. <paramref name="u"/> is 0 on the fill's first beat and 1 on its last.</summary>
+	static float ShapeDensity( FillShape shape, float u, bool last ) => shape switch
+	{
+		FillShape.Ramp => 0.45f + 1.1f * u,
+		FillShape.Pickup => last ? 1f : 0.22f,
+		FillShape.Gesture => 0.15f + 0.35f * u,
+		_ => 1f,
+	};
+
+	// One fill across a span. The span is whatever FillStart drew, so the same code plays a
+	// one-beat pickup and a two-bar blow-out; the terminal crash lands on the downbeat it is
+	// leading into.
 	void RenderFill( int fromTick, int toTick, Rng noise, Rng rng )
 	{
 		int span = toTick - fromTick;
 		if ( span <= 0 ) return;
-		// One subdivision per beat, so a longer fill is more notes rather than slower ones.
-		//
-		// A fill is where the THIRTY-SECOND lives, in every genre. A roll is ornament vocabulary
-		// everyone owns — a buzz roll, a drag into the downbeat, the flurry that hands over to the
-		// chorus — and it is not a metal thing or a fast thing: a drummer plays a fill finer than
-		// the groove precisely because a fill is a moment rather than a bar. The short fills are
-		// the ones that take it: two beats of unbroken 32nds is a different gesture (and a longer
-		// fill is already more notes, by the line above).
 		int beats = Math.Max( 1, span / Timing.TicksPerBeat );
-		// Both branches take two draws, and the roll comes before the length test — a fill's
-		// subdivision must not change how many values the fill stream pulls.
-		int per = rng.Chance( _c.TripletChance ) ? (rng.Chance( 0.5f ) ? 3 : 6)
-			: rng.Chance( 0.3f ) && beats <= 2 ? 8 : 4;
-		float[] toms = { 260f, 215f, 175f, 145f, 120f, 100f };
 
+		var shape = rng.PickWeighted( FillShapeTable, _prof.FillShapes );
+		bool triplet = rng.Chance( _c.TripletChance );
+		bool tomLed = rng.Chance( 0.45f );
+
+		// A fill longer than a bar still has to keep the time while it happens. A gesture or a
+		// pickup stretched over two bars is not a sparser fill, it is a hole in the arrangement —
+		// the kit has already handed over to it, so there is nothing else playing the beat.
+		if ( beats > 4 && shape != FillShape.Rolling ) shape = FillShape.Ramp;
+
+		float[] grid = triplet ? FillTriplet : FillStraight;
+		// The genre's hits-per-bar turned into per-cell probabilities: the position weights are the
+		// SHAPE of a bar's occupancy and this fills them until they sum to the target. The flurry
+		// keeps the flat scale instead, because being denser than an ordinary beat is what a flurry
+		// IS — water-filling it to the same target would take the acceleration back out of it.
+		float[] cells = FillChances( _prof.FillHits, grid );
+		float flurryK = FillCellK( _prof.FillHits, grid );
+
+		float[] toms = { 260f, 215f, 175f, 145f, 120f, 100f };
 		for ( int b = 0; b < beats; b++ )
 		{
 			int beatTick = fromTick + b * Timing.TicksPerBeat;
-			for ( int i = 0; i < per; i++ )
+			bool last = b == beats - 1;
+			float dens = ShapeDensity( shape, beats == 1 ? 1f : b / (beats - 1f), last );
+			// The flurry is a straight-grid gesture: a triplet fill is already a different feel
+			// and does not need a second one laid over its last beat.
+			bool flurry = shape == FillShape.Pickup && last && !triplet;
+			int n = flurry ? FillFlurry.Length : cells.Length;
+
+			for ( int i = 0; i < FillCells; i++ )
 			{
-				int t = _time.EvenSpan( beatTick, Timing.TicksPerBeat, i / (double)per );
-				// Half the hits stay snare so it still reads as a drum fill; the rest are biased
-				// by DrumTone — toms when it leans low, cymbals when it leans high.
-				if ( rng.Chance( 0.5f ) ) RenderSnare( t, noise, false );
-				else if ( rng.Chance( _drumTone ) ) RenderRide( t, false, _c.HatVol, noise );
-				else RenderTom( t, toms[(i + b) % toms.Length], noise );
+				// Both draws happen for every cell of every grid — see FillCells.
+				float r = rng.Next(), d = rng.Next();
+				if ( i >= n ) continue;
+				float p = flurry ? flurryK * FillFlurry[i] : cells[i];
+				if ( r >= Math.Clamp( p * dens, 0f, 1f ) ) continue;
+
+				int cellTick = beatTick + i * Timing.TicksPerBeat / n;
+				// A tuplet divides its own span evenly; a straight cell is a grid position and
+				// shuffles with everything else the band lands on (see Timing).
+				int t = triplet
+					? _time.EvenSpan( beatTick, Timing.TicksPerBeat, i / (double)n )
+					: _time.TickToSample( cellTick );
+
+				// A fill is a phrase: it leans into the bar line it is landing on, and it reads
+				// the genre's accent weights like every other voice in the song.
+				float u = (b + i / (float)n) / beats;
+				float gain = KitGain( cellTick, 0.72f + 0.33f * u, 0.35f );
+
+				// A fill goes round the kit high to low, which is what the toms are laid out for
+				// (RenderTom pans by pitch). Snare-led unless the fill is a tom figure; the ride
+				// comes in where DrumTone leans high, and the kick is under it either way —
+				// "13.2 hits per bar" is the whole kit, and a drummer's foot is part of the kit.
+				float tomShare = shape == FillShape.Gesture || tomLed ? 0.55f : 0.26f;
+				float rideShare = 0.14f * _drumTone;
+				if ( d < tomShare )
+					RenderTom( t, toms[Math.Min( toms.Length - 1, (int)(u * toms.Length) )], noise, gain );
+				else if ( d < tomShare + rideShare ) RenderRide( t, false, _c.HatVol * gain, noise );
+				else if ( d < tomShare + rideShare + 0.08f ) RenderKick( t, noise, gain );
+				else RenderSnare( t, noise, false, gain );
 			}
 		}
 		RenderCrash( _time.TickToSample( toTick ), noise, rng.Chance( 0.4f ) );
