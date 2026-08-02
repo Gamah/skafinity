@@ -102,8 +102,9 @@ static class Audition
 		script.AppendLine( "and a riding section is a thousand hits, so the cymbal is now rendered ONCE and" );
 		script.AppendLine( "stamped — a sampler's trick, over a spectrum that was measured off a real cymbal." );
 		script.AppendLine( "That is what makes the approved ride wirable into a groove at all. What it costs" );
-		script.AppendLine( "is that hits repeat exactly, so there are round robins and a live stick per hit;" );
-		script.AppendLine( "line 3 of the RIDE block is the same figure on ONE round robin, deliberately." );
+		script.AppendLine( "is that hits repeat exactly, so a stick transient is still played live per hit." );
+		script.AppendLine( "Lines 2 and 3 of the RIDE block are two round robins and ONE; round 9 heard no" );
+		script.AppendLine( "difference, so ONE is what ships and the pair stays here as the record of it." );
 		script.AppendLine( "--audition kick|snare|toms|hats still plays the settled voices." );
 		script.AppendLine();
 

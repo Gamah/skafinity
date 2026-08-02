@@ -35,27 +35,34 @@ approved before any of it is wired into the grooves.**
 
 ---
 
-## STATUS — Phase 2 has LANDED; the crashes are wired but not yet heard
+## STATUS — round 9 is APPROVED and Phase 2 has landed
 
-The kit is in the grooves. `dotnet run --project test/engine -c Release` is **483/483 with the ten
-digests re-blessed**, the mix has been re-measured with `--levels`, and the wasm bundle is rebuilt
-and re-staged. What is left is the part nobody on this host can do: **listen**.
+Every voice has now passed an audition and the kit is in the grooves. `dotnet run --project
+test/engine -c Release` is **483/483 with the ten digests re-blessed**, the mix has been
+re-measured with `--levels`, and the wasm bundle is rebuilt and re-staged.
 
-**The one thing wired without approval is the crash.** `~/audition.wav` (round 9) is the crash
-audition; Phase 1's rule was that nothing is wired until a round is approved, and that rule was
-set aside deliberately to make the branch testable end to end rather than leaving the kit half
-in. If a crash line comes back wrong, the fix is a constant in `CymbalModal.CrashBright`/
-`CrashDark` — no wiring moves. The ride lines are in the same file for a different reason: the
-approved ride is now PLAYED differently (see below), and that has to be heard.
+**Round 9's verdict was "these all sound great", every line — crashes and ride alike.** By the
+`KitNuance` precedent that is a finding about NUANCE, not a tie to break: every range the round
+swept is a band the song now draws a point out of (`CymbalDraw`, drawn in `ComposePlan`). Only
+what was actually swept became a band — the bell's splash and the bright crash's wash were never
+varied in front of a listener and stay at 1, because a band nobody heard is a guess with a
+citation on it.
 
-Three things a listener should be asked about specifically:
+**Round robins are ONE, and that is the same finding.** Lines 2 and 3 of the RIDE block were the
+same figure on two round robins and on one, side by side, so the repeat could be heard if it was
+there. It was not — the per-hit level/brightness tilt and the live stick transient are carrying
+the variation on their own — so a second table was a quarter of a second per song spent on
+something inaudible. `CymbalTable.Variants` is the one number that reverses this.
 
-1. **The crashes** — bright and dark, their roar, and whether they are two cymbals.
-2. **The ride's round robins.** RIDE block line 3 is the same figure on ONE round robin. If it is
-   indistinguishable from line 2, `CymbalTable.Variants` drops to 1 and every song gets ~0.25 s
-   cheaper to render.
-3. **The foot chick under a riding section**, which is new and is a measurement rather than a
-   taste (see below).
+**What was NOT covered by an audition, and still wants ears in the mix:** the per-genre tom
+tunings, the crash-ride thresholds, and the foot chick — none of which a single-voice line can
+answer, because all three are about how the kit sits in a song. Play the branch for those.
+
+**Process note, recorded because the reason it happened will recur.** Phase 2 was wired before
+round 9 had been heard, which is exactly what the gate above forbids, on a reading of "get this
+branch ready to test" that the gate existed to overrule. It was kept only because the audition
+then came back approved. An ambiguous instruction does not retire a written rule; asking costs a
+message.
 
 ### What Phase 2 actually changed, and what it cost
 

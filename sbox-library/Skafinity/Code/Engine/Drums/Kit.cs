@@ -122,6 +122,22 @@ static class KitNuance
 	/// it. What does NOT work is a foot chick as the landing — the chick is its own articulation
 	/// (it is the hat speaking on its own, on 2 and 4, under silence) and it has nothing to say
 	/// at the end of a phrase that a choke has not already said.</summary>
+	/// <summary>THE CYMBALS' BANDS, from rounds 8 and 9 — the ride came back "these are all
+	/// honestly great" across every line, and the crashes the same. Only what was actually SWEPT
+	/// is a band here: the bell's splash and the bright crash's wash were never varied in front of
+	/// a listener, so they stay at 1 rather than acquiring a range by association. A band that was
+	/// never heard is a guess with a citation on it.</summary>
+	public const float RideSplashMin = 0.5f, RideSplashMax = 1.8f;
+	public const float RideWashMin = 1.0f, RideWashMax = 1.8f;
+	public const float RideRingMin = 1.0f, RideRingMax = 1.4f;
+	public const float BellClangMin = 2000f, BellClangMax = 2600f;
+	public const float BellRingMin = 1.0f, BellRingMax = 1.4f;
+	public const float CrashSplashMin = 0.5f, CrashSplashMax = 1.6f;
+	public const float CrashRingMin = 0.7f, CrashRingMax = 1.4f;
+	public const float DarkSplashMin = 0.5f, DarkSplashMax = 1.0f;
+	public const float DarkWashMin = 1.0f, DarkWashMax = 1.6f;
+	public const float DarkRingMin = 1.0f, DarkRingMax = 1.3f;
+
 	/// <summary>Interpolate a kit nuance. <paramref name="u"/> is 0..1 — a per-song or per-hit
 	/// draw. One helper so a nuance is always read the same way.</summary>
 	public static float At( float min, float max, float u )
@@ -731,9 +747,14 @@ sealed class CymbalTable
 		Stick = stick; StickCut = stickCut; Bus = bus; Pan = pan;
 	}
 
-	/// <summary>How many round robins a voice builds. Two is enough to break the tell and the
-	/// cost is linear in it; the cymbals that are struck once a phrase build one.</summary>
-	public const int Variants = 2;
+	/// <summary>How many round robins a cymbal builds — and it is ONE, which is a finding rather
+	/// than a saving. Round 9 put the same ride figure on two round robins and on one, next to
+	/// each other, precisely so the repeat could be heard if it was there; it was not. So the
+	/// per-hit variation that survives the table — the level and brightness tilt, and a stick
+	/// transient still synthesised live on every hit — is carrying it, and a second table is a
+	/// quarter of a second per song spent on something inaudible. The mechanism stays because the
+	/// answer could change: raising this number is all it takes, and nothing else reads it.</summary>
+	public const int Variants = 1;
 
 	/// <summary>Render the cymbal. <paramref name="pan"/> is where it sits in the kit, and it is
 	/// baked in: the stereo image of a cymbal is per song, and a partial-by-partial spread is not
@@ -878,6 +899,47 @@ sealed class CymbalTable
 	// it cannot borrow the instance methods.
 	static float HpC( float fc, int sr ) => (float)(1.0 / (1.0 + 2 * Math.PI * fc / sr));
 	static float LpC( float fc, int sr ) => (float)(1.0 - Math.Exp( -2 * Math.PI * fc / sr ));
+}
+
+/// <summary>
+/// This song's cymbals, as NUMBERS rather than as tables — the per-song point each of KitNuance's
+/// cymbal bands sits at.
+///
+/// Drawn in ComposePlan so the draws come off the song stream in a fixed order for every genre,
+/// and kept as floats rather than as built cymbals so the expensive part stays lazy: a song that
+/// never rides has still decided what its ride would have sounded like, and has still not built
+/// one.
+/// </summary>
+readonly struct CymbalDraw
+{
+	public readonly float RideSplash, RideWash, RideRing;
+	public readonly float BellClang, BellRing;
+	public readonly float BrightSplash, BrightRing;
+	public readonly float DarkSplash, DarkWash, DarkRing;
+
+	CymbalDraw( float rideSplash, float rideWash, float rideRing, float bellClang, float bellRing,
+		float brightSplash, float brightRing, float darkSplash, float darkWash, float darkRing )
+	{
+		RideSplash = rideSplash; RideWash = rideWash; RideRing = rideRing;
+		BellClang = bellClang; BellRing = bellRing;
+		BrightSplash = brightSplash; BrightRing = brightRing;
+		DarkSplash = darkSplash; DarkWash = darkWash; DarkRing = darkRing;
+	}
+
+	/// <summary>The middle of every band — what the audition's unswept lines played.</summary>
+	public static readonly CymbalDraw Default = new( 1f, 1f, 1f, 2300f, 1f, 1f, 1f, 1f, 1f, 1f );
+
+	public static CymbalDraw Draw( Rng rng ) => new(
+		KitNuance.At( KitNuance.RideSplashMin, KitNuance.RideSplashMax, rng.Next() ),
+		KitNuance.At( KitNuance.RideWashMin, KitNuance.RideWashMax, rng.Next() ),
+		KitNuance.At( KitNuance.RideRingMin, KitNuance.RideRingMax, rng.Next() ),
+		KitNuance.At( KitNuance.BellClangMin, KitNuance.BellClangMax, rng.Next() ),
+		KitNuance.At( KitNuance.BellRingMin, KitNuance.BellRingMax, rng.Next() ),
+		KitNuance.At( KitNuance.CrashSplashMin, KitNuance.CrashSplashMax, rng.Next() ),
+		KitNuance.At( KitNuance.CrashRingMin, KitNuance.CrashRingMax, rng.Next() ),
+		KitNuance.At( KitNuance.DarkSplashMin, KitNuance.DarkSplashMax, rng.Next() ),
+		KitNuance.At( KitNuance.DarkWashMin, KitNuance.DarkWashMax, rng.Next() ),
+		KitNuance.At( KitNuance.DarkRingMin, KitNuance.DarkRingMax, rng.Next() ) );
 }
 
 public sealed partial class MusicGen
@@ -1180,13 +1242,21 @@ public sealed partial class MusicGen
 
 	/// <summary>The bow, alternating round robins so consecutive hits are not the same waveform.
 	/// <paramref name="index"/> is the hit's position in whatever is playing it.</summary>
-	CymbalTable RideBow( int index ) => (index & 1) == 0
-		? _rideBow0 ??= BuildRide( CymbalModal.Bow(), 0 )
-		: _rideBow1 ??= BuildRide( CymbalModal.Bow(), 1 );
+	CymbalTable RideBow( int index ) => CymbalTable.Variants <= 1 || (index & 1) == 0
+		? _rideBow0 ??= BuildRide( Bow(), 0 )
+		: _rideBow1 ??= BuildRide( Bow(), 1 );
 
-	CymbalTable RideBell => _rideBell ??= BuildRide( CymbalModal.Bell() );
-	CymbalTable CrashBright => _crashBright ??= BuildCrash( CymbalModal.CrashBright(), dark: false );
-	CymbalTable CrashDark => _crashDark ??= BuildCrash( CymbalModal.CrashDark(), dark: true );
+	CymbalModal Bow() => CymbalModal.Bow( _cymbals.RideSplash, _cymbals.RideWash, _cymbals.RideRing );
+
+	CymbalTable RideBell => _rideBell ??= BuildRide(
+		CymbalModal.Bell( ring: _cymbals.BellRing, clang: _cymbals.BellClang ) );
+
+	CymbalTable CrashBright => _crashBright ??= BuildCrash(
+		CymbalModal.CrashBright( _cymbals.BrightSplash, _cymbals.BrightRing ), dark: false );
+
+	CymbalTable CrashDark => _crashDark ??= BuildCrash(
+		CymbalModal.CrashDark( _cymbals.DarkSplash, _cymbals.DarkRing, _cymbals.DarkWash ),
+		dark: true );
 
 	/// <summary>Play a cymbal: stamp the rendered object into the mix (see CymbalTable).
 	///

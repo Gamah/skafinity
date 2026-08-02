@@ -331,6 +331,7 @@ public sealed partial class MusicGen
 	// because a song that never rides pays for no ride: they are the most expensive objects the
 	// engine makes, and which of them a song needs is not known until its sections are rendered.
 	CymbalTable _rideBow0, _rideBow1, _rideBell, _crashBright, _crashDark;
+	CymbalDraw _cymbals = CymbalDraw.Default;   // per-song: where in KitNuance's cymbal bands this kit sits
 	// The kit's per-song nuance: a drum is a physical object and a band of values that all read
 	// as the right drum is what nuance IS (see KitNuance), so the song draws from those bands
 	// rather than the engine picking a point out of each one.

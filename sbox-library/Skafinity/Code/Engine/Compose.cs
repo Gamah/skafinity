@@ -113,6 +113,10 @@ public sealed partial class MusicGen
 		_kickTone = KickTone.Default.With(
 			clickCut: KitNuance.At( KitNuance.ClickCutMin, KitNuance.ClickCutMax, rng.Next() ),
 			jitter: 0.35f );
+		// The cymbals' own bands. Both audition rounds came back "all of these work", which is a
+		// finding about nuance rather than an undecided question — so the song draws a point out of
+		// each band instead of the engine picking one by ear and freezing it into every song.
+		_cymbals = CymbalDraw.Draw( rng );
 		float hatU = rng.Next(), footU = rng.Next();
 		_hatTone = HatTone.Default.With(
 			openDur: KitNuance.At( KitNuance.OpenHatDurMin, KitNuance.OpenHatDurMax, hatU ),
