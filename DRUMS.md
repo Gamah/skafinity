@@ -35,11 +35,20 @@ approved before any of it is wired into the grooves.**
 
 ---
 
-## STATUS — Phase 1 is done except the ride
+## STATUS — Phase 1 is done except the crashes, which round 8 reopened
 
-Five audition rounds have settled the kick, the snare, the toms, the crashes and the hats. **The
-ride is parked and handed off — see `RIDE.md`**, which is self-contained; a session picking up the
-ride does not need to read the rest of this file.
+Five audition rounds settled the kick, the snare, the toms and the hats. **The ride, after four
+failed noise-based generations (`RIDE.md` has that history), was solved in round 8 by measuring a
+real cymbal** — verdict: *"these are all honestly great"*, across every line of the round, which
+by the KitNuance precedent means the swept ranges are nuance bands rather than open questions
+(splash 0.5–1.8, wash up to 1.8, ring up to 1.4, clang 2.0–2.6 kHz all read as the right
+instrument). The synthesis is `RideModal`/`RenderRideModal` in `Kit.cs` — see "the measured-cymbal
+method" below, because it is now the template for the crashes.
+
+**The crashes passed round 1 as noise voices, and round 8 obsoleted that pass.** The old
+`RenderCrash` is filtered noise — exactly the family every ride generation came from, and the ride
+only stopped sounding like "a hat in a weird state" when its spectrum became a measured mode
+forest. A crash is the same instrument physics at a different strike; it gets the same treatment.
 
 Everything approved is recorded in `KitNuance` in `Engine/Drums/Kit.cs`, and **most of it is
 RANGES**. Round after round came back "all of these work" — the click's corner at 1.8, 3.5 and
@@ -71,6 +80,39 @@ Four defects the audition found that were structural rather than tuning, all fix
 One trap worth carrying: **a `float` field widened into a `double` decay is not the same number as
 the `double` literal it replaced.** Parameterising the voices moved all ten digests on the first
 run for exactly that reason, in every voice at once. The tone structs' decay fractions are `double`.
+
+## The measured-cymbal method (round 8) — now do the crashes
+
+The ride's answer, and the recipe to rerun for the crashes. Measure a real cymbal, keep only the
+LAWS — never the data table (a 76-row mode table was written once and rejected on sight; the
+physics is the design, one factory's cymbal is not):
+
+1. **Source**: CC0 samples, never vendored — derived constants + a provenance comment are what
+   land. The ride used Virtuosity Drums (github.com/sfzinstruments/virtuosity_drums, CC0-1.0),
+   overhead mic. **The same kit has the crashes**: `Samples/oh/crash/oh_crash_crash_vl3_rr*` (plus
+   a `sizzle` articulation), and `Samples/oh/*/flatride/*_flatride_crash_*` — a second cymbal
+   crashed, which is the natural source for the engine's dark/bright pair.
+2. **Analysis**: decode with the static ffmpeg in `~/.local/share/toolchains/`, analyse with a
+   throwaway C# tool (the ride's lives in the job tmp dir; rewrite freely — long-FFT sustained
+   peaks, STFT per-band decay fits, attack-window spectrum). No pip/numpy on this host.
+3. **Reduce to laws.** The ride's three, which the crash should be re-fit against, not assumed:
+   ring time τ·√f = K (ride: K ≈ 39 — a crash's K may differ, and its τ curve may not even fit
+   the same form: measure it); mode forest at constant density (plate physics; ride: 27/kHz over
+   0.21–11 kHz, 35% split into beating near-pairs); strike position as a log-Gaussian spectral
+   bump over ONE shared forest (a crash strike is presumably a wider, harder bump with the splash
+   dominant — measure where its sustained energy actually sits).
+4. **Splash + wash noise layers under the mode bank** — shaped noise as the bed, never the
+   identity. The crash's whole first half-second is splash, so expect these to carry more of the
+   crash than they carry of the ride.
+5. **Validate by re-analysis**: run the same tool over the synthesized single hit and compare band
+   decays and sustain spectrum against the reference (this caught the ride being 15 dB light in
+   sizzle above 4.7 kHz — the forest cap, not the wash, was the culprit).
+
+Implementation shape: generalize rather than duplicate — `RideModal`'s builder is already
+"(forest constants, strike bump, splash/wash)"; a crash is the same struct built from crash
+constants (and the dark/bright pair is two bumps or two K's, whichever the measurement says).
+`RenderRideModal` needs a `chokeAt` for the crash stab and the hat-style chokes before Phase 2.
+Everything stays audition-only until approved: digests must not move in Phase 1.
 
 ## Phase 1 — The audition (gates everything else)
 
@@ -190,7 +232,9 @@ an open hat on the "and of 4" is choked by the next bar's downbeat; iterating th
 the existing interleaving of `noise.Chance( busy )` draws. Foot chick on 2 and 4 when
 `_ride || _crashRide` — deterministic, no RNG draw, so stream-safe wherever it sits.
 
-**Crashes.** `RenderCrash` gains an amp parameter; three call sites (`Groove.cs:529`,
+**Crashes.** The voice itself is replaced by the measured-cymbal method (see above) before any of
+this wiring lands; what follows is the groove-side plan and survives the voice swap. `RenderCrash`
+(or its modal successor) gains an amp parameter; three call sites (`Groove.cs:529`,
 `Compose.cs:465`, `:479`) route through `KitGain`. Side is already derived from
 `dark == _crashBrightLeft` (`Kit.cs:152`), so the ridden and accent crashes land on opposite sides
 for free. `CrashRideFrom` on `GenreProfile` follows `LoudComp`/`LoudFrom`'s shape — metal 0.80,
@@ -205,14 +249,15 @@ kick is the floor of the groove and should breathe least. Round-robin jitter com
 LFSR seeded on `start`**, the pattern `RenderTom` already uses at `Kit.cs:99`, so it costs nothing
 from the shared drum stream.
 
-**Ride — PARKED, whole voice.** See `RIDE.md`: the bell has failed three times in three different
-ways, and the ping only started reading as a ride once it was given low modes, so the ride goes to a
-dedicated session rather than being finished here. It blocks nothing — a riding section keeps playing
-`RideTone.Bow` / `BellDurationOnly`, which is what shipped before this branch. The swell is settled.
-
-**Ride.** Groove-level wiring decided by the audition — in particular whether `bell` stops being
-positional and becomes a cell value (reusing `Open`, which a riding section currently ignores
-entirely, falling through to `RenderHat`).
+**Ride — SOLVED in round 8** (`RideModal`/`RenderRideModal`; `RIDE.md` keeps the history of how).
+Phase 2 replaces the groove path's `RenderRide( start, bool bell, … )` with the modal bow and bell,
+and decides the groove-level wiring the audition left open — in particular whether `bell` stops
+being positional (`tick % TicksPerBeat == 0`) and becomes a cell value (reusing `Open`, which a
+riding section currently ignores entirely, falling through to `RenderHat`). The approved sweep
+ranges are nuance bands: draw splash/wash/ring/clang per song from them, the same way Phase 2
+draws from `KitNuance`. The swell stays a plain loop of hits and follows the modal bow for free;
+`RenderRideSwell` just switches voice. The old `RideTone` noise machinery survives only as long as
+the grooves still call it — it goes when Phase 2 lands.
 
 ## Cross-cutting rules this must not break
 
@@ -228,7 +273,7 @@ entirely, falling through to `RenderHat`).
 
 | File | Phase | Change |
 |---|---|---|
-| `Engine/Drums/Kit.cs` | 1 | every voice rewritten: 3-piece toms by index, hat openness/choke/foot/splash, snare articulations, crash gain, kick jitter/beater/pan, ride articulations |
+| `Engine/Drums/Kit.cs` | 1 | every voice rewritten: 3-piece toms by index, hat openness/choke/foot/splash, snare articulations, kick jitter/beater/pan; ride solved as `RideModal` (measured laws); crash to be rebuilt the same way + choke on the modal renderer |
 | `Engine/MusicGen.cs` | 1 | `ForAudition` factory; new drum state fields |
 | `test/engine/Program.cs` | 1 | `--audition` dispatch, renderer, script writer |
 | `Engine/Drums/Groove.cs` | 2 | cell vocabulary, choke lookahead, foot chick, crash-ride, `CrashOnOne`, `KitGain` on kick/snare, tom indices |

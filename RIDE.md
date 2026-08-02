@@ -1,8 +1,16 @@
-# The ride — parked, and handed off
+# The ride — SOLVED (round 8); this file is now history
 
-Branch `drums/kit-rework`. **This is the one part of the kit rework that is not progressing**, and
-it is parked deliberately rather than left half-attempted in the middle of `DRUMS.md`. Everything
-else on that branch continues without it: nothing outside `RenderRide` reads any of it.
+**Resolution, 2026-08-02:** the ride was solved by abandoning every noise-based approach below and
+MEASURING a real cymbal (Virtuosity Drums, CC0), then keeping only the closed-form laws the
+measurement collapsed into — τ·√f ≈ 39 for the ring, a mode forest at constant density with
+beating near-pairs, each strike position a log-Gaussian spectral bump over one shared forest, and
+splash/wash noise as the bed under the modes rather than the identity. The synthesis is
+`RideModal`/`RenderRideModal` in `Kit.cs`; the verdict on round 8 was *"these are all honestly
+great"*, every line. `DRUMS.md`'s "measured-cymbal method" section is the living recipe (the
+crashes are next); what follows below is kept as the record of four failed noise generations and
+why they failed. A fifth is not needed.
+
+Branch `drums/kit-rework`. The original handoff:
 
 The bell is the blocker and most of this document. The bow articulations are NOT settled either,
 though — see "the ping, and why it matters here" below, which is the one piece of good news and is
