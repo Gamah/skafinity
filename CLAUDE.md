@@ -1005,6 +1005,23 @@ What the stamp proves is that the bundle was staged from these sources; it is a 
 forgetting, not against tampering, since it sits beside the bundle rather than being derived
 from its bytes.
 
+**A branch can be previewed live, and while it is, the site is not `master`.** `pages.yml` carries
+`workflow_dispatch`, so the Actions UI offers a ref picker; what decides whether the `deploy` job
+may then run is the `github-pages` environment's deployment branch policy, and it admits `master`
+and `preview/*` and nothing else. Push a branch named `preview/<something>`, dispatch the workflow
+against it, and that build is the live site. **The prefix is the whole safety** — an unrestricted
+policy would let any branch that ever acquires a Pages trigger replace the site, so a preview has
+to be named as one.
+
+**There is ONE Pages site per repo, so a preview REPLACES the live site rather than sitting beside
+it**, and it keeps serving until `master` next deploys. `concurrency: group: pages` with
+`cancel-in-progress: false` queues rather than cancels, so the next push to `master` restores the
+site instead of racing the preview; nothing else has to be done to put it back. The consequence to
+carry: **the live site can legitimately be a branch, so "the site does not match `master`" is not
+by itself a stale-bundle bug.** Read the deployment log for the ref that last deployed before
+reaching for `web/_framework` — a live preview and a forgotten re-stage look identical from the
+outside.
+
 Two properties are load-bearing and easy to undo by accident. The runner must stay
 `ubuntu-latest`: standard runners are free on a public repo, **larger runners are billed even
 there**. And Pages must stay on the *Actions* source rather than branch-deploy — with branch-deploy
