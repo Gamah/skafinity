@@ -41,6 +41,27 @@ static class Program
 			Audition.Run( only, wav, Path.ChangeExtension( wav, ".txt" ) );
 			return 0;
 		}
+		// --cymbal [dir]: one dry hit of each cymbal, for tools/spectool to re-measure. See
+		// Audition.Cymbals — a fitted spectrum is not fitted until the RESULT is measured too.
+		int cy = Array.IndexOf( args, "--cymbal" );
+		if ( cy >= 0 )
+		{
+			Audition.Cymbals( cy + 1 < args.Length && !args[cy + 1].StartsWith( "-" ) ? args[cy + 1]
+				: Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ) );
+			return 0;
+		}
+		// --render vibe:tag:n [path]: the song, as a WAV. The diagnostics either side of this one
+		// answer "what did the composer decide" and "how loud is this voice"; sometimes the
+		// question is just "what does it sound like", and this host has no browser to answer it in.
+		int rn = Array.IndexOf( args, "--render" );
+		if ( rn >= 0 && rn + 1 < args.Length )
+		{
+			Render( args[rn + 1], rn + 2 < args.Length && !args[rn + 2].StartsWith( "-" )
+				? args[rn + 2]
+				: Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ),
+					"song.wav" ) );
+			return 0;
+		}
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }
@@ -1717,6 +1738,22 @@ static class Program
 	/// <summary>Explain one seed: what the vibe decodes to and what the composer did with it.
 	/// The tool for "this seed sounds wrong" — it is far easier to read the decisions than to
 	/// infer them from the audio. Usage: <c>-- --seed vibe:tag:n</c>.</summary>
+	/// <summary>The song, rendered to a WAV at full rate — the mix as it actually ships, master
+	/// bus and all, which is the one thing the audition deliberately is not.</summary>
+	static void Render( string seed, string path )
+	{
+		var bits = seed.Split( ':' );
+		string vibe = bits.Length >= 3 ? bits[0] : "";
+		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
+		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
+		var cfg = new MusicGen.Config { SampleRate = 44100 };
+		VibeCodec.Apply( vibe, cfg );
+		var wav = MusicGen.Generate( $"{tag}:{n}", cfg );
+		File.WriteAllBytes( path, wav );
+		Console.WriteLine( $"{seed}  genre {cfg.Genre} ({VibeCodec.Genres[cfg.Genre]})  "
+			+ $"-> {path}  ({wav.Length / (1024 * 1024)} MiB)" );
+	}
+
 	static void Explain( string seed )
 	{
 		var bits = seed.Split( ':' );

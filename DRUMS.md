@@ -35,42 +35,73 @@ approved before any of it is wired into the grooves.**
 
 ---
 
-## STATUS — Phase 1 is done except the ride
+## STATUS — the kit is wired; the cymbals are distilled and want a listen
 
-Five audition rounds have settled the kick, the snare, the toms, the crashes and the hats. **The
-ride is parked and handed off — see `RIDE.md`**, which is self-contained; a session picking up the
-ride does not need to read the rest of this file.
+`dotnet run --project test/engine -c Release` is **483/483 with the ten digests re-blessed**, the
+mix is re-measured, and the wasm bundle is rebuilt. What is left is the part nobody on this host
+can do.
 
-Everything approved is recorded in `KitNuance` in `Engine/Drums/Kit.cs`, and **most of it is
-RANGES**. Round after round came back "all of these work" — the click's corner at 1.8, 3.5 and
-6 kHz; the rimshot's crack at 2.4, 3.2 and 4.2 kHz; both cross-sticks; both foot chicks. That is a
-finding, not an undecided question: a kit is a physical object being hit by a person, the same drum
-never makes the identical sound twice, and a band of values that ALL read as the right drum is what
-nuance is. Picking one point out of it by ear would be throwing the finding away. Phase 2 draws
-from those bands per song, and per hit where `KitNuance` says so.
+**The cymbals were measured, then DISTILLED, and the second half is the interesting one.** Real
+cymbals were analysed (`tools/spectool`, CC0 source — see `CymbalBands` for provenance and every
+constant) and the measurement collapsed into three laws. A first pass spent those laws on a mode
+forest: ~390 resolved partials for the ride, each with its own ring time. It was accurate and it
+was unusable for two reasons that have nothing to do with accuracy:
 
-**Nothing is wired into the grooves yet, and the ten render digests have not moved through any of
-it.** That is the gate Phase 1 was run against and it held: `dotnet run --project test/engine
--c Release` is 483/483. Every new articulation is reachable only from `--audition` until Phase 2
-deliberately wires it.
+- **~250 ms of CPU per hit**, against a riding section of a thousand hits.
+- **It out-detailed every other voice in the kit by two orders of magnitude.** The rest of this kit
+  is two or three sines and some filtered noise. A cymbal built to a different standard does not
+  sit in that mix at any level, because the problem is not that it is loud — a thing that is too
+  loud gets quieter, and a thing that is too *real* just becomes a quiet hyperreal object in a
+  synthetic mix. Level, width and pattern were all tried against it; none of them was the answer.
 
-Four defects the audition found that were structural rather than tuning, all fixed:
+So the laws are kept and the spelling is not. **Thirteen components instead of four hundred**: seven
+filtered-noise bands whose ring times fall as 1/√f, one low beating pair, splash and wash. The two
+earlier failures bracket the target and it is worth carrying both — **uniform-decay noise is a
+hat** (gen 2: "hats in weird states"), **resolvable partials are a church bell** (gen 5). Per-band
+decay is what sits between them, and it is the one property gen 2 lacked.
 
-- **The kick's click was 3 ms of full-band white noise**, so the high tick was not part of any body
-  — it was the same broadband transient laid over all of them. A beater is a soft mass on a skin and
-  cannot radiate 15 kHz.
-- **The rimshot and the cross-stick were reaching for their articulation with the shell partials.**
-  Two loud sines with a slow decay are a tom, and a bright short one is a clave, whatever they are
-  labelled. Both are crack-led now; the giveaway in each case was the RING, not the pitch.
-- **The hat's openness map was linear in a quantity the ear reads as a ratio.** Closed to open is a
-  factor of 17, so most of the pedal's travel landed within a few percent of fully open and two
-  positions a third of the range apart were the same hat. It is geometric now.
-- **A resonant band-pass has ~1/Q gain at its centre**, so Q was silently a level control as well as
-  a bandwidth and neither could be tuned against the other. `BandPass.Next` normalises by Q.
+Cost, measured on one rock song's plan+drums at 44.1 kHz: **2.8 s, against 5.4 s before the
+branch** — the distilled cymbal is cheaper than the filtered noise it replaces, even wired into
+every riding section, so the ~0.7 s/song the forest cost is gone with it.
 
-One trap worth carrying: **a `float` field widened into a `double` decay is not the same number as
-the `double` literal it replaced.** Parameterising the voices moved all ten digests on the first
-run for exactly that reason, in every voice at once. The tone structs' decay fractions are `double`.
+### Two things about the ride that are NOT the voice
+
+Both were found by listening and both outlived every timbre change:
+
+- **The pattern was a wall.** Eight even strokes a bar, separated only by the genre's accent weight
+  (rock's offbeat is 1.7 dB down). A drummer's "and" is a much lighter stroke. `RideStroke` pulls
+  the offbeats back and it was the single most effective change of the whole exercise — more than
+  any edit to the voice. **Suspect the pattern before the timbre.**
+- **The ring accumulates, and unevenly.** Ring time falls with frequency, so at riding eighths a
+  stroke train stacks the 250 Hz band **+7.6 dB** over a single stroke against **+2.4 dB** at
+  5 kHz: the low ring runs away and reads as a drone. A flat level cut cannot fix that — it takes
+  the attack down with the drone. `CymbalBands.RestrikeTau` is the physical fix: a stroke landing
+  on a ringing cymbal excites it AND damps it, because the stick is on the metal, so it is a
+  shorter decay for as long as the cymbal is played and it compounds over a train the way the
+  physics does. A cymbal with nothing landing on it still rings as measured.
+
+### What still wants ears
+
+- **The distilled cymbals themselves** — `~/audition.wav` (round 10). The RIDE lines isolate the
+  two findings above: the same figure with and without the damping, and with and without the
+  lighter offbeat.
+- **The crash in a mix.** It has had a level pass and no listening in context.
+- **Per-genre tom tunings** and the **crash-ride thresholds** — never auditioned, design calls.
+- The cymbal nuance bands in `KitNuance` were approved on the mode-forest voice. They are
+  parameters of the same laws so they carry over, but they want a fresh listen.
+
+### The mix numbers, and why they moved
+
+`KitPresence` 2.0 → **2.35**. The kit came out ~1.5 dB lighter than before the branch and the
+cymbals were not the reason: the kick reads its velocity now and the hats are choked by the next
+hit, so the kit BREATHES where it used to be flat. That is the intended behaviour and the fix is
+the whole-kit lever, not per-voice balances. Every genre now lands within ~1 dB of its pre-branch
+level.
+
+**`--levels` is one seed per genre and a single seed varies ~4 dB** around its target — the suite's
+own ceiling says so. It answers "did this change move the mix", never "is this voice at 2.0 dB".
+Chasing a sub-dB gap is fitting noise, and it reads as a measurement afterwards, which is worse
+than not having done it.
 
 ## Phase 1 — The audition (gates everything else)
 

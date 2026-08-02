@@ -69,10 +69,12 @@ static class Audition
 	public static void Run( string only, string wavPath, string txtPath )
 	{
 		var lines = new List<Line>();
-		// The default run is what is still OPEN. Toms and crashes passed round 1, so they are not
-		// in it — they are still reachable by name, because "approved" is not "frozen".
-		Hats( lines );
-		if ( !string.IsNullOrEmpty( only ) ) { Kick( lines ); Snare( lines ); Toms( lines ); Crash( lines ); Ride( lines ); }
+		// The default run is what is still OPEN. The ride is solved, so the default is the
+		// CRASHES — plus the ride, because the table stamp is a new way of playing an approved
+		// sound and it has to be heard again for that to mean anything.
+		Crash( lines );
+		Ride( lines );
+		if ( !string.IsNullOrEmpty( only ) ) { Kick( lines ); Snare( lines ); Toms( lines ); Hats( lines ); }
 
 		if ( !string.IsNullOrEmpty( only ) )
 			lines = lines.FindAll( l => l.Voice.Equals( only, StringComparison.OrdinalIgnoreCase ) );
@@ -85,12 +87,16 @@ static class Audition
 		var L = new List<float>();
 		var R = new List<float>();
 		var script = new StringBuilder();
-		script.AppendLine( "AUDITION — skafinity drum kit, round 5" );
+		script.AppendLine( "AUDITION — skafinity drum kit, round 10: THE CYMBAL, DISTILLED" );
 		script.AppendLine( "One kit part per line. Each line is a figure played by that voice alone." );
 		script.AppendLine( "Dry: no tone lean, no genre mix, no reverb, no master. Centred except where noted." );
-		script.AppendLine( "Round 5: the hat's openness map, now GEOMETRIC, and how a lift lands." );
-		script.AppendLine( "Everything else has passed; the ride is parked for its own session (RIDE.md)." );
-		script.AppendLine( "--audition kick|snare|toms|crash|ride still plays the settled voices." );
+		script.AppendLine();
+		script.AppendLine( "The cymbals are measured, then DISTILLED: seven filtered-noise bands whose ring" );
+		script.AppendLine( "times fall as 1/sqrt(f), one low beating pair, splash and wash. The mode forest" );
+		script.AppendLine( "that carried them before was accurate and unusable — 390 partials against two or" );
+		script.AppendLine( "three sines everywhere else in the kit, which no level reconciles." );
+		script.AppendLine( "The RIDE lines isolate the two things that decide wall-versus-ride: damping on" );
+		script.AppendLine( "restrike, and a lighter offbeat stroke. --audition kick|snare|toms|hats too." );
 		script.AppendLine();
 
 		int gap = (int)(Rate * GapSec);
@@ -122,6 +128,44 @@ static class Audition
 	}
 
 	static MusicGen.Config Cfg() => new() { SampleRate = Rate, Genre = 1 };
+
+	/// <summary>
+	/// One dry, centred, un-normalised hit of each cymbal, written as a WAV.
+	///
+	/// This is step 5 of the measured-cymbal method (DRUMS.md): a spectrum that was fitted to a
+	/// measurement is only fitted once someone measures the RESULT the same way. Run tools/spectool
+	/// over these and compare its band decays and sustain spectrum against the numbers recorded in
+	/// CymbalModal — that is what caught the ride being 15 dB light in sizzle above 4.7 kHz, and it
+	/// is the only check on this voice that does not require ears.
+	/// </summary>
+	public static void Cymbals( string dir )
+	{
+		Directory.CreateDirectory( dir );
+		void One( string name, CymbalBands c )
+		{
+			var g = MusicGen.ForAudition( Cfg(), 4.5, 120 );
+			g.AuditionPan = 0f;
+			g.RenderCymbal( 0, 1f, g.BuildCymbal( c, 0 ), 1f, 0f );
+			var (l, r) = g.AuditionBuffers();
+			float peak = 1e-9f;
+			for ( int i = 0; i < l.Length; i++ )
+				peak = Math.Max( peak, Math.Max( Math.Abs( l[i] ), Math.Abs( r[i] ) ) );
+			var pcm = new short[l.Length * 2];
+			for ( int i = 0; i < l.Length; i++ )
+			{
+				pcm[i * 2] = (short)Math.Clamp( (int)MathF.Round( l[i] / peak * 32000f ), -32768, 32767 );
+				pcm[i * 2 + 1] = (short)Math.Clamp( (int)MathF.Round( r[i] / peak * 32000f ), -32768, 32767 );
+			}
+			string path = Path.Combine( dir, name + ".wav" );
+			File.WriteAllBytes( path, MusicGen.WavFromSamples( pcm, 2, Rate ) );
+			Console.WriteLine( $"  {path}" );
+		}
+		Console.WriteLine( "one hit per cymbal, dry and centred, peak-normalised per file:" );
+		One( "ride-bow", CymbalBands.Bow() );
+		One( "ride-bell", CymbalBands.Bell() );
+		One( "crash-bright", CymbalBands.CrashBright() );
+		One( "crash-dark", CymbalBands.CrashDark() );
+	}
 
 	static string Stamp( int samples )
 	{
@@ -393,81 +437,119 @@ static class Audition
 	}
 
 	// ── CRASH ──
+	// Round 10. The crashes are measured (see CymbalBands) and DISTILLED: the mode forest that
+	// carried them before was accurate and unusable — it out-detailed every other voice in the kit
+	// by two orders of magnitude, and no level fixes a fidelity mismatch. Same laws, thirteen
+	// components.
 
 	static void Crash( List<Line> into )
 	{
-		Add( into, "crash", "BRIGHT — today's decay (0.6 s), accent on each downbeat", 116, 5, t =>
+		void Accent( Take t, in CymbalBands c, bool dark )
 		{
 			t.G.AuditionPan = 0.25f;
-			t.G.RenderCrash( t.At( 0 ), t.N, false, 1f, CrashTone.Bright );
-			t.G.RenderCrash( t.At( 4 ), t.N, false, 1f, CrashTone.Bright );
-					}, CymbalTail );
-		Add( into, "crash", "DARK — today's (0.9 s), same placement, opposite side", 116, 5, t =>
+			var k = t.G.BuildCymbal( c, 0 );
+			t.G.RenderCymbal( t.At( 0 ), 1f, k, 1f, dark ? 0.25f : -0.25f );
+			t.G.RenderCymbal( t.At( 4 ), 1f, k, 1f, dark ? 0.25f : -0.25f );
+		}
+
+		Add( into, "crash", "BRIGHT — measured, distilled: roar first, bands under it", 116, 5,
+			t => Accent( t, CymbalBands.CrashBright(), false ), CymbalTail );
+		Add( into, "crash", "BRIGHT — roar halved", 116, 5,
+			t => Accent( t, CymbalBands.CrashBright( splash: 0.5f ), false ), CymbalTail );
+		Add( into, "crash", "BRIGHT — ring 1.4x (a bigger cymbal)", 116, 5,
+			t => Accent( t, CymbalBands.CrashBright( ring: 1.4f ), false ), CymbalTail );
+		Add( into, "crash", "DARK — low body, top that outlives it, opposite side", 116, 5,
+			t => Accent( t, CymbalBands.CrashDark(), true ), CymbalTail );
+		Add( into, "crash", "DARK — wash 1.6x", 116, 5,
+			t => Accent( t, CymbalBands.CrashDark( wash: 1.6f ), true ), CymbalTail );
+		Add( into, "crash", "BOTH — bright then dark, a bar apart: two cymbals?", 116, 5, t =>
 		{
 			t.G.AuditionPan = 0.25f;
-			t.G.RenderCrash( t.At( 0 ), t.N, true, 1f, CrashTone.Dark );
-			t.G.RenderCrash( t.At( 4 ), t.N, true, 1f, CrashTone.Dark );
-					}, CymbalTail );
-		Add( into, "crash", "GAIN — accent level, then ridden level (0.45)", 116, 5,
-			t =>
-			{
-				t.G.AuditionPan = 0.25f;
-				t.G.RenderCrash( t.At( 0 ), t.N, false, 1f, CrashTone.Bright );
-				t.G.RenderCrash( t.At( 4 ), t.N, false, 0.45f, CrashTone.Bright );
-							}, CymbalTail );
-		Add( into, "crash", "CRASH-RIDE — eighths on the dark crash, bright accenting bar one", 116, 5,
-			t =>
-			{
-				t.G.AuditionPan = 0.25f;
-				t.G.RenderCrash( t.At( 0 ), t.N, false, 1f, CrashTone.Bright );
-				var ride = CrashTone.Dark.With( dur: 0.34f, decayFrac: 0.40f );
-				for ( int i = 0; i < 8; i++ )
-					t.G.RenderCrash( t.At( i * 0.5 ), t.N, true, (i & 1) == 0 ? 0.42f : 0.28f, ride );
-				t.G.RenderCrash( t.At( 4 ), t.N, false, 1f, CrashTone.Bright );
-			}, CymbalTail );
+			var b = t.G.BuildCymbal( CymbalBands.CrashBright(), 0 );
+			var d = t.G.BuildCymbal( CymbalBands.CrashDark(), 1 );
+			t.G.RenderCymbal( t.At( 0 ), 1f, b, 1f, -0.25f );
+			t.G.RenderCymbal( t.At( 2 ), 1f, d, 1f, 0.25f );
+			t.G.RenderCymbal( t.At( 4 ), 1f, b, 1f, -0.25f );
+		}, CymbalTail );
+		Add( into, "crash", "GAIN — accent (1.0), ridden (0.45), ghosted (0.25)", 116, 5, t =>
+		{
+			t.G.AuditionPan = 0.25f;
+			var b = t.G.BuildCymbal( CymbalBands.CrashBright(), 0 );
+			t.G.RenderCymbal( t.At( 0 ), 1f, b, 1f, -0.25f );
+			t.G.RenderCymbal( t.At( 2 ), 0.45f, b, 1f, -0.25f );
+			t.G.RenderCymbal( t.At( 4 ), 0.25f, b, 1f, -0.25f );
+		}, CymbalTail );
 		Add( into, "crash", "CHOKE — a stab: crashed and grabbed on the offbeat", 116, 5, t =>
 		{
 			t.G.AuditionPan = 0.25f;
-			t.G.RenderCrash( t.At( 0 ), t.N, false, 1f, CrashTone.Bright, t.At( 0.5 ) );
-			t.G.RenderCrash( t.At( 2 ), t.N, false, 1f, CrashTone.Bright, t.At( 2.5 ) );
-			t.G.RenderCrash( t.At( 4 ), t.N, false, 1f, CrashTone.Bright );
+			var b = t.G.BuildCymbal( CymbalBands.CrashBright(), 0 );
+			t.G.RenderCymbal( t.At( 0 ), 1f, b, 1f, -0.25f, t.At( 0.5 ) );
+			t.G.RenderCymbal( t.At( 2 ), 1f, b, 1f, -0.25f, t.At( 2.5 ) );
+			t.G.RenderCymbal( t.At( 4 ), 1f, b, 1f, -0.25f );
 		}, CymbalTail );
 	}
 
 	// ── RIDE ──
+	// The distilled cymbal in the two places a ride lives: a stroke train, where the RESTRIKE
+	// DAMPING and the lighter offbeat decide whether it is a ride or a drone, and a single hit left
+	// to ring, where the per-band decay has to read as struck metal on its own.
 
 	static void Ride( List<Line> into )
 	{
-		void Straight( Take t, RideTone k )
+		void Train( Take t, in CymbalBands c, bool damp, bool lightOffbeats )
 		{
 			t.G.AuditionPan = 0.25f;
+			var k = t.G.BuildCymbal( c, 0 );
 			for ( int i = 0; i < 8; i++ )
-				t.G.RenderRide( t.At( i * 0.5 ), (i & 1) == 0 ? 1f : 0.62f, t.N, k );
-			t.G.RenderRide( t.At( 4 ), 1f, t.N, k );
+			{
+				bool on = (i & 1) == 0;
+				int next = damp ? t.At( (i + 1) * 0.5 ) : int.MaxValue;
+				t.G.RenderCymbal( t.At( i * 0.5 ), lightOffbeats && !on ? 0.5f : 1f, k, 1f, 0.25f,
+					next, CymbalBands.RestrikeTau );
+			}
+			t.G.RenderCymbal( t.At( 4 ), 1f, k, 1f, 0.25f );
 		}
 
-		// The ping had definition and no BODY. A ride is a large piece of metal and its lowest
-		// modes are down in the hundreds of hertz; that bottom is most of what separates a ride
-		// from a small bright cymbal, and none of round 2's three had any of it.
-		Add( into, "ride", "PING — low mode at 380 Hz under the strike", 128, 5,
-			t => Straight( t, RideTone.PingLowA ), 0.9 );
-		Add( into, "ride", "PING — low mode at 560 Hz", 128, 5,
-			t => Straight( t, RideTone.PingLowB ), 0.9 );
-		Add( into, "ride", "PING — two low modes (370 + 615 Hz)", 128, 5,
-			t => Straight( t, RideTone.PingLowTwo ), 0.9 );
-		Add( into, "ride", "PING — two low modes, body forward", 128, 5,
-			t => Straight( t, RideTone.PingLowTwo.With( level: 0.20f, stick: 0.42f ) ), 0.9 );
-		Add( into, "ride", "PING — two low modes, ringing longer", 128, 5,
-			t => Straight( t, RideTone.PingLowTwo.With( dur: 0.85f, bandDecayFrac: 1.1 ) ), 1.1 );
+		var bowB = CymbalBands.Bow();
+		var bellB = CymbalBands.Bell();
 
-		// The build was already a plain loop of ordinary ride hits at a fixed spacing, and it
-		// stays one: no envelope, no special case, just strokes getting harder. Same call the
-		// groove would make, so a fill can use it.
-		Add( into, "ride", "SWELL — continuous hits, 32nd spacing, on the wash", 120, 5, t =>
+		Add( into, "ride", "BOW — one hit, left to ring (twice)", 60, 5, t =>
 		{
 			t.G.AuditionPan = 0.25f;
-			t.G.RenderRideSwell( t.At( 0 ), t.Beat * 4, t.N, 0.10f, 0.85f, t.Beat / 8 );
-			t.G.RenderCrash( t.At( 4 ), t.N, false, 1f, CrashTone.Bright );
-		}, 1.3 );
+			var k = t.G.BuildCymbal( bowB, 0 );
+			t.G.RenderCymbal( t.At( 0 ), 1f, k, 1f, 0.25f );
+			t.G.RenderCymbal( t.At( 4 ), 1f, k, 1f, 0.25f );
+		}, 2.6 );
+		Add( into, "ride", "BOW — eighths, as it ships: damped on restrike, offbeats lighter",
+			128, 5, t => Train( t, bowB, true, true ), 1.8 );
+		Add( into, "ride", "BOW — eighths, NO restrike damping (the drone)", 128, 5,
+			t => Train( t, bowB, false, true ), 1.8 );
+		Add( into, "ride", "BOW — eighths, offbeats at full level (the wall)", 128, 5,
+			t => Train( t, bowB, true, false ), 1.8 );
+		Add( into, "ride", "BOW — neither: what the mode forest was doing", 128, 5,
+			t => Train( t, bowB, false, false ), 1.8 );
+		Add( into, "ride", "BOW — splash halved", 128, 5,
+			t => Train( t, CymbalBands.Bow( splash: 0.5f ), true, true ), 1.8 );
+		Add( into, "ride", "BOW — ring 1.4x", 128, 5,
+			t => Train( t, CymbalBands.Bow( ring: 1.4f ), true, true ), 2.4 );
+		Add( into, "ride", "BELL — one hit, left to ring (twice)", 60, 5, t =>
+		{
+			t.G.AuditionPan = 0.25f;
+			var k = t.G.BuildCymbal( bellB, 0 );
+			t.G.RenderCymbal( t.At( 0 ), 1f, k, 1f, 0.25f );
+			t.G.RenderCymbal( t.At( 4 ), 1f, k, 1f, 0.25f );
+		}, 2.6 );
+		Add( into, "ride", "BELL+BOW — alternating, one cymbal", 116, 5, t =>
+		{
+			t.G.AuditionPan = 0.25f;
+			var kb = t.G.BuildCymbal( bellB, 0 ); var kw = t.G.BuildCymbal( bowB, 1 );
+			for ( int i = 0; i < 8; i++ )
+			{
+				bool b = i == 0 || i == 4;
+				t.G.RenderCymbal( t.At( i * 0.5 ), b ? 1f : 0.5f, b ? kb : kw, 1f, 0.25f,
+					t.At( (i + 1) * 0.5 ), CymbalBands.RestrikeTau );
+			}
+			t.G.RenderCymbal( t.At( 4 ), 1f, kb, 1f, 0.25f );
+		}, 2.4 );
 	}
 }

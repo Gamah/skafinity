@@ -142,7 +142,7 @@ public sealed partial class MusicGen
 		//
 		// KitPresence: drums are short transients fighting a sustained melodic bed; this baseline
 		// boost lets the kit sit in the mix at DRUMS = 1.0 (parity with the other voice sliders).
-		public float KitPresence = 2.0f;
+		public float KitPresence = 2.35f;
 		// GenreMix: how strongly each genre's own mix profile (GenreProfile.Mix — metal dry and
 		// mid-scooped, pop wide and bright, country dry and centred, ska roomy) is applied.
 		// 1 = as designed, 0 = every genre through one neutral mix, 2 = exaggerated. It is ONE
@@ -159,7 +159,7 @@ public sealed partial class MusicGen
 		public float SnareBalance = 0.900f;
 		public float TomBalance = 0.780f;     // tuned by ear
 		public float HatBalance = 0.407f;     // equal-peak baseline (0.582) backed off 30% by ear
-		public float CrashBalance = 0.515f;
+		public float CrashBalance = 0.380f;
 		// Melodic-voice peak balance — the instrument analog of the kit balances above (same
 		// equal-peak-then-tune workflow). Bass measured the same peak across genres, so one value.
 		public float BassBalance = 0.733f;

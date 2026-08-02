@@ -22,3 +22,5 @@ dist/
 
 # Agent worktrees and local session state.
 .claude/
+tools/spectool/bin/
+tools/spectool/obj/

@@ -106,6 +106,23 @@ static class KitNuance
 	/// it. What does NOT work is a foot chick as the landing — the chick is its own articulation
 	/// (it is the hat speaking on its own, on 2 and 4, under silence) and it has nothing to say
 	/// at the end of a phrase that a choke has not already said.</summary>
+	/// <summary>THE CYMBALS' BANDS. Carried over from the audition rounds that swept them on the
+	/// mode-forest cymbal: they are parameters of the same three laws — how much splash, how much
+	/// wash, how long the ring, where the bell's clang sits — so they transfer, but they were
+	/// approved on a different spelling of those laws and want a fresh listen. Only what was
+	/// actually swept is a band: the bell's splash and the bright crash's wash were never varied in
+	/// front of a listener and stay at 1.</summary>
+	public const float RideSplashMin = 0.5f, RideSplashMax = 1.8f;
+	public const float RideWashMin = 1.0f, RideWashMax = 1.8f;
+	public const float RideRingMin = 1.0f, RideRingMax = 1.4f;
+	public const float BellClangMin = 2000f, BellClangMax = 2600f;
+	public const float BellRingMin = 1.0f, BellRingMax = 1.4f;
+	public const float CrashSplashMin = 0.5f, CrashSplashMax = 1.6f;
+	public const float CrashRingMin = 0.7f, CrashRingMax = 1.4f;
+	public const float DarkSplashMin = 0.5f, DarkSplashMax = 1.0f;
+	public const float DarkWashMin = 1.0f, DarkWashMax = 1.6f;
+	public const float DarkRingMin = 1.0f, DarkRingMax = 1.3f;
+
 	/// <summary>Interpolate a kit nuance. <paramref name="u"/> is 0..1 — a per-song or per-hit
 	/// draw. One helper so a nuance is always read the same way.</summary>
 	public static float At( float min, float max, float u )
@@ -413,165 +430,255 @@ readonly struct HatTone
 	};
 }
 
-readonly struct CrashTone
+/// <summary>
+/// THE CYMBAL, DISTILLED — a measured spectrum spent on thirteen components instead of four
+/// hundred.
+///
+/// Real cymbals were measured for this (provenance below) and the measurement collapsed into three
+/// laws. The first attempt spent them on a MODE FOREST: ~390 resolved partials for the ride, each
+/// with its own ring time. It was accurate, and it was wrong twice over — it cost ~250 ms of CPU a
+/// hit, and it out-detailed every other voice in the engine by two orders of magnitude. The rest of
+/// this kit is two or three sines and some filtered noise; a cymbal built to a different standard
+/// does not sit in that mix at any level, because the problem is not that it is loud. So the laws
+/// are kept and the spelling is not:
+///
+///   * <b>τ·√f constant</b> → <b>PER-BAND DECAY</b>. Seven noise bands whose ring times fall as
+///     1/√f. This is the whole of what says "struck metal" and it is seven numbers.
+///   * <b>a mode forest at constant density</b> → <b>BAND-LIMITED NOISE</b>. Density the ear cannot
+///     resolve into partials IS noise; four hundred resonators were an expensive way to spell it.
+///   * <b>beating near-pairs</b> → <b>ONE LOW PAIR</b> of real partials, quiet, down where the ear
+///     resolves the beat and where a cymbal's size is heard.
+///   * <b>strike position as a log-Gaussian bump</b> → <b>the band gains</b>, one evaluation each.
+///   * splash and wash ride underneath, as they always did.
+///
+/// THIS IS NOT GENERATION 2, AND THE DIFFERENCE IS ONE PROPERTY. Lightly band-passed noise was
+/// tried early and came back "hats in weird states" — correct, and the cause was that it had ONE
+/// decay for the whole voice. A noise band that dies uniformly is a hat. Bands whose ring times
+/// diverge by a factor of five across the spectrum are a cymbal, and that divergence is measured
+/// rather than dialled. Equally it is not generation 5, which made the cymbal out of pure
+/// waveforms and produced church bells every time: the only tonal components here are one quiet
+/// low pair, and everything above them is noise. The two failures bracket the target — uniform
+/// decay is a hat, resolvable partials are a bell — and per-band decay is what sits between them.
+///
+/// Provenance (NOT vendored, and must not become a dependency — what lands is these constants and
+/// this citation): Virtuosity Drums by Versilian Studios &amp; Karoryfer Samples,
+/// github.com/sfzinstruments/virtuosity_drums, CC0-1.0. Measured 2026-08-02 from the overhead-mic
+/// samples — oh_ride_ride_vl3 (bow), oh_ride_bell_vl3 (bell), oh_crash_crash_vl3 (bright crash),
+/// oh_flatride_crash_vl4 (dark crash). Sustained partials from a 131072-point FFT starting 0.33 s
+/// after onset; per-band ring times from exponential fits over a 4096/1024 STFT. tools/spectool is
+/// the reader and stays in the repo, so every number here can be re-derived — and --cymbal writes
+/// one dry hit per cymbal to feed it, because a spectrum fitted to a measurement is not fitted
+/// until the RESULT has been measured the same way.
+/// </summary>
+readonly struct CymbalBands
 {
-	public readonly float Dur;
-	public readonly double DecayFrac;
-	public readonly float Cut;
-	public readonly float Level;
+	/// <summary>The noise bands: centre, gain, and the ring time that band decays with.</summary>
+	public readonly float[] Hz, Amp, Tau;
+	/// <summary>The low pair — the only tonal components, and the cymbal's size. Two partials a
+	/// few Hz apart, so what is heard is the BEAT between them rather than a pitch.</summary>
+	public readonly float[] LowHz, LowAmp, LowTau;
+	public readonly float Dur, Level, Stick, StickCut;
+	public readonly float SplashLvl, SplashTau, WashLvl, WashTau, NoiseHp, WashLp;
 
-	public CrashTone( float dur, double decayFrac, float cut, float level )
+	CymbalBands( float[] hz, float[] amp, float[] tau, float[] lowHz, float[] lowAmp,
+		float[] lowTau, float dur, float level, float stick, float stickCut, float splashLvl,
+		float splashTau, float washLvl, float washTau, float noiseHp, float washLp )
 	{
-		Dur = dur; DecayFrac = decayFrac; Cut = cut; Level = level;
+		Hz = hz; Amp = amp; Tau = tau; LowHz = lowHz; LowAmp = lowAmp; LowTau = lowTau;
+		Dur = dur; Level = level; Stick = stick; StickCut = stickCut;
+		SplashLvl = splashLvl; SplashTau = splashTau; WashLvl = washLvl; WashTau = washTau;
+		NoiseHp = noiseHp; WashLp = washLp;
 	}
 
-	public CrashTone With( float dur = -1f, double decayFrac = -1.0, float cut = -1f, float level = -1f )
-		=> new( dur < 0 ? Dur : dur, decayFrac < 0 ? DecayFrac : decayFrac,
-			cut < 0 ? Cut : cut, level < 0 ? Level : level );
+	// ── The laws ──
 
-	public static readonly CrashTone Bright = new( dur: 0.6f, decayFrac: 0.45, cut: 4000f, level: 1f );
-	public static readonly CrashTone Dark = new( dur: 0.9f, decayFrac: 0.5, cut: 2600f, level: 0.85f );
-
-	public static CrashTone For( bool dark ) => dark ? Dark : Bright;
-}
-
-/// <summary>Where on the cymbal, and with what. A ride is one piece of metal that makes several
-/// completely different sounds depending on where it is struck; today it makes one.</summary>
-enum RideArt
-{
-	/// <summary>Tip on the bow: the ping. Defined attack, short wash — the articulation a ride
-	/// pattern is actually made of.</summary>
-	Ping,
-	/// <summary>Shoulder on the bow: the wash. No stick definition, much more sustain.</summary>
-	Wash,
-	/// <summary>The edge — the crashiest thing a ride does short of being crashed.</summary>
-	Edge,
-	/// <summary>Crash-riding: an eighth pattern played on a crash, which is a technique rather
-	/// than a cymbal.</summary>
-	CrashRide,
-	/// <summary>The bell.</summary>
-	Bell,
-}
-
-readonly struct RideTone
-{
-	public readonly float Dur;
-	public readonly double DecayFrac;
-	public readonly float Cut;
-	public readonly float Level;        // level of the noise wash
-	public readonly float Stick;        // stick definition on the attack, 0 = none
-	public readonly float StickCut;     // and its low-pass, so it is a stick and not a hiss
-
-	/// <summary>THE RESONANCES. A cymbal's bell rings — that is the whole difference between a
-	/// bell and a hat — and it rings at several inharmonic frequencies at once. Band-passed noise
-	/// at a high Q gives exactly that: a pitch CENTRE with no pitch, which is what the deleted
-	/// sine-partial version could never be. What made the earlier attempt read as a hat in a
-	/// strange state was the Q, not the idea: a lightly-resonated noise band is a filtered hat.
-	/// null = no resonances, which is the bow.</summary>
-	public readonly float[] BandHz;
-	public readonly float[] BandLevel;
-	public readonly float BandQ;
-	/// <summary>The resonances outlive the strike — a bell rings on long after the wash has
-	/// gone, and that ratio is most of what says "bell".</summary>
-	public readonly double BandDecayFrac;
-
-	public RideTone( float dur, double decayFrac, float cut, float level, float stick,
-		float stickCut = 0f, float[] bandHz = null, float[] bandLevel = null, float bandQ = 0.03f,
-		double bandDecayFrac = 1.0 )
+	/// <summary>LAW 1 — the ring, and it is the law that is NOT shared between cymbals. On the ride
+	/// every per-band fit lands on τ ≈ 39/√f within take-to-take scatter (230 Hz → 2.6 s, 850 → 1.3,
+	/// 2.7 k → 0.75, 5.7 k → 0.51), and the long ring is the instrument. Both crashes measured a
+	/// different shape and each needs one extra term:
+	///
+	///  * <paramref name="knee"/> — a LOW CUT. The bright crash holds τ·√f ≈ 45 only above ~1 kHz;
+	///    below that its lows die fast (0.9 s at 375 Hz where the bare law says 2.0). A big thin
+	///    plate struck hard dumps its low modes into the room at once.
+	///  * <paramref name="sizzle"/> — a rising FLOOR. The dark crash inverts the ride: low-mids gone
+	///    in half a second while 7–14 kHz rings for 1.5–2.0 s. Wash and rivet behaviour rather than
+	///    plate behaviour, so it is a second term taking over where it is the longer of the two.
+	/// </summary>
+	static float RingTau( float hz, float k, float knee, float sizzle )
 	{
-		Dur = dur; DecayFrac = decayFrac; Cut = cut; Level = level; Stick = stick;
-		StickCut = stickCut; BandHz = bandHz; BandLevel = bandLevel; BandQ = bandQ;
-		BandDecayFrac = bandDecayFrac;
+		float t = k / MathF.Sqrt( hz );
+		if ( knee > 0f && hz < knee ) t *= hz / knee;
+		if ( sizzle > 0f ) t = MathF.Max( t, sizzle * MathF.Sqrt( hz / SizzleRef ) );
+		return t;
+	}
+	const float SizzleRef = 8000f;   // where the sizzle term is quoted: dark crash τ ≈ 1.5 s there
+
+	/// <summary>LAW 2 — the band set. The forest's density said the partials are unresolvable, so
+	/// what matters is only how the energy and the ring vary ACROSS frequency: seven bands,
+	/// geometrically spaced, is enough resolution for a curve that changes by a factor of five over
+	/// the whole range. The top must reach ~12 kHz — the measured sustain holds −9…−14 dB at
+	/// 5–10 kHz ringing at ~0.5 s, and an earlier version cut off at 4 kHz and measured 10–15 dB
+	/// light against the reference.</summary>
+	const int Bands = 7;
+	const float BandLo = 250f, BandHi = 12000f;
+	/// <summary>Band width, as the filter's damping. Wide enough that the filter itself does not
+	/// ring — its own decay is under 2 ms at the bottom band — because the DECAY here is the
+	/// envelope's job. A resonance that rings is a partial, and partials are what generation 5
+	/// proved a cymbal must not be made of.</summary>
+	const float BandQ = 0.7f;
+
+	/// <summary>LAW 3 — a strike position is a spectral bump on a log axis. The bow is one wide
+	/// bump (the measured sustain is flat 300 Hz–3.2 kHz with soft edges); the bell is a narrow
+	/// clang plus a small low knock where the stick shocks the cup; the bright crash centres at
+	/// 2.2–4.7 kHz over a low knock; the dark crash is low-heavy with a sizzle top that has to be
+	/// excited before the ring law can let it outlive anything.</summary>
+	static float LogBump( float f, float centre, float width )
+	{
+		float u = MathF.Log( f / centre ) / width;
+		return MathF.Exp( -0.5f * u * u );
 	}
 
-	public RideTone With( float dur = -1f, double decayFrac = -1.0, float cut = -1f,
-		float level = -1f, float stick = -1f, float bandQ = -1f, double bandDecayFrac = -1.0 )
-		=> new( dur < 0 ? Dur : dur, decayFrac < 0 ? DecayFrac : decayFrac, cut < 0 ? Cut : cut,
-			level < 0 ? Level : level, stick < 0 ? Stick : stick, StickCut, BandHz, BandLevel,
-			bandQ < 0 ? BandQ : bandQ, bandDecayFrac < 0 ? BandDecayFrac : bandDecayFrac );
-
-	/// <summary>The bow hit the groove path has always played.</summary>
-	public static readonly RideTone Bow = new(
-		dur: 0.22f, decayFrac: 0.42, cut: 7000f, level: 0.7f, stick: 0f );
-
-	/// <summary>Bell candidate C, and the incumbent: the bow hit rung a little longer. No timbre
-	/// difference at all — the honest statement of what the engine plays today.</summary>
-	public static readonly RideTone BellDurationOnly = new(
-		dur: 0.34f, decayFrac: 0.42, cut: 7000f, level: 0.7f, stick: 0f );
-
-	// ── The bow articulations ──
-	// A PING IS A DEFINED STRIKE. High-passed noise has no definition anywhere in it, so it can
-	// only ever be a hat played on the wrong side of the kit: the stick lands, and what should be
-	// a point of contact is a broadband hiss. The ping gets a short, tight resonance around where
-	// a ride's stick actually speaks, and a LOW-PASSED stick transient rather than white noise.
-
-	public static readonly RideTone Ping = new(
-		dur: 0.34f, decayFrac: 0.34, cut: 6000f, level: 0.34f, stick: 0.55f, stickCut: 5500f,
-		bandHz: new[] { 3150f, 5400f }, bandLevel: new[] { 1.7f, 0.8f },
-		bandQ: 0.055f, bandDecayFrac: 0.55 );
-
-	// A RIDE HAS A BOTTOM. The stick's contact is the top two modes, but the cymbal it is
-	// attached to is a large piece of metal whose lowest modes are down in the hundreds of hertz,
-	// and they are what makes a ride sound like a ride rather than like a small bright cymbal.
-	// The ping above has definition and no body; these give it one.
-
-	public static readonly RideTone PingLowA = new(
-		dur: 0.55f, decayFrac: 0.30, cut: 6000f, level: 0.30f, stick: 0.55f, stickCut: 5500f,
-		bandHz: new[] { 380f, 3150f, 5400f }, bandLevel: new[] { 2.6f, 1.7f, 0.8f },
-		bandQ: 0.040f, bandDecayFrac: 0.85 );
-
-	public static readonly RideTone PingLowB = new(
-		dur: 0.55f, decayFrac: 0.30, cut: 6000f, level: 0.30f, stick: 0.55f, stickCut: 5500f,
-		bandHz: new[] { 560f, 3150f, 5400f }, bandLevel: new[] { 2.6f, 1.7f, 0.8f },
-		bandQ: 0.040f, bandDecayFrac: 0.85 );
-
-	public static readonly RideTone PingLowTwo = new(
-		dur: 0.60f, decayFrac: 0.32, cut: 6000f, level: 0.28f, stick: 0.55f, stickCut: 5500f,
-		bandHz: new[] { 370f, 615f, 3150f, 5400f },
-		bandLevel: new[] { 2.2f, 1.5f, 1.7f, 0.8f },
-		bandQ: 0.038f, bandDecayFrac: 0.90 );
-
-	public static readonly RideTone Wash = new(
-		dur: 0.46f, decayFrac: 0.55, cut: 5400f, level: 0.72f, stick: 0f );
-
-	public static readonly RideTone Edge = new(
-		dur: 0.60f, decayFrac: 0.50, cut: 3300f, level: 0.85f, stick: 0.12f, stickCut: 4000f );
-
-	public static readonly RideTone CrashRideBow = new(
-		dur: 0.72f, decayFrac: 0.50, cut: 3900f, level: 0.80f, stick: 0.18f, stickCut: 4500f );
-
-	// ── The bell candidates ──
-	// All three are noise through high-Q resonances. Bell A is a real ride bell's cluster — an
-	// inharmonic stack that rings a long time under a quiet wash. Bell B is the same idea lower
-	// and heavier (a bigger bell). Bell C keeps a wash you can hear, for the case where a fully
-	// ringing bell reads as a different instrument rather than as part of this kit.
-
-	public static readonly RideTone BellNarrow = new(
-		dur: 1.05f, decayFrac: 0.30, cut: 8000f, level: 0.16f, stick: 0.50f, stickCut: 6000f,
-		bandHz: new[] { 1180f, 2360f, 3510f, 5290f },
-		bandLevel: new[] { 5.8f, 9.0f, 5.4f, 2.5f },
-		bandQ: 0.012f, bandDecayFrac: 0.95 );
-
-	public static readonly RideTone BellWide = new(
-		dur: 1.25f, decayFrac: 0.32, cut: 7000f, level: 0.14f, stick: 0.44f, stickCut: 5000f,
-		bandHz: new[] { 830f, 1690f, 2570f, 4120f },
-		bandLevel: new[] { 6.5f, 8.6f, 5.0f, 2.3f },
-		bandQ: 0.009f, bandDecayFrac: 1.05 );
-
-	public static readonly RideTone BellWashy = new(
-		dur: 0.85f, decayFrac: 0.36, cut: 7200f, level: 0.34f, stick: 0.42f, stickCut: 6000f,
-		bandHz: new[] { 1180f, 2360f, 3510f },
-		bandLevel: new[] { 4.3f, 6.5f, 3.6f },
-		bandQ: 0.030f, bandDecayFrac: 0.80 );
-
-	public static RideTone For( RideArt a ) => a switch
+	readonly struct Strike
 	{
-		RideArt.Wash => Wash,
-		RideArt.Edge => Edge,
-		RideArt.CrashRide => CrashRideBow,
-		RideArt.Bell => BellNarrow,
-		_ => Ping,
-	};
+		public readonly float Centre, Width, Centre2, Width2, Level2, LowHz, LowLevel;
+		public Strike( float centre, float width, float lowHz, float lowLevel,
+			float centre2 = 0f, float width2 = 0.3f, float level2 = 0f )
+		{
+			Centre = centre; Width = width; LowHz = lowHz; LowLevel = lowLevel;
+			Centre2 = centre2; Width2 = width2; Level2 = level2;
+		}
+		public float Weight( float f )
+			=> LogBump( f, Centre, Width ) + (Level2 > 0f ? Level2 * LogBump( f, Centre2, Width2 ) : 0f);
+	}
+
+	// The low pair's frequency is the CYMBAL's, not the strike's — it is how big the plate is.
+	// The ride's lowest measured partials sit around 210–290; the dark crash resolved 208/211 and
+	// 255/258 as real beating pairs, which is where its number comes from.
+	static readonly Strike BowStrike = new( 1200f, 1.1f, lowHz: 232f, lowLevel: 0.30f );
+	static Strike BellStrike( float clang ) => new( clang, 0.45f, lowHz: 290f, lowLevel: 0.22f,
+		centre2: 290f, width2: 0.25f, level2: 0.30f );
+	static readonly Strike BrightCrashStrike = new( 3200f, 0.80f, lowHz: 375f, lowLevel: 0.16f,
+		centre2: 400f, width2: 0.55f, level2: 0.25f );
+	static readonly Strike DarkCrashStrike = new( 520f, 0.75f, lowHz: 209f, lowLevel: 0.42f,
+		centre2: 9000f, width2: 0.60f, level2: 0.45f );
+
+	/// <summary>How loud one STROKE is, and it is not the same for a ride and a crash even though
+	/// the same arm strikes both. A ride stroke rings for seconds and is played eight times a bar,
+	/// so a riding section has a dozen rings sounding at once; the hi-hat it replaces is 35 ms and
+	/// never overlaps itself. Level per stroke and level in the mix are two different quantities —
+	/// measured with --levels, a ride at the crash's stroke level put country's whole kit 2.6 dB
+	/// over the rest of its band on its riding sections alone. A crash overlaps nothing, being one
+	/// gesture a phrase, so it keeps the louder stroke.</summary>
+	const float StrokeLevelRide = 0.22f, StrokeLevelCrash = 0.60f;
+
+	/// <summary>The extra decay a cymbal takes on WHILE IT IS BEING PLAYED — see RenderCymbal's
+	/// chokeTau. A stroke landing on a ringing cymbal excites it and damps it, because the stick is
+	/// in contact with the metal, and that is the difference between a ride and a drone. It has to
+	/// compound over a stroke train the way the physics does: ring time falls with frequency, so at
+	/// riding eighths a train stacks the 250 Hz band +7.6 dB over a single stroke against +2.4 dB at
+	/// 5 kHz, and it is the LOW ring that runs away. A flat level cut cannot fix that — it takes the
+	/// attack down with the drone. An added decay is frequency-dependent in the right direction: a
+	/// fixed extra rate costs a 2.5 s band most of its tail and a 0.5 s one very little.</summary>
+	public const float RestrikeTau = 0.70f;
+
+	public static CymbalBands Bow( float splash = 1f, float wash = 1f, float ring = 1f )
+		=> Build( BowStrike, tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
+			splash: 0.55f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
+			washTau: 0.70f * ring, stick: 0.30f, stickCut: 5500f, noiseHp: 240f, washLp: 6500f,
+			level: StrokeLevelRide );
+
+	/// <summary>The bell. A ride bell is not a church bell: no harmonic stack and no low
+	/// fundamental — the measurement puts its energy in a clang cluster around 2.3 kHz over the
+	/// same metal as the bow.</summary>
+	public static CymbalBands Bell( float splash = 1f, float ring = 1f, float clang = 2300f )
+		=> Build( BellStrike( clang ), tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
+			splash: 0.40f * splash, splashTau: 0.05f, washLvl: 0.030f,
+			washTau: 0.55f * ring, stick: 0.40f, stickCut: 6500f, noiseHp: 240f, washLp: 6500f,
+			level: StrokeLevelRide );
+
+	/// <summary>The bright crash. THE ROAR IS THE INSTRUMENT: a third of a second in, the
+	/// measurement resolves essentially no partials at all. So the splash is not an attack
+	/// transient here, it is a layer with its own third of a second of decay.</summary>
+	public static CymbalBands CrashBright( float splash = 1f, float ring = 1f, float wash = 1f )
+		=> Build( BrightCrashStrike, tauK: 45f, knee: 1000f, sizzle: 0f, ring: ring,
+			splash: 2.30f * splash, splashTau: 0.30f, washLvl: 0.55f * wash,
+			washTau: 1.05f * ring, stick: 0.10f, stickCut: 6000f, noiseHp: 2400f, washLp: 6200f,
+			level: StrokeLevelCrash );
+
+	/// <summary>The dark crash — a heavier, flatter cymbal crashed rather than ridden, and the
+	/// opposite shape at both ends: resolved lows that ring, a body gone in half a second, and a
+	/// top that outlives everything.</summary>
+	public static CymbalBands CrashDark( float splash = 1f, float ring = 1f, float wash = 1f )
+		=> Build( DarkCrashStrike, tauK: 13.5f, knee: 0f, sizzle: 1.5f, ring: ring,
+			splash: 1.50f * splash, splashTau: 0.22f, washLvl: 0.35f * wash,
+			washTau: 0.90f * ring, stick: 0.10f, stickCut: 4500f, noiseHp: 200f, washLp: 4200f,
+			level: StrokeLevelCrash );
+
+	static CymbalBands Build( in Strike strike, float tauK, float knee, float sizzle, float ring,
+		float splash, float splashTau, float washLvl, float washTau, float stick, float stickCut,
+		float noiseHp, float washLp, float level )
+	{
+		var hz = new float[Bands]; var am = new float[Bands]; var ta = new float[Bands];
+		float step = MathF.Pow( BandHi / BandLo, 1f / (Bands - 1) );
+		float e = 0f, maxTau = 0f;
+		for ( int b = 0; b < Bands; b++ )
+		{
+			float f = BandLo * MathF.Pow( step, b );
+			hz[b] = f;
+			am[b] = strike.Weight( f );
+			ta[b] = ring * RingTau( f, tauK, knee, sizzle );
+			e += am[b] * am[b];
+			maxTau = MathF.Max( maxTau, ta[b] );
+		}
+		// The low pair, a few Hz apart: the beat between them is the point, so the split is in Hz
+		// and not in cents — a beat is a difference frequency and does not scale with pitch.
+		var lhz = new[] { strike.LowHz, strike.LowHz + 2.6f };
+		var lam = new[] { strike.LowLevel, strike.LowLevel * 0.85f };
+		var lta = new[] { ring * RingTau( lhz[0], tauK, knee, sizzle ),
+			ring * RingTau( lhz[1], tauK, knee, sizzle ) };
+		e += lam[0] * lam[0] + lam[1] * lam[1];
+		maxTau = MathF.Max( maxTau, lta[0] );
+		// Energy-normalised, so the four strikes land comparably before the stroke level is applied.
+		float lvl = level / MathF.Sqrt( MathF.Max( 1e-6f, e ) );
+		// Long enough for the longest component to reach about −45 dB, and no longer: every sample
+		// past that is a multiply spent on silence, and this voice is rendered per HIT.
+		float dur = Math.Clamp( maxTau * 5.2f, 0.6f, 4.0f );
+		return new CymbalBands( hz, am, ta, lhz, lam, lta, dur, lvl, stick, stickCut,
+			splash, splashTau, washLvl, washTau, noiseHp, washLp );
+	}
+}
+
+/// <summary>This song's cymbals as NUMBERS — the per-song point each of KitNuance's cymbal bands
+/// sits at. Drawn in ComposePlan so every genre pulls the same values in the same order, for the
+/// same reason a kick's click corner is drawn there: a kit is a physical object and the same
+/// cymbal does not make the identical sound twice.</summary>
+readonly struct CymbalDraw
+{
+	public readonly float RideSplash, RideWash, RideRing, BellClang, BellRing;
+	public readonly float BrightSplash, BrightRing, DarkSplash, DarkWash, DarkRing;
+
+	CymbalDraw( float rideSplash, float rideWash, float rideRing, float bellClang, float bellRing,
+		float brightSplash, float brightRing, float darkSplash, float darkWash, float darkRing )
+	{
+		RideSplash = rideSplash; RideWash = rideWash; RideRing = rideRing;
+		BellClang = bellClang; BellRing = bellRing;
+		BrightSplash = brightSplash; BrightRing = brightRing;
+		DarkSplash = darkSplash; DarkWash = darkWash; DarkRing = darkRing;
+	}
+
+	public static readonly CymbalDraw Default = new( 1f, 1f, 1f, 2300f, 1f, 1f, 1f, 1f, 1f, 1f );
+
+	public static CymbalDraw Draw( Rng rng ) => new(
+		KitNuance.At( KitNuance.RideSplashMin, KitNuance.RideSplashMax, rng.Next() ),
+		KitNuance.At( KitNuance.RideWashMin, KitNuance.RideWashMax, rng.Next() ),
+		KitNuance.At( KitNuance.RideRingMin, KitNuance.RideRingMax, rng.Next() ),
+		KitNuance.At( KitNuance.BellClangMin, KitNuance.BellClangMax, rng.Next() ),
+		KitNuance.At( KitNuance.BellRingMin, KitNuance.BellRingMax, rng.Next() ),
+		KitNuance.At( KitNuance.CrashSplashMin, KitNuance.CrashSplashMax, rng.Next() ),
+		KitNuance.At( KitNuance.CrashRingMin, KitNuance.CrashRingMax, rng.Next() ),
+		KitNuance.At( KitNuance.DarkSplashMin, KitNuance.DarkSplashMax, rng.Next() ),
+		KitNuance.At( KitNuance.DarkWashMin, KitNuance.DarkWashMax, rng.Next() ),
+		KitNuance.At( KitNuance.DarkRingMin, KitNuance.DarkRingMax, rng.Next() ) );
 }
 
 public sealed partial class MusicGen
@@ -735,17 +842,6 @@ public sealed partial class MusicGen
 	}
 
 	// ── Toms ──
-	// The legacy pan-by-pitch entry point, kept byte-identical while the grooves still call it.
-	// It maps a FREQUENCY onto a hardcoded 145–260 Hz range, so a fill reaching below 145 Hz
-	// clamps hard right and its lowest drums share one position — which is what the indexed
-	// overload below exists to make unwriteable. This one goes when the grooves are rewired.
-	void RenderTom( int start, float baseFreq, Rng noise, float amp = 1f )
-	{
-		if ( _drumGain <= 0f ) return;
-		float u = Math.Clamp( (baseFreq - 145f) / (260f - 145f), 0f, 1f ); // 0 = low/floor, 1 = high/rack
-		StereoGains( -_drumPan * (u * 2f - 1f), out float gL, out float gR );
-		RenderTomAt( start, baseFreq, gL, gR, amp, TomTone.Default );
-	}
 
 	/// <summary>A tom of the kit, by INDEX. 0 is the rack, 2 the floor; where it sits in the
 	/// field is a property of which drum it is, so no fill can drive it off the end of a range.
@@ -786,8 +882,6 @@ public sealed partial class MusicGen
 	}
 
 	// ── Hats ──
-	void RenderHat( int start, bool open, float amp, Rng noise )
-		=> RenderHat( start, open ? 1f : 0f, amp, noise, HatTone.Default );
 
 	/// <summary>The hi-hat. OPENNESS IS A CONTINUUM — a pedal is a distance, not a switch — and
 	/// <paramref name="chokeAt"/> is where the foot closes it again. An open hat with nothing
@@ -858,118 +952,179 @@ public sealed partial class MusicGen
 	internal void RenderHat( int start, HatHit hit, float amp, Rng noise )
 		=> RenderHat( start, hit == HatHit.Splash ? 1f : 0f, amp, noise, HatTone.For( hit ) );
 
-	// ── Crash ──
-	// Two crash colours off one voice: the bright crash (short-ish, high-passed high) and a
-	// dark crash — lower cutoff, longer wash, a touch quieter — for a bigger china/ride-crash.
-	// The kit has two crashes panned apart (±25%); the bright/dark colour picks which physical
-	// cymbal, and _crashBrightLeft (per song) decides which side that is.
-	void RenderCrash( int start, Rng noise, bool dark = false )
-		=> RenderCrash( start, noise, dark, 1f, CrashTone.For( dark ) );
+	// ── Cymbals ──
+	// The ride, its bell, and the two crashes: one voice, four sets of constants (CymbalBands).
+	// Rendered PER HIT, like every other voice in this kit — seven filtered-noise bands and two
+	// partials is cheap enough that a riding section can afford it, which is the whole reason the
+	// distilled version exists.
 
-	/// <summary>A crash at a LEVEL. It is the one kit voice that had no gain parameter at all, so
-	/// every crash in every song landed at full level whatever the energy, the velocity or the
-	/// genre's accent said.</summary>
-	internal void RenderCrash( int start, Rng noise, bool dark, float amp, in CrashTone k,
-		int chokeAt = int.MaxValue )
+	/// <summary>A hand on the metal: the cymbal stops. Fast, but not a cut — a hard stop clicks,
+	/// and a hand is not instantaneous either.</summary>
+	internal const float HandChoke = 0.020f;
+
+	/// <param name="chokeAt">Absolute sample position something lands on the cymbal, or
+	/// int.MaxValue.</param>
+	/// <param name="chokeTau">How fast it takes the ring away. <see cref="HandChoke"/> is a hand
+	/// and the cymbal is gone; <see cref="CymbalBands.RestrikeTau"/> is the STICK LANDING AGAIN,
+	/// which is the same event seen from the other end and is not a smaller choke — it is a
+	/// shorter decay for as long as the cymbal is being played, so it compounds over a stroke
+	/// train the way the physics does.</param>
+	/// <summary>The ride and its bell, on the right of the kit opposite the hats.</summary>
+	void RenderRideCym( int at, float amp, float[][] t, int chokeAt = int.MaxValue,
+		float chokeTau = HandChoke )
+		=> RenderCymbal( at, amp, t, _c.HatBalance, _drumPan, chokeAt, chokeTau );
+
+	/// <summary>A crash. The kit's two crashes are panned apart and which side each is on is the
+	/// song's own draw, so a ridden crash and the one accenting over it land opposite each other
+	/// for free.</summary>
+	void RenderCrashCym( int at, float amp, float[][] t, bool dark,
+		int chokeAt = int.MaxValue, float chokeTau = HandChoke )
+		=> RenderCymbal( at, amp, t, _c.CrashBalance,
+			dark == _crashBrightLeft ? _drumPan : -_drumPan, chokeAt, chokeTau );
+
+	/// <summary>
+	/// SYNTHESISED ONCE PER SONG, THEN STAMPED. The distillation fixed what the cymbal IS; it does
+	/// not fix what a ride COSTS, because that is a property of the pattern: a 2.5-second ring
+	/// struck eight times a bar overlaps itself twenty deep, and rendering each stroke in full pays
+	/// for all of it. Synthesising the object once and adding it per hit is what a sampler does,
+	/// and it is honest here for the same reason the bands are — a cymbal is one physical object
+	/// and every strike is that object.
+	///
+	/// It is two tables, split at 2.5 kHz, because a soft stroke is DARKER and not merely quieter.
+	/// Variants are round robins: they cost about three milliseconds each now, where the mode
+	/// forest's cost a quarter of a second, so the repeat-tell is cheap to break.
+	/// </summary>
+	internal float[][] BuildCymbal( in CymbalBands c, int variant )
 	{
-		if ( _drumGain <= 0f ) return;
+		int dur = (int)(_sr * c.Dur);
+		var lo = new float[dur]; var hi = new float[dur];
+		SynthCymbal( c, lo, hi, (uint)(variant * 2654435761u) | 1u );
+		return new[] { lo, hi };
+	}
+
+	/// <param name="chokeAt">Absolute sample position something lands on the cymbal.</param>
+	/// <param name="chokeTau">How fast it takes the ring away — <see cref="HandChoke"/> for a hand,
+	/// <see cref="CymbalBands.RestrikeTau"/> for the stick landing again.</param>
+	internal void RenderCymbal( int start, float amp, float[][] t, float balance, float pan,
+		int chokeAt = int.MaxValue, float chokeTau = HandChoke )
+	{
+		if ( _drumGain <= 0f || amp <= 0f || t == null ) return;
 		start = Math.Max( 0, start + _time.DrumPush );
-		StereoGains( (dark == _crashBrightLeft ? _drumPan : -_drumPan), out float gL, out float gR );
-		int dur = (int)(_sr * k.Dur);
-		double decay = dur * k.DecayFrac;
-		float a = HpCoeff( k.Cut );
-		float lvl = amp * _c.CrashVol * _c.CrashBalance * k.Level;
-		float chokeStep = (float)Math.Exp( -1.0 / Math.Max( 1.0, _sr * 0.020 ) );
+		int end = Math.Min( _bufL.Length, start + t[0].Length );
+		if ( end <= start ) return;
+		StereoGains( pan, out float gL, out float gR );
+		uint js = HitSeed( start );
+		float jit = 1f + 0.07f * HitNext( ref js );
+		float bus = balance * _drumGain * _drumHighMul * jit;
+		float loG = amp * bus;
+		// A soft stroke is darker, not merely quieter — a stick that does not dig in leaves the top
+		// of the cymbal alone.
+		float hiG = amp * MathF.Pow( Math.Clamp( amp, 0.05f, 1f ), 0.35f ) * bus;
+		float chokeStep = (float)Math.Exp( -1.0 / Math.Max( 1.0, _sr * (double)chokeTau ) );
 		float chokeEnv = 1f;
-		float inPrev = 0f, outPrev = 0f;
-		int end = Math.Min( _bufL.Length, start + dur );
 		for ( int i = 0; start + i < end; i++ )
 		{
-			float env = (float)Math.Exp( -i / decay );
-			float n = noise.Next() * 2f - 1f;
-			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			if ( start + i >= chokeAt ) chokeEnv *= chokeStep;
-			float v = hp * env * chokeEnv * lvl * _drumGain * _drumHighMul;
+			if ( start + i >= chokeAt )
+			{
+				chokeEnv *= chokeStep;
+				if ( chokeEnv < 1e-4f ) break;
+			}
+			float v = (t[0][i] * loG + t[1][i] * hiG) * chokeEnv;
 			_bufL[start + i] += v * gL; _bufR[start + i] += v * gR;
 		}
 	}
 
-	// ── Ride ──
-	// A cymbal is mostly filtered noise, and this voice renders only that body. Earlier versions
-	// layered inharmonic SINE partials for a metallic ping/bell, and any tonal layer — however
-	// quiet, however detuned — read as a pitched ring; that is gone and is not coming back. The
-	// bell candidates below reach for a CENTRE without a pitch by band-passing the noise instead.
-	void RenderRide( int start, bool bell, float amp, Rng noise )
-		=> RenderRide( start, amp, noise, bell ? RideTone.BellDurationOnly : RideTone.Bow );
-
-	internal void RenderRide( int start, float amp, Rng noise, in RideTone k,
-		int chokeAt = int.MaxValue )
+	/// <summary>The voice itself: seven filtered-noise bands with their own decays, the low pair,
+	/// splash and wash. Written into a lo/hi pair so a stroke's brightness can vary at stamp time.
+	/// </summary>
+	void SynthCymbal( in CymbalBands c, float[] outLo, float[] outHi, uint seed )
 	{
-		if ( _drumGain <= 0f ) return;
-		start = Math.Max( 0, start + _time.DrumPush );
-		// Ride sits opposite the hats, on the right of the kit.
-		StereoGains( _drumPan, out float gL, out float gR );
-		int dur = (int)(_sr * k.Dur);
-		double decay = dur * k.DecayFrac;
-		float a = HpCoeff( k.Cut );
-		int nb = k.BandHz == null ? 0 : k.BandHz.Length;
-		var bp = nb > 0 ? new BandPass[nb] : null;
-		// The Q rises with the partial: the higher modes of a struck cymbal ring tighter, and a
-		// flat Q across the stack is what turns a bell back into a filtered wash.
-		for ( int b = 0; b < nb; b++ ) bp[b] = new BandPass( k.BandHz[b], k.BandQ / (1f + 0.35f * b), _sr );
-		// The wash is the strike; the resonances outlive it. That ratio is most of "bell".
-		double bandDecay = dur * k.BandDecayFrac;
-		double strikeDecay = _sr * 0.0035;   // how long the stick is in contact
-		int stickLen = (int)(_sr * 0.006f);
-		float sa = k.StickCut > 0f ? LpCoeff( k.StickCut ) : 0f;
-		float stickLp = 0f;
-		uint ns = HitSeed( start );
-		float chokeStep = (float)Math.Exp( -1.0 / Math.Max( 1.0, _sr * 0.018 ) );
-		float chokeEnv = 1f;
-		float inPrev = 0f, outPrev = 0f;
-		int end = Math.Min( _bufL.Length, start + dur );
-		for ( int i = 0; start + i < end; i++ )
+		int dur = outLo.Length;
+
+		int nb = c.Hz.Length;
+		var bp = new BandPass[nb];
+		var env = new float[nb]; var dec = new float[nb];
+		var dies = new int[nb];
+		for ( int b = 0; b < nb; b++ )
 		{
-			float env = (float)Math.Exp( -i / decay );
-			float n = noise.Next() * 2f - 1f;
-			float hp = a * (outPrev + n - inPrev); inPrev = n; outPrev = hp;
-			float v = hp * k.Level * env;
-			if ( nb > 0 )
+			bp[b] = new BandPass( c.Hz[b], CymbalBandQ, _sr );
+			env[b] = 1f;
+			dec[b] = (float)Math.Exp( -1.0 / (_sr * (double)c.Tau[b]) );
+			// Each band stops when it stops being worth its multiplies; they differ by a factor of
+			// five in ring time, so most are gone long before the table is.
+			dies[b] = Math.Min( dur, (int)(_sr * c.Tau[b] * 5.0f) + 1 );
+		}
+
+		// The low pair: two sine rotors, phase-offset per hit, beating against each other.
+		int nl = c.LowHz.Length;
+		var cx = new float[nl]; var cy = new float[nl];
+		var rc = new float[nl]; var rs = new float[nl];
+		uint ns = seed;
+		for ( int p = 0; p < nl; p++ )
+		{
+			double w = 2.0 * Math.PI * c.LowHz[p] / _sr;
+			double d = Math.Exp( -1.0 / (_sr * (double)c.LowTau[p]) );
+			rc[p] = (float)(Math.Cos( w ) * d); rs[p] = (float)(Math.Sin( w ) * d);
+			double ph = HitNext( ref ns ) * Math.PI;
+			float a0 = c.LowAmp[p] * (1f + 0.12f * HitNext( ref ns ));
+			cx[p] = (float)(a0 * Math.Cos( ph )); cy[p] = (float)(a0 * Math.Sin( ph ));
+		}
+
+		int stickLen = (int)(_sr * 0.004f);
+		float sa = c.StickCut > 0f ? LpCoeff( c.StickCut ) : 0f;
+		float lp = 0f;
+		float hpA = HpCoeff( c.NoiseHp ), washLpA = LpCoeff( c.WashLp );
+		float nInPrev = 0f, nHpPrev = 0f, washLp = 0f;
+		double splDecay = _sr * (double)Math.Max( 0.005f, c.SplashTau );
+		double washDecay = _sr * (double)Math.Max( 0.02f, c.WashTau );
+		// The fade keeps the truncation silent: the longest band still has tail left at the end.
+		int fade = (int)(_sr * 0.10f);
+		for ( int i = 0; i < dur; i++ )
+		{
+			float n = noiseNext( ref ns );
+			float lo = 0f, hi = 0f;
+			for ( int b = 0; b < nb; b++ )
 			{
-				// A BELL IS STRUCK, so the modes are excited by the STRIKE and then ring on their
-				// own. Feeding them the whole noise stream is a filter sitting on a wash — which
-				// is a hat in a strange state, and is what these sounded like — and it is also why
-				// they were so quiet: a tight resonance passes almost none of a broadband input.
-				float ex = n * (float)Math.Exp( -i / strikeDecay );
-				float benv = (float)Math.Exp( -i / bandDecay );
-				for ( int b = 0; b < nb; b++ ) v += bp[b].Next( ex ) * k.BandLevel[b] * benv;
+				if ( i >= dies[b] ) continue;
+				float v = bp[b].Next( n ) * c.Amp[b] * env[b];
+				env[b] *= dec[b];
+				if ( c.Hz[b] >= BandSplit ) hi += v; else lo += v;
 			}
-			if ( k.Stick > 0f && i < stickLen )
+			for ( int p = 0; p < nl; p++ )
+			{
+				float x = cx[p] * rc[p] - cy[p] * rs[p];
+				cy[p] = cx[p] * rs[p] + cy[p] * rc[p];
+				cx[p] = x;
+				lo += x;
+			}
+			// The splash (broadband, and on a crash it keeps going for a third of a second) and the
+			// wash (the air, darker and long) — the layers the mode forest never carried anyway.
+			float hp = hpA * (nHpPrev + n - nInPrev); nInPrev = n; nHpPrev = hp;
+			washLp += washLpA * (hp - washLp);
+			// The splash rides in the high table and the wash in the low, so each tilts with the
+			// layer it belongs to.
+			hi += hp * c.SplashLvl * (float)Math.Exp( -i / splDecay );
+			lo += washLp * c.WashLvl * (float)Math.Exp( -i / washDecay );
+			if ( c.Stick > 0f && i < stickLen )
 			{
 				float sn = HitNext( ref ns );
-				if ( k.StickCut > 0f ) { stickLp += sa * (sn - stickLp); sn = stickLp; }
-				v += sn * k.Stick * (1f - i / (float)stickLen);
+				if ( c.StickCut > 0f ) { lp += sa * (sn - lp); sn = lp; }
+				hi += sn * c.Stick * (1f - i / (float)stickLen);
 			}
-			if ( start + i >= chokeAt ) chokeEnv *= chokeStep;
-			// As in RenderHat: original order, with the choke's neutral 1f last.
-			v = v * amp * _c.HatBalance * _drumGain * _drumHighMul * chokeEnv;
-			_bufL[start + i] += v * gL; _bufR[start + i] += v * gR;
+			int rem = dur - i;
+			float k = c.Level * (rem < fade ? rem / (float)fade : 1f);
+			outLo[i] = lo * k; outHi[i] = hi * k;
 		}
 	}
 
-	internal void RenderRide( int start, RideArt art, float amp, Rng noise )
-		=> RenderRide( start, amp, noise, RideTone.For( art ) );
+	/// <summary>Where the tilt splits the cymbal: above this is stick and shimmer, below it is the
+	/// body.</summary>
+	const float BandSplit = 2500f;
 
-	/// <summary>A ride crescendo into a downbeat: the wash swelled by playing into it, which is
-	/// what a drummer does rather than turning a fader up.</summary>
-	internal void RenderRideSwell( int start, int spanSamples, Rng noise, float fromAmp,
-		float toAmp, int stepSamples )
-	{
-		var tone = RideTone.Wash;
-		for ( int at = 0; at < spanSamples; at += Math.Max( 1, stepSamples ) )
-		{
-			float u = spanSamples <= 0 ? 1f : at / (float)spanSamples;
-			RenderRide( start + at, fromAmp + (toAmp - fromAmp) * u * u, noise, tone );
-		}
-	}
+	const float CymbalBandQ = 0.7f;
+
+	/// <summary>The cymbal's noise source. Its own per-hit stream, so no two strokes are the same
+	/// waveform and the shared drum RNG is untouched — the thing a rendered-once table had to buy
+	/// back with round robins, and gets here for free.</summary>
+	static float noiseNext( ref uint s ) => HitNext( ref s );
 }
