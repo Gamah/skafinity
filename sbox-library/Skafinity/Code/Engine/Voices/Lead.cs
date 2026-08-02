@@ -325,7 +325,7 @@ public sealed partial class MusicGen
 	/// which is also comfortably inside the suite's "the lead does not dominate" ceiling.</summary>
 	float LeadLevel() => _genre switch
 	{
-		0 => 0.83f,   // ska horn
+		0 => 1.10f,   // ska horn — re-measured for the third-wave kit, which is brighter and louder
 		1 => 0.86f,   // rock
 		2 => 0.77f,   // country: one note, with the odd double-stop under it
 		3 => 1.24f,   // metal: it is supposed to be on top

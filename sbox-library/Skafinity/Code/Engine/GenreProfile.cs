@@ -99,7 +99,15 @@ readonly struct MixProfile
 sealed class GenreProfile
 {
 	// ── Feel ──
-	/// <summary>Swing band, as a fraction of an eighth note.</summary>
+	/// <summary>Chance this song swings AT ALL. Swing is a decision before it is a depth: a band
+	/// alone cannot say "straight", because its floor is a swing so shallow the ear reads it as
+	/// straight anyway — which made "how swung" and "swung or not" the same number, and neither
+	/// one legible. A genre that never swings declares 0 and needs no band.</summary>
+	public float SwingChance { get; init; }
+
+	/// <summary>Swing band, as a fraction of an eighth note — how deep, GIVEN that the song swings.
+	/// Because a straight song is now reachable directly, the floor here is what the genre's swing
+	/// sounds like when it is present, not the point where it fades out.</summary>
 	public float SwingMin { get; init; }
 	public float SwingMax { get; init; }
 
@@ -170,6 +178,22 @@ sealed class GenreProfile
 	public Pattern[] CompFigures { get; init; }
 	public CompStyle Comp { get; init; }
 
+	/// <summary>What the main chordal voice becomes once the section is loud enough, and the
+	/// figures it plays there. Null (the default) means the genre comps one way all song.
+	///
+	/// This is a genre's DYNAMIC, not a second genre: the same voice, the same chord, a different
+	/// instrument technique because the section asked for one. Third-wave ska is the case that
+	/// needs it — a clean offbeat skank through the verse dropping into distorted power chords for
+	/// the chorus is the single most recognisable thing about the style, and no amount of tuning
+	/// the skank reaches it, because the chorus is not a louder skank but a different part.
+	///
+	/// The threshold is on the section's ENERGY rather than on its type, so it stays the same kind
+	/// of value as everything else voices read — a genre that wanted its bridge loud would get it
+	/// by giving the bridge energy, not by naming the bridge here.</summary>
+	public Pattern[] LoudCompFigures { get; init; }
+	public CompStyle LoudComp { get; init; }
+	public float LoudFrom { get; init; } = 0.9f;
+
 
 	/// <summary>The second chordal voice — the keys/piano/synth layer, where the genre has one.
 	/// </summary>
@@ -209,23 +233,38 @@ sealed class GenreProfile
 	public EndingStyle[] Endings { get; init; }
 	public int[] EndingWeights { get; init; }
 
-	// Swing is a genre's identity, not a preference. Ska lives on a pushed offbeat; metal and
-	// punk are machine-straight and any shuffle at all reads as sloppy; rock and pop sit near
-	// straight with a touch of human push; country keeps a light shuffle under the train beat.
+	// Swing is a genre's identity, not a preference — and it is a yes/no before it is a depth.
+	// Country is the genre that kept the shuffle; rock takes one a quarter of the time and is
+	// otherwise straight; ska (third wave), metal, punk and pop never swing at all. Tempo and
+	// swing are not independent in the real music either: the slow end of a lineage shuffles and
+	// the fast end goes straight, which is why the uptempo roll halves the CHANCE of a swing.
 	//
 	// Tempo is the same kind of value. One shared 130–185 band made a metal song and a country
 	// song run at the same speed, which is most of what "they all sound alike" was — so each
 	// genre carries its own band and its own uptempo band.
 	static readonly GenreProfile[] Profiles =
 	{
-		// ── ska — laid-back reggae-rock, pushed offbeat, the one genre whose lead is a horn ──
+		// ── ska — THIRD WAVE (ska-punk): straight and fast, clean skank verses into loud choruses ──
+		// Genre 0 was tuned as first-wave/rocksteady — shuffled, 130–175, a melodic reggae bass under
+		// a roomy bass-forward mix and a form that deliberately did not climb. That is a real music
+		// and it is not this one. The waves run ska (late 50s–60s, shuffled, out of American R&B) →
+		// rocksteady → reggae, and then 2 Tone (1979, straight, punk-sharpened) → the third wave
+		// (90s US ska-punk); the tempo band alone already put this genre in the last of those, so
+		// every other value was describing a different era than the tempo was.
 		new()
 		{
-			SwingMin = 0.10f, SwingMax = 0.22f, ShuffleChance = 0.22f,
-			BpmMin = 130, BpmMax = 175, FastBpmMin = 155, FastBpmMax = 185,
-			TempoFloor = 112, TempoCeil = 200,
-			ChordBars = 2, RideLean = 0.40f, HornLead = true,
-			Endings = new[] { EndingStyle.Ring, EndingStyle.Cadence, EndingStyle.Fall },
+			SwingChance = 0f,   // 2 Tone dropped the shuffle for punk's straight eighths; the third wave never took it back
+			// Anchored on a record rather than on an adjective. "Ska is fast" first put this band at
+			// 150–190, which made a REFERENCE-FAST ska song the median and left the tempo knob no
+			// usable travel upward. Reel Big Fish's "Sell Out" is ~103 bpm as counted, i.e. ~206 in
+			// THIS engine's units — the skank fires once per beat here (the "and" of each beat), so
+			// the engine counts the double-time reading and every ska tempo has to be converted
+			// before it means anything. 206 is a fast ska song, so it belongs at the CEILING; the
+			// ordinary band sits well under it and the knob is what reaches up there.
+			BpmMin = 138, BpmMax = 172, FastBpmMin = 165, FastBpmMax = 190,
+			TempoFloor = 118, TempoCeil = 210,
+			ChordBars = 2, RideLean = 0.20f, HornLead = true,
+			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
 			Form = SongForm.Ska,
 			Scales = Harmony.SkaScales, ScaleWeights = Harmony.SkaScaleWeights,
@@ -233,15 +272,27 @@ sealed class GenreProfile
 			Voicings = Harmony.SkaVoicings, VoicingWeights = Harmony.SkaVoicingWeights,
 			BassPatterns = Harmony.SkaBass,
 			CompFigures = CompFigure.Ska, Comp = CompStyle.Skank,
+			// The dynamic that IS third-wave ska: the skank stops for the chorus and the same voice
+			// plays power chords through a driven amp. LoudComp reuses punk's downstroke because the
+			// technique genuinely is punk's — what keeps the genre distinct is that it only does this
+			// half the time, over ska's harmony, with the horns still on top.
+			LoudCompFigures = CompFigure.SkaLoud, LoudComp = CompStyle.Downstroke,
 			Grooves = DrumGroove.Ska, GrooveWeights = new[] { 3, 2 },
 			Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
-			AccentDown = 0.9f, AccentBack = 1f, AccentOff = 1.1f,   // the offbeat is the loud one
-			Mix = new MixProfile( 1.25f, 1.05f, 1.05f, 1f, 0.95f ), // roomy, bass-forward
+			AccentDown = 0.95f, AccentBack = 1.05f, AccentOff = 1.1f, // the offbeat is still the loud one
+			// Dry and bright — a 90s record, not a 60s room. The high trim is a TIMBRE call and was
+			// checked not to be a level one: moving it 0.95→1.15 shifts the kit's RMS by 0.02%,
+			// because RMS is kick and snare energy and this rides the hats and cymbals on top.
+			Mix = new MixProfile( 0.65f, 1f, 0.95f, 1.05f, 1.15f ),
 		},
 		// ── rock — mid-tempo minor vamps behind a straight backbeat ──
 		new()
 		{
-			SwingMin = 0f, SwingMax = 0.08f,
+			// A quarter of rock songs are shuffle-rock and the rest are dead straight. The old
+			// 0–0.08 band was neither: it swung every song by an amount described as "a touch of
+			// human push", which a swing warp cannot deliver — the warp moves EVERY offbeat eighth
+			// late by the SAME amount, which is a groove. Human feel is DrumPush and Expression.
+			SwingChance = 0.25f, SwingMin = 0.10f, SwingMax = 0.16f,
 			BpmMin = 110, BpmMax = 160, FastBpmMin = 150, FastBpmMax = 175,
 			TempoFloor = 88, TempoCeil = 185,
 			ChordBars = 2, RideLean = 0.55f,
@@ -262,7 +313,8 @@ sealed class GenreProfile
 		// ── country — the slowest band; a light shuffle under the train beat ──
 		new()
 		{
-			SwingMin = 0.04f, SwingMax = 0.16f, ShuffleChance = 0.18f,
+			// The genre that kept the shuffle. Straight country is real country, so this is not 1.
+			SwingChance = 0.45f, SwingMin = 0.10f, SwingMax = 0.18f, ShuffleChance = 0.18f,
 			BpmMin = 95, BpmMax = 130, FastBpmMin = 130, FastBpmMax = 150,
 			TempoFloor = 78, TempoCeil = 162,
 			ChordBars = 2, RideLean = 0.30f,
@@ -283,7 +335,7 @@ sealed class GenreProfile
 		// ── metal — the widest band: doom-slow through thrash, under a double-kick ──
 		new()
 		{
-			SwingMin = 0f, SwingMax = 0.02f,
+			SwingChance = 0f,   // machine-straight; the old 0–0.02 band was ~3 ms and claimed a feel it never had
 			BpmMin = 90, BpmMax = 160, FastBpmMin = 160, FastBpmMax = 200,
 			TempoFloor = 70, TempoCeil = 210,
 			ChordBars = 2, RideLean = 0.65f,
@@ -304,7 +356,7 @@ sealed class GenreProfile
 		// ── punk — always hot, and a chord per bar so the four-chord loop IS the hypermeasure ──
 		new()
 		{
-			SwingMin = 0f, SwingMax = 0.03f,
+			SwingChance = 0f,   // machine-straight
 			BpmMin = 165, BpmMax = 200, FastBpmMin = 165, FastBpmMax = 200, AlwaysFast = true,
 			TempoFloor = 130, TempoCeil = 225,
 			ChordBars = 1, RideLean = 0.20f,
@@ -325,7 +377,7 @@ sealed class GenreProfile
 		// ── pop — dance tempo over four-on-the-floor, a chord per bar ──
 		new()
 		{
-			SwingMin = 0f, SwingMax = 0.05f,
+			SwingChance = 0f,   // quantised by construction — the grid is the genre
 			BpmMin = 100, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
 			TempoFloor = 84, TempoCeil = 152,
 			ChordBars = 1, RideLean = 0.30f,
@@ -353,14 +405,18 @@ sealed class GenreProfile
 	/// have one — a genuine 2:1 triplet shuffle, which is a FEEL rather than a wider band.
 	/// Both paths consume the same two draws so the choice shifts nothing downstream.</summary>
 	/// <param name="fast">Uptempo songs tighten toward the straight end — at speed a wide
-	/// shuffle stops reading as a groove and starts reading as a drag.</param>
+	/// shuffle stops reading as a groove and starts reading as a drag. It halves the CHANCE, never
+	/// the depth: scaling the depth pushed the shallow end of the band under the threshold where
+	/// swing is audible at all, and it did it worst exactly where the eighth was already shortest,
+	/// so a fast song's "reduced swing" was a straight song wearing a number. A song either swings
+	/// at a depth its genre means or it does not swing.</param>
 	public float DrawSwing( Rng rng, bool fast )
 	{
 		bool shuffle = rng.Chance( ShuffleChance ) && !fast;
+		bool swung = rng.Chance( fast ? SwingChance * 0.5f : SwingChance );
 		float t = rng.Next();
 		if ( shuffle ) return ShuffleMin + t * (ShuffleMax - ShuffleMin);
-		float swing = SwingMin + t * (SwingMax - SwingMin);
-		return fast ? swing * 0.5f : swing;
+		return swung ? SwingMin + t * (SwingMax - SwingMin) : 0f;
 	}
 
 	/// <summary>This song's tempo, drawn from the genre's band (its uptempo band when

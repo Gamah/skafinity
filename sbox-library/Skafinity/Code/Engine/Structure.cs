@@ -91,18 +91,22 @@ static class SongForm
 	// its chorus and a breakdown falls out of the bottom.
 	const float Low = 0.30f, Mid = 0.55f, Lift = 0.75f, Full = 1.00f;
 
-	// Ska — the reggae-rock shape: sections rotate around the chorus, the bridge drops to skank
-	// and bass, and the whole thing leans laid-back rather than climbing.
+	// Ska — the third-wave shape, and it CLIMBS. The old form opened on the chorus and rotated
+	// around it because the genre was tuned laid-back; ska-punk is dynamic music built on the drop
+	// between a clean skank verse and a distorted chorus (GenreProfile.LoudComp reads the energy
+	// column below to make that happen), so the form has to set that drop up rather than sit level.
+	// The bridge is the breakdown — back to skank and bass before the last chorus.
 	public static readonly Part[] Ska =
 	{
-		new( Section.Intro,  4, energy: Low, tempoMul: 0.98f ),
-		new( Section.Chorus, 8, energy: Full ),
-		new( Section.Verse,  8, 0, energy: Mid ),
-		new( Section.Chorus, 8, energy: Full ),
-		new( Section.Bridge, 8, energy: Low + 0.05f ),
-		new( Section.Verse,  8, 1, energy: Mid, hemiola: true ),
-		new( Section.Chorus, 8, energy: Full ),
-		new( Section.Ending, 4, energy: Lift ),
+		new( Section.Intro,     4, energy: Low, tempoMul: 0.98f ),
+		new( Section.Verse,     8, 0, energy: Mid ),
+		new( Section.PreChorus, 4, energy: Lift ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Verse,     8, 1, energy: Mid, hemiola: true ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Bridge,    8, energy: Low + 0.05f ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Ending,    4, energy: Lift ),
 	};
 
 	// Rock — verse / pre-chorus / chorus, with the solo where a rock song puts it: after the

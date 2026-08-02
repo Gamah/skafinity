@@ -23,6 +23,12 @@ public sealed partial class MusicGen
 	// to sit UNDER the kit — it is the bed, not the song.
 	(float Drive, float CutEnv, float Reso, float Level) RhythmGtrTone() => _genre switch
 	{
+		// Ska plays this voice only in its LOUD sections (the verses are the skank), so this is the
+		// third-wave chorus tone specifically: brighter than punk's and driven past DirtyChord, so
+		// the chorus lands as power chords while the clean skank keeps the song's 7ths and 9ths.
+		// Level sits above punk's because the loud figures are placed hits rather than a wall of
+		// downstrokes — fewer onsets carrying the same section.
+		0 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2400f, 0.75f, 0.45f),       // ska-punk chorus
 		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 2600f, 0.8f, 0.55f), // country strum
 		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1100f, 0.7f, 0.80f),          // metal riff
 		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2000f, 0.75f, 0.35f),       // punk downstrokes

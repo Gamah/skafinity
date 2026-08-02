@@ -309,14 +309,46 @@ as knobs makes a reroll able to produce nonsense — swing was the example: a gl
 meant shuffle could hand metal a 40% shuffle. `GenreProfile` holds that kind of value and draws
 it per song from the seed.
 
-It carries the swing band and the **shuffle chance** (a 2:1 triplet shuffle is a different feel,
-not a wider band — widening ska's band to reach it would only make its ordinary songs sloppy), the
-**tempo band and uptempo band**, `ChordBars` (2 bars/chord, or 1 for punk/pop so the four-chord
-loop *is* the hypermeasure), the ride-vs-hats lean, whether the lead is the ska horn or a guitar,
-and **which tables the genre draws from for everything else**: harmony (scales + weights,
-progressions, voicings), the `Form` (its section map), the `CompFigures`/`KeysFigures` its chordal
-voices play, its `Grooves`, its `BassPatterns`, its `LeadStyle`, its accent weights and its `Mix`.
+It carries the **swing chance** and swing band, the **shuffle chance** (a 2:1 triplet shuffle is a
+different feel, not a wider band — widening country's band to reach it would only make its ordinary
+songs sloppy), the **tempo band and uptempo band**, `ChordBars` (2 bars/chord, or 1 for punk/pop so
+the four-chord loop *is* the hypermeasure), the ride-vs-hats lean, whether the lead is the ska horn
+or a guitar, **what the chordal voice becomes when a section is loud** (`LoudComp`), and **which
+tables the genre draws from for everything else**: harmony (scales + weights, progressions,
+voicings), the `Form` (its section map), the `CompFigures`/`KeysFigures` its chordal voices play,
+its `Grooves`, its `BassPatterns`, its `LeadStyle`, its accent weights and its `Mix`.
 `Harmony` is just the tables — read `GenreProfile.For(g).Progressions`.
+
+**Swing is a decision before it is a depth.** `SwingChance` says whether a song swings at all and
+the band says how deep it swings *given that it does*; a genre that never swings declares 0 and
+needs no band. One band alone could not express "straight", because its floor was a swing too
+shallow to hear — so "how swung" and "swung or not" were the same number and neither was legible.
+Today only country (0.45, plus the shuffle) and rock (0.25) swing; ska, metal, punk and pop never
+do. **The uptempo roll halves the CHANCE, never the depth.** Scaling the depth was the bug: it
+pushed the shallow end of the band under the audibility threshold, and did it worst exactly where
+the eighth was already shortest, so a fast ska song came out at ~9 ms of push — a straight song
+wearing a number. A song either swings at a depth its genre means or it does not swing.
+
+**Tempo and swing are not independent, because they are not independent in the music.** The slow
+end of a lineage shuffles and the fast end goes straight — first-wave ska (110–135, out of the
+American R&B shuffle) against 2 Tone and the third wave (fast, straight, punk-sharpened); slow
+reggae swings its hats and fast reggae does not. That correlation is why the uptempo roll suppresses
+swing at all, and it is also the trap: **a genre's tempo band and its swing chance together pick an
+ERA**, so changing one without the other describes two different musics at once. Genre 0's tempo
+band had already put it in the third wave while every other value still said rocksteady, and *that*
+was the actual defect behind "ska sometimes doesn't swing".
+
+**A genre may change technique when a section gets loud** (`LoudComp` + `LoudCompFigures`, gated on
+`LoudFrom` against the section's energy). This is a genre's DYNAMIC, not a second genre: same voice,
+same chord, different instrument gesture. Third-wave ska is the case that needs it — a clean offbeat
+skank through the verses dropping into distorted power chords for the chorus is the most recognisable
+thing about the style, and no amount of tuning the skank reaches it, because a chorus is not a louder
+skank but a different part. Ska routes to punk's `Downstroke` and picks up `RhythmGtrTone`'s genre-0
+entry, whose drive sits past `DirtyChord`, so `DrivenVoicing` drops the third and the chorus lands as
+power chords while the skank keeps the song's 7ths and 9ths. **The threshold is on energy, not on
+section type** — a genre wanting a loud bridge gives the bridge energy rather than naming it here —
+and the loud figure is drawn ONCE PER SONG, because the loud sections are the choruses and every
+chorus must agree. The hemiola still outranks it: that is a metric device, and metre beats timbre.
 
 Everything that used to be a shared `switch` is now a table lookup, and that is the pattern to
 follow: the old drum `switch` resolved rock, country AND punk to one `default` backbeat, one
@@ -622,7 +654,8 @@ hum. Every genre now draws two tunes per song, off their own streams (`{tag}:tun
   A second voice that fires on every note is not an ornament, it is the instrument.
 
 The ska skank is one comp style among six, not the model for the others — the chordal voice is the
-bed under the tune in every genre, including ska.
+bed under the tune in every genre, including ska. Ska is also the one genre that plays *two* of them
+(`GenreProfile.LoudComp`): the skank through its verses, punk's downstroke through its choruses.
 
 **The tune is as long as the harmonic cycle** (`ChordBars × progression length`, capped at 8 bars).
 A four-bar tune over an eight-bar cycle states itself twice and the second statement lands over

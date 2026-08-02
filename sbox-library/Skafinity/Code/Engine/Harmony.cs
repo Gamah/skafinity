@@ -88,29 +88,35 @@ static class Harmony
 	public static readonly int[] Power = { 0, 4 };
 	public static readonly int[] PowerFlat7 = { 0, 4, 6 };
 
-	// ── Ska harmony (Genre 0) ──
-	// Bright and offbeat: ska/rocksteady sits in major, and leans mixolydian for the ♭VII moves
-	// its progressions take.
+	// ── Ska harmony (Genre 0 — third wave) ──
+	// Bright and major: third-wave ska is upbeat major-key music, and mixolydian is what keeps its
+	// ♭VII moves available. The wave shift moved the WEIGHT toward plain major rather than the
+	// table itself — the modes were already right, which is the part of the genre that did not
+	// need retuning.
 	public static readonly int[][] SkaScales =
 	{
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major
 		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian
 	};
-	public static readonly int[] SkaScaleWeights = { 3, 2 };
+	public static readonly int[] SkaScaleWeights = { 4, 2 };
 
-	// Rocksteady/ska voice their chords with the 7th and the 9th — the single biggest thing
-	// separating a ska chord from a rock one, and the reason a plain triad read as "not ska".
+	// The 7ths and 9ths stay: they are what make the CLEAN SKANK read as ska rather than as a
+	// bright rock stab, and the skank is still what the verses play. They cost nothing in the loud
+	// sections — the driven guitar drops its third there anyway (see DrivenVoicing), so the same
+	// voicing spells a rocksteady chop in the verse and a power chord in the chorus.
 	public static readonly int[][] SkaVoicings = { Seventh, Ninth, Triad, Sixth };
-	public static readonly int[] SkaVoicingWeights = { 4, 2, 2, 1 };
+	public static readonly int[] SkaVoicingWeights = { 3, 2, 3, 1 };
 
-	// The bright turnarounds ska keeps: the mixolydian ♭VII move and the ii–V that punk and pop
-	// never touch. The anthem loops (I–V–vi–IV, vi–IV–I–V) moved out to punk and pop, which is
-	// where they actually belong.
+	// The bright turnarounds ska keeps. The mixolydian ♭VII moves are the ones doing the work
+	// here: punk and pop hold the plain-major anthem loops (I–V–vi–IV, vi–IV–I–V, I–IV–V–V,
+	// I–V–IV–V), and ska-punk sits close enough to punk that ♭VII is most of what is left to tell
+	// them apart harmonically — so nothing here may drift toward those tables. The 50s/rocksteady
+	// ii–V turnaround went with the wave: it is the sound of the era this genre no longer is.
 	public static readonly int[][] SkaProgressions =
 	{
 		new[] { 0, 3, 4, 3 }, // I–IV–V–IV
 		new[] { 0, 6, 3, 0 }, // I–♭VII–IV–I (mixolydian)
-		new[] { 0, 5, 1, 4 }, // I–vi–ii–V (the 50s/rocksteady turnaround)
+		new[] { 0, 6, 4, 0 }, // I–♭VII–V–I (the mixolydian cadence)
 		new[] { 0, 3, 0, 4 }, // I–IV–I–V
 		new[] { 5, 4, 3, 4 }, // vi–V–IV–V (the minor-tinged vamp)
 		new[] { 0, 0, 3, 4 }, // I pedal → IV–V
@@ -126,22 +132,25 @@ static class Harmony
 	// old tables shared literal rows ({0,0,0,0,0,0,0,App} was in four of the five).
 	static Pattern P( params int[] cells ) => Pattern.Eighths( cells );
 
-	// Ska: the melodic reggae bass — long legato chord tones, 1↔5 motion, and real walking lines
-	// between the changes. It is the lead instrument of the rhythm section here, so its phrases
-	// are two and four bars long.
+	// Ska (third wave): a DRIVING bass. The spacious one-drop and the long legato 1↔5 lines that
+	// used to live here are rocksteady/reggae playing — the right part for a genre this engine does
+	// not have yet (see PLAN.md), and recoverable from git history when it does. A ska-punk bassist
+	// runs eighths under the skank and pops the octave, closer to punk than to reggae; what keeps
+	// these apart from PunkBass is that they still MOVE — walking lines and octave answers rather
+	// than the undifferentiated chug that is punk's whole idea.
 	public static readonly Pattern[] SkaBass =
 	{
-		P( 0, Rest, 0, 12, Rest, 7, 5, Approach ),                        // sublime melodic (1 bar)
-		P( Rest, Rest, 0, Rest, 0, Rest, 7, Rest,
-		   Rest, Rest, 0, Rest, 0, Rest, 7, Approach ),                   // one-drop, spacious (2 bars)
-		P( 0, Rest, 2, Rest, 4, Rest, 5, Rest,
-		   7, Rest, 5, Rest, 4, Rest, 2, Approach ),                      // walking up and back (2 bars)
-		P( 0, Rest, Rest, Rest, 7, Rest, Rest, Rest,
-		   0, Rest, Rest, 12, 7, Rest, 5, Approach ),                     // 1↔5 legato, answered (2 bars)
-		P( 0, 12, 0, 7, Rest, 12, 7, Rest,
-		   0, 12, 0, 7, Rest, 12, 7, Rest,
-		   0, 12, 0, 7, Rest, 12, 7, Rest,
-		   0, 7, 5, 4, 2, Rest, 0, Approach ),                            // busy ska, walks out (4 bars)
+		P( 0, 0, 0, 0, 7, 0, 0, 0,
+		   0, 0, 0, 0, 12, 0, 7, Approach ),                              // driving eighths, octave on the way out (2 bars)
+		P( 0, 12, 0, 12, 0, 12, 7, Approach ),                            // the octave pump (1 bar)
+		P( 0, 0, 2, 0, 4, 0, 5, 0,
+		   7, 0, 5, 0, 4, 0, 2, Approach ),                               // walking eighths up and back (2 bars)
+		P( 0, Rest, 0, 7, Rest, 0, 12, Rest,
+		   0, Rest, 0, 7, Rest, 12, 7, Approach ),                        // the verse line that breathes under the skank (2 bars)
+		P( 0, 0, 0, 0, 0, 0, 12, 0,
+		   0, 0, 0, 0, 7, 0, 12, 0,
+		   0, 0, 0, 0, 0, 0, 12, 0,
+		   0, 7, 5, 4, 2, 0, 0, Approach ),                               // four bars that walk out of the phrase
 	};
 
 	// ── Rock harmony (Genre 1) ──
