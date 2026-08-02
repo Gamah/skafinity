@@ -652,6 +652,40 @@ static class Program
 		Check( "…and untrimmed they do not, so the trim is not measuring nothing",
 			worstRaw > 2f, $"worst untrimmed {worstRaw:0.0} dB" );
 
+		// ── fill density ──
+		// A genre's FillHits is a TARGET the grid has to be able to reach: the per-cell chances
+		// saturate on the beats first, so a big enough number quietly buys nothing. Rock's is the
+		// one measured figure (13.2/bar) and it is the one that must land exactly; the rest are
+		// design calls and are only asked to be reachable — which they are because the model water-
+		// fills its ornament cells rather than scaling flat, and metal is the genre that proved it
+		// had to (a flat scale played 13.4 of the 14 it asks for).
+		float worstMiss = 0f; string missAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			float want = GenreProfile.For( g ).FillHits;
+			float got = MusicGen.FillDensityOnGrid( want );
+			if ( want - got > worstMiss ) { worstMiss = want - got; missAt = $"genre {g} wants {want:0.0}, plays {got:0.0}"; }
+		}
+		Check( "every genre's fill density is one the fill grid can actually reach",
+			worstMiss <= 0.05f, missAt );
+		Check( "rock's fill plays the density that was measured off the dataset",
+			MathF.Abs( MusicGen.FillDensityOnGrid( GenreProfile.For( 1 ).FillHits ) - 13.2f ) < 0.3f,
+			$"{MusicGen.FillDensityOnGrid( GenreProfile.For( 1 ).FillHits ):0.00}/bar" );
+		// The old floor was 16 hits a bar with no branch anywhere that played fewer, so every
+		// genre must now sit under it — otherwise the whole row bought a rename.
+		bool underOldFloor = true, densitiesDiffer = false;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			underOldFloor &= MusicGen.FillDensityOnGrid( GenreProfile.For( g ).FillHits ) < 16f;
+			densitiesDiffer |= GenreProfile.For( g ).FillHits != GenreProfile.For( 0 ).FillHits;
+			Check( $"genre {g} weights all four fill shapes",
+				GenreProfile.For( g ).FillShapes.Length == 4, null );
+		}
+		Check( "every genre's fill is sparser than the old unconditional sixteenth floor",
+			underOldFloor, null );
+		Check( "…and fill density is per genre rather than one number in six coats",
+			densitiesDiffer, null );
+
 		// Swing is genre character rather than a knob, and it is a YES/NO before it is a depth: a
 		// genre that never swings declares SwingChance 0 and needs no band at all. So a draw is one
 		// of exactly three things — straight, somewhere in the genre's swing band, or somewhere in
