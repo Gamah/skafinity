@@ -459,18 +459,23 @@ sealed class GenreProfile
 		// gets), Cher "Believe" 133 — the first two inside the ordinary band and the third exactly
 		// what the uptempo band is for. The HALF-TIME BACKBEAT side, which this genre's second
 		// groove is and which nothing had ever been anchored against: Britney Spears "...Baby One
-		// More Time" 93 and Backstreet Boys "I Want It That Way" 99, both UNDER the old 100 floor.
-		// So the ceiling holds and the floor drops to 92: the band has to cover both grooves,
-		// because DrumGroove.Pop draws both. The published pop range (100–130) describes the dance
-		// half alone, which is how the floor came to be set above two of the decade's biggest pop
-		// singles.
+		// More Time" 93 and Backstreet Boys "I Want It That Way" 99, both UNDER the 100 floor.
+		// THE FLOOR STAYS AT 100 ANYWAY, and the half-time pair is why the reasoning is written out
+		// rather than the number changed. Tempo is drawn BEFORE the groove is (ComposePlan), so a
+		// floor low enough for a half-time record is a floor the four-on-the-floor groove draws
+		// from too — and 92 under a four-on-the-floor kick is not a pop single, it is a pop single
+		// running slow. Two anchors that share a groove do not move a band that both grooves read;
+		// they describe how far under the band that ONE groove goes, and the genre already reaches
+		// there through TempoScale (TempoFloor 84, comfortably past both). Coupling the band to the
+		// groove would fix it exactly, and is not worth a mechanism that only pop would ever use.
+		// The published pop range (100–130) and the dance anchors agree with the floor as it is.
 		//
 		// *NSYNC "Bye Bye Bye" is deliberately NOT an anchor: it is reported at 173 and at 86–87 and
 		// nothing here decides which, so it is exactly the coin flip the header warns about.
 		new()
 		{
 			SwingChance = 0f,   // quantised by construction — the grid is the genre
-			BpmMin = 92, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
+			BpmMin = 100, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
 			TempoFloor = 84, TempoCeil = 152,
 			ChordBars = 1, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Fall, EndingStyle.Ring, EndingStyle.Cadence },

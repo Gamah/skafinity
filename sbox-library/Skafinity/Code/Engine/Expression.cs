@@ -96,6 +96,12 @@ public sealed partial class MusicGen
 						bend: MathF.Max( knob, 0.45f ), bendDepth: 2f ),
 					// Shred passes through its notes; when it bends it is a semitone on the way by.
 					3 => new Expression( 0.30f, knob, 0.10f, knob, bend: knob * 0.5f, bendDepth: 1f ),
+					// POP DOES NOT BEND: its lead is a plucky synth, not a string, and it is only
+					// in this case at all because it is not the ska horn section. Its knob is
+					// labelled GLIDE in the vibe grid (VibeCodec) and glide is exactly what it
+					// buys — a bend here would be the one knob in the toy whose label describes a
+					// different gesture from the one it performs.
+					5 => new Expression( 0.30f, knob, 0.10f, knob ),
 					_ => new Expression( 0.30f, knob, 0.10f, knob, bend: knob * 0.8f, bendDepth: 2f ),
 				};
 			}
@@ -141,11 +147,17 @@ public sealed partial class MusicGen
 		// it rolled.
 		if ( ex.Bend > 0f && ex.BendDepth > 0f && rng.Chance( ex.Bend ) )
 		{
-			bool release = rng.Chance( 0.45f );                       // bent and released, or bent and held
+			// A BEND IS MOSTLY RELEASED, because a held one REPLACES the composed note. The
+			// melody's pitch was chosen against the chord it sits on (NearestSoundingTone); a bend
+			// that never comes back un-chooses it and the tune's own hook arrives on a different
+			// note every statement. Held bends stay in the vocabulary as the minority — that is a
+			// player leaning on one note — rather than as what a bend usually is.
+			bool release = rng.Chance( 0.7f );
 			float depth = rng.Chance( 0.3f ) ? MathF.Max( 1f, ex.BendDepth - 1f ) : ex.BendDepth;
-			if ( noteSeconds >= BendMinSeconds )
+			int semis = BendSemisTo( midi, depth );
+			if ( noteSeconds >= BendMinSeconds && semis > 0 )
 			{
-				v.BendUpSemis = depth;
+				v.BendUpSemis = semis;
 				v.BendUpStart = BendStartSeconds;
 				v.BendUpTime = BendRiseSeconds;
 				v.BendUpHold = release ? BendHoldSeconds : 0f;
@@ -153,6 +165,26 @@ public sealed partial class MusicGen
 		}
 		return v;
 	}
+
+	/// <summary>
+	/// How far a bend from <paramref name="midi"/> actually travels: to the nearest note OF THE
+	/// SONG'S KEY at or above <paramref name="depth"/> semitones up, and never back to the note it
+	/// started from. 0 means there is nothing in reach and the bend does not happen.
+	///
+	/// A PLAYER BENDS TO A NOTE, NOT BY AN INTERVAL. The string arrives at the next tone of the
+	/// scale, which is a whole step in some places and a semitone in others — that is the same
+	/// fact about seven-note scales that <see cref="Harmony.VoicedTone"/> exists for, arriving
+	/// here through the melody instead of through a chord. Bent by a fixed interval the note lands
+	/// off the key on every degree whose step is the other size: a whole step off the third or the
+	/// seventh of a major scale, a semitone off almost anywhere. It is at its worst on a bend that
+	/// is HELD, because the note then spends its whole tail out of the key rather than passing
+	/// through — which is what "out of tune" means when nothing has actually been mistuned.
+	///
+	/// Depth stays the instrument's PREFERENCE — how far the hand reaches, which is the thing a
+	/// genre has an opinion about — rather than the distance the pitch travels.
+	/// </summary>
+	int BendSemisTo( int midi, float depth )
+		=> Harmony.BendSemis( _scale, ((midi - _rootMidi) % 12 + 12) % 12, depth );
 
 	// Bake a rolled voicing onto a patch. VibDepth is harmless unless the patch carries a
 	// vibrato RATE (p.Vibrato) — so a voice the user muted to 0 Hz stays dry — which means a

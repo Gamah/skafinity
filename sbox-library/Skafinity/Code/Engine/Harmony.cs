@@ -362,6 +362,46 @@ static class Harmony
 
 	/// <summary>Degree → MIDI pitch against <paramref name="scale"/>, wrapping octaves in both
 	/// directions so any degree resolves.</summary>
+	/// <summary>
+	/// How far a bend travels, in semitones, from a note sitting <paramref name="pc"/> semitones
+	/// above the tonic: to the nearest tone OF THE SCALE at or beyond <paramref name="depth"/>
+	/// semitones up, and never back to the note it started from. 0 means nothing in reach.
+	///
+	/// A PLAYER BENDS TO A NOTE, NOT BY AN INTERVAL. The string arrives at the next tone of the
+	/// scale, which is a whole step in some places and a semitone in others — the same fact about
+	/// seven-note scales that <see cref="VoicedTone"/> exists for, reached through the melody
+	/// instead of through a chord. Bent by a fixed interval the note lands off the key on every
+	/// degree whose step is the other size: a whole step off the third or the seventh of a major
+	/// scale, a semitone off almost anywhere. It is worst on a bend that is HELD, because the note
+	/// then spends its whole tail outside the key rather than passing through it — which is what
+	/// "out of tune" sounds like when nothing has actually been mistuned.
+	///
+	/// Depth stays the instrument's PREFERENCE — how far the hand reaches, which is the thing a
+	/// genre has an opinion about — rather than the distance the pitch travels.
+	/// </summary>
+	public static int BendSemis( int[] scale, int pc, float depth )
+	{
+		int want = Math.Max( 1, (int)MathF.Round( depth ) );
+		int best = 0, bestCost = int.MaxValue;
+		for ( int s = 1; s <= BendReach; s++ )
+		{
+			bool inKey = false;
+			foreach ( int t in scale )
+				if ( (((t % 12) + 12) % 12) == (pc + s) % 12 ) { inKey = true; break; }
+			if ( !inKey ) continue;
+			int cost = Math.Abs( s - want );
+			if ( cost >= bestCost ) continue;
+			bestCost = cost; best = s;
+		}
+		return best;
+	}
+
+	/// <summary>How far up a bend will look for a tone of the scale. A seven-note scale has one
+	/// within two semitones of anywhere, so this is slack for the pentatonic and blues tables
+	/// rather than a range a bend actually reaches — past it there is no note to arrive at and
+	/// the bend does not happen.</summary>
+	public const int BendReach = 4;
+
 	public static int ScaleMidi( int baseMidi, int[] scale, int degree )
 	{
 		int len = scale.Length;

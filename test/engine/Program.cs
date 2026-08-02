@@ -184,6 +184,38 @@ static class Program
 					- Harmony.ScaleMidi( 48, scale, deg ) != 7;
 		Check( "a diatonic fifth really is diminished on some degree", diatonicBreaks );
 
+		// ── a bend lands ON a note of the key ──
+		// A player bends TO a note, not BY an interval: the string arrives at the next tone of the
+		// scale, a whole step in some places and a semitone in others. Bent by a fixed depth it
+		// lands off the key wherever the step is the other size, and a HELD bend then leaves the
+		// note outside the key for its whole tail — which is what "out of tune" means when nothing
+		// has been mistuned. Harmony.BendSemis chooses the note; depth is only how far it reaches.
+		bool bendInKey = true, bendMoves = true;
+		string bendAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			foreach ( var scale in GenreProfile.For( g ).Scales )
+				for ( int pc = 0; pc < 12; pc++ )
+					for ( float depth = 1f; depth <= 2f; depth++ )
+					{
+						int s = Harmony.BendSemis( scale, pc, depth );
+						if ( s == 0 ) { bendMoves = false; bendAt = $"g{g} pc{pc} d{depth}"; continue; }
+						bool inKey = false;
+						foreach ( int t in scale )
+							if ( (((t % 12) + 12) % 12) == (pc + s) % 12 ) inKey = true;
+						if ( inKey && s <= Harmony.BendReach ) continue;
+						bendInKey = false; bendAt = $"g{g} pc{pc} d{depth} -> +{s}";
+					}
+		Check( "a bend always lands on a tone of the song's scale", bendInKey, bendAt );
+		Check( "a bend always has a note in reach", bendMoves, bendAt );
+
+		// …and a fixed depth really would miss, or the rule above is vacuous: somewhere a whole-step
+		// bend has to come back as a semitone because that is the step the scale has there.
+		bool bendAdapts = false;
+		foreach ( var scale in GenreProfile.For( 1 ).Scales )
+			for ( int pc = 0; pc < 12; pc++ )
+				bendAdapts |= Harmony.BendSemis( scale, pc, 2f ) != 2;
+		Check( "a whole-step bend really is a semitone somewhere", bendAdapts );
+
 		// ── a suspension is a delayed third, so it must have a third to land on ──
 		// sus4 and sus2 put the fourth or the second in the third's place. Held for a whole song
 		// that states no quality at all — every voice agrees and nothing is out of key, but there

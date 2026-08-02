@@ -784,6 +784,26 @@ melody follows a suspension to its resolution too. The one strong beat it must N
 horn answer's deliberate step off the chord tone (`RenderSungPhrase`) — that dissonance is the
 gesture.
 
+**A player bends TO a note, not BY an interval.** This is the same fact about seven-note scales
+that `VoicedTone` exists for, arriving through the melody instead of through a chord: the string
+lands on the next tone of the scale, which is a whole step in some places and a semitone in
+others. A bend of a fixed depth therefore lands *off the key* on every degree whose step is the
+other size — a whole step off the third or the seventh of a major scale, a semitone off almost
+anywhere — and it is worst on a bend that is HELD, because the note then spends its whole tail
+outside the key rather than passing through. That is what "out of tune" sounds like when nothing
+has been mistuned. `Harmony.BendSemis(scale, pc, depth)` picks the note; `Expression.BendDepth`
+stays the instrument's *preference* — how far the hand reaches, which is the thing a genre has an
+opinion about — rather than the distance the pitch travels. For the same reason a bend is **mostly
+released**: a held one replaces the composed note, and the tune's pitch was chosen against its
+chord, so a hook that bends away and stays there is a different hook every statement.
+
+**Not every lead that routes to `"LEAD GTR"` is a guitar.** `Expr` picks that case for everything
+that is not the ska horn section, so pop's plucky synth lands there by elimination — and a synth
+does not bend a string. Pop's vibe knob is even labelled `GLIDE` rather than `BENDINESS`, so
+letting it buy a bend would make it the one knob in the toy whose label names a different gesture
+from the one it performs. Check the genre's own row in `VibeCodec` before adding a gesture to that
+case's `_ =>` default.
+
 ---
 
 ## Sections carry state (`Engine/Structure.cs`, `SongForm`)
