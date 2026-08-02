@@ -5235,9 +5235,9 @@ var _memset = Module['_memset'] = (a0, a1, a2) => (_memset = Module['_memset'] =
 var _exp = Module['_exp'] = (a0) => (_exp = Module['_exp'] = wasmExports['exp'])(a0);
 var _sinf = Module['_sinf'] = (a0) => (_sinf = Module['_sinf'] = wasmExports['sinf'])(a0);
 var _powf = Module['_powf'] = (a0, a1) => (_powf = Module['_powf'] = wasmExports['powf'])(a0, a1);
-var _cos = Module['_cos'] = (a0) => (_cos = Module['_cos'] = wasmExports['cos'])(a0);
 var _sin = Module['_sin'] = (a0) => (_sin = Module['_sin'] = wasmExports['sin'])(a0);
 var _expf = Module['_expf'] = (a0) => (_expf = Module['_expf'] = wasmExports['expf'])(a0);
+var _cos = Module['_cos'] = (a0) => (_cos = Module['_cos'] = wasmExports['cos'])(a0);
 var _mono_aot_Skafinity_Wasm_get_method = Module['_mono_aot_Skafinity_Wasm_get_method'] = (a0) => (_mono_aot_Skafinity_Wasm_get_method = Module['_mono_aot_Skafinity_Wasm_get_method'] = wasmExports['mono_aot_Skafinity_Wasm_get_method'])(a0);
 var _mono_aot_System_Console_get_method = Module['_mono_aot_System_Console_get_method'] = (a0) => (_mono_aot_System_Console_get_method = Module['_mono_aot_System_Console_get_method'] = wasmExports['mono_aot_System_Console_get_method'])(a0);
 var _mono_aot_System_Runtime_InteropServices_JavaScript_get_method = Module['_mono_aot_System_Runtime_InteropServices_JavaScript_get_method'] = (a0) => (_mono_aot_System_Runtime_InteropServices_JavaScript_get_method = Module['_mono_aot_System_Runtime_InteropServices_JavaScript_get_method'] = wasmExports['mono_aot_System_Runtime_InteropServices_JavaScript_get_method'])(a0);

@@ -595,6 +595,16 @@ splash and wash. **Both failure modes are worth keeping in mind because they bra
 uniform-decay noise reads as a hi-hat, resolvable partials read as a church bell**, and per-band
 decay is the property that sits between them.
 
+**"A beat is not a pitch" is wrong, and it is the exact form the church bell comes back in.** The
+measurement resolves the cymbal's lowest partials as near-pairs a few Hz apart, and keeping one such
+pair as two real sines looks like a faithful reading of it — the argument being that what is heard is
+the BEAT rather than a note. It is a note. A 232 Hz sine ringing two and a half seconds under noise
+bands that decay far faster is the most exposed thing in the voice, and it reads as a tone sitting
+inside every cymbal. **No tonal component survives in a cymbal at any level**; where the bottom is
+wanted, the band set reaches down and carries it as noise like everything else. `--cymbal` +
+`tools/spectool` is how to check rather than argue: a healthy cymbal here resolves NO sustained
+partials, which is also what the reference recordings measure.
+
 **Two things about a ride are the PATTERN, not the voice**, and both survived every timbre change:
 the engine played eight even strokes a bar separated only by the genre's accent weight, which is a
 wall however good each stroke is (a drummer's "and" is a much lighter stroke — `RideStroke`); and a
@@ -612,6 +622,13 @@ is a property of the pattern and no amount of making the voice cheaper removes i
 object once per song into a lo/hi pair (split at 2.5 kHz, so a soft stroke can be DARKER and not
 merely quieter) and add it per hit. Round robins cost about three milliseconds each at this
 complexity, so the repeat-tell is cheap to break.
+
+**A measured ring length is a cymbal in a ROOM, not a cymbal in this mix.** A crash lands at every
+phrase end and every section start here, and at that density the measured three-to-four-second ring
+never clears before the next one — the arrangement swims. `CrashRingScale` keeps that departure as
+one explicit number rather than a quietly re-fitted constant, so the law stays legible and the mix
+decision stays a mix decision. The ride needs no equivalent: it is struck far more often but its own
+strokes damp each other, which is the physical version of the same problem.
 
 **`--cymbal [dir]` writes one dry hit per cymbal for `tools/spectool` to re-measure**, and a
 spectrum fitted to a measurement is not fitted until the RESULT has been measured the same way. It

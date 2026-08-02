@@ -474,18 +474,14 @@ readonly struct CymbalBands
 {
 	/// <summary>The noise bands: centre, gain, and the ring time that band decays with.</summary>
 	public readonly float[] Hz, Amp, Tau;
-	/// <summary>The low pair — the only tonal components, and the cymbal's size. Two partials a
-	/// few Hz apart, so what is heard is the BEAT between them rather than a pitch.</summary>
-	public readonly float[] LowHz, LowAmp, LowTau;
 	public readonly float Dur, Level, Stick, StickCut;
 	public readonly float SplashLvl, SplashTau, WashLvl, WashTau, NoiseHp, WashLp;
 
-	CymbalBands( float[] hz, float[] amp, float[] tau, float[] lowHz, float[] lowAmp,
-		float[] lowTau, float dur, float level, float stick, float stickCut, float splashLvl,
-		float splashTau, float washLvl, float washTau, float noiseHp, float washLp )
+	CymbalBands( float[] hz, float[] amp, float[] tau, float dur, float level, float stick,
+		float stickCut, float splashLvl, float splashTau, float washLvl, float washTau,
+		float noiseHp, float washLp )
 	{
-		Hz = hz; Amp = amp; Tau = tau; LowHz = lowHz; LowAmp = lowAmp; LowTau = lowTau;
-		Dur = dur; Level = level; Stick = stick; StickCut = stickCut;
+		Hz = hz; Amp = amp; Tau = tau; Dur = dur; Level = level; Stick = stick; StickCut = stickCut;
 		SplashLvl = splashLvl; SplashTau = splashTau; WashLvl = washLvl; WashTau = washTau;
 		NoiseHp = noiseHp; WashLp = washLp;
 	}
@@ -519,8 +515,15 @@ readonly struct CymbalBands
 	/// the whole range. The top must reach ~12 kHz — the measured sustain holds −9…−14 dB at
 	/// 5–10 kHz ringing at ~0.5 s, and an earlier version cut off at 4 kHz and measured 10–15 dB
 	/// light against the reference.</summary>
-	const int Bands = 7;
-	const float BandLo = 250f, BandHi = 12000f;
+	/// <summary>NO TONAL COMPONENTS AT ALL, and the band set reaches down instead. An earlier pass
+	/// kept one low PAIR of real partials for the measured beating — two sines a few Hz apart, on
+	/// the argument that a beat is not a pitch. It is a pitch: 232 Hz ringing for two and a half
+	/// seconds under noise bands that decay much faster is the most exposed thing in the voice, and
+	/// it read as a sine sitting inside every cymbal. That is generation 5's church bell arriving
+	/// through a side door, at a lower level and with a better excuse. The bottom band carries the
+	/// cymbal's size instead, as noise, which is what the rest of the voice is made of.</summary>
+	const int Bands = 8;
+	const float BandLo = 180f, BandHi = 12000f;
 	/// <summary>Band width, as the filter's damping. Wide enough that the filter itself does not
 	/// ring — its own decay is under 2 ms at the bottom band — because the DECAY here is the
 	/// envelope's job. A resonance that rings is a partial, and partials are what generation 5
@@ -540,27 +543,21 @@ readonly struct CymbalBands
 
 	readonly struct Strike
 	{
-		public readonly float Centre, Width, Centre2, Width2, Level2, LowHz, LowLevel;
-		public Strike( float centre, float width, float lowHz, float lowLevel,
-			float centre2 = 0f, float width2 = 0.3f, float level2 = 0f )
+		public readonly float Centre, Width, Centre2, Width2, Level2;
+		public Strike( float centre, float width, float centre2 = 0f, float width2 = 0.3f,
+			float level2 = 0f )
 		{
-			Centre = centre; Width = width; LowHz = lowHz; LowLevel = lowLevel;
+			Centre = centre; Width = width;
 			Centre2 = centre2; Width2 = width2; Level2 = level2;
 		}
 		public float Weight( float f )
 			=> LogBump( f, Centre, Width ) + (Level2 > 0f ? Level2 * LogBump( f, Centre2, Width2 ) : 0f);
 	}
 
-	// The low pair's frequency is the CYMBAL's, not the strike's — it is how big the plate is.
-	// The ride's lowest measured partials sit around 210–290; the dark crash resolved 208/211 and
-	// 255/258 as real beating pairs, which is where its number comes from.
-	static readonly Strike BowStrike = new( 1200f, 1.1f, lowHz: 232f, lowLevel: 0.30f );
-	static Strike BellStrike( float clang ) => new( clang, 0.45f, lowHz: 290f, lowLevel: 0.22f,
-		centre2: 290f, width2: 0.25f, level2: 0.30f );
-	static readonly Strike BrightCrashStrike = new( 3200f, 0.80f, lowHz: 375f, lowLevel: 0.16f,
-		centre2: 400f, width2: 0.55f, level2: 0.25f );
-	static readonly Strike DarkCrashStrike = new( 520f, 0.75f, lowHz: 209f, lowLevel: 0.42f,
-		centre2: 9000f, width2: 0.60f, level2: 0.45f );
+	static readonly Strike BowStrike = new( 1200f, 1.1f );
+	static Strike BellStrike( float clang ) => new( clang, 0.45f, 290f, 0.25f, 0.30f );
+	static readonly Strike BrightCrashStrike = new( 3200f, 0.80f, 400f, 0.55f, 0.25f );
+	static readonly Strike DarkCrashStrike = new( 520f, 0.75f, 9000f, 0.60f, 0.45f );
 
 	/// <summary>How loud one STROKE is, and it is not the same for a ride and a crash even though
 	/// the same arm strikes both. A ride stroke rings for seconds and is played eight times a bar,
@@ -581,6 +578,15 @@ readonly struct CymbalBands
 	/// fixed extra rate costs a 2.5 s band most of its tail and a 0.5 s one very little.</summary>
 	public const float RestrikeTau = 0.70f;
 
+	/// <summary>How much of the measured crash ring is kept. THIS IS A MIX DECISION AND NOT A
+	/// MEASUREMENT — a real crash in a room rings for three or four seconds and the analysis says
+	/// so, but a crash lands at every phrase end and every section start here, so at that density
+	/// the full ring never clears before the next one and the arrangement swims. The law stays
+	/// legible and the departure from it is one number rather than a quietly re-fitted constant.
+	/// The ride is untouched: it is struck far more often but its strokes damp each other
+	/// (RestrikeTau), which is the physical version of the same problem.</summary>
+	const float CrashRingScale = 0.45f;
+
 	public static CymbalBands Bow( float splash = 1f, float wash = 1f, float ring = 1f )
 		=> Build( BowStrike, tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
 			splash: 0.55f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
@@ -600,7 +606,7 @@ readonly struct CymbalBands
 	/// measurement resolves essentially no partials at all. So the splash is not an attack
 	/// transient here, it is a layer with its own third of a second of decay.</summary>
 	public static CymbalBands CrashBright( float splash = 1f, float ring = 1f, float wash = 1f )
-		=> Build( BrightCrashStrike, tauK: 45f, knee: 1000f, sizzle: 0f, ring: ring,
+		=> Build( BrightCrashStrike, tauK: 45f, knee: 1000f, sizzle: 0f, ring: ring * CrashRingScale,
 			splash: 2.30f * splash, splashTau: 0.30f, washLvl: 0.55f * wash,
 			washTau: 1.05f * ring, stick: 0.10f, stickCut: 6000f, noiseHp: 2400f, washLp: 6200f,
 			level: StrokeLevelCrash );
@@ -609,7 +615,7 @@ readonly struct CymbalBands
 	/// opposite shape at both ends: resolved lows that ring, a body gone in half a second, and a
 	/// top that outlives everything.</summary>
 	public static CymbalBands CrashDark( float splash = 1f, float ring = 1f, float wash = 1f )
-		=> Build( DarkCrashStrike, tauK: 13.5f, knee: 0f, sizzle: 1.5f, ring: ring,
+		=> Build( DarkCrashStrike, tauK: 13.5f, knee: 0f, sizzle: 1.5f, ring: ring * CrashRingScale,
 			splash: 1.50f * splash, splashTau: 0.22f, washLvl: 0.35f * wash,
 			washTau: 0.90f * ring, stick: 0.10f, stickCut: 4500f, noiseHp: 200f, washLp: 4200f,
 			level: StrokeLevelCrash );
@@ -630,20 +636,15 @@ readonly struct CymbalBands
 			e += am[b] * am[b];
 			maxTau = MathF.Max( maxTau, ta[b] );
 		}
-		// The low pair, a few Hz apart: the beat between them is the point, so the split is in Hz
-		// and not in cents — a beat is a difference frequency and does not scale with pitch.
-		var lhz = new[] { strike.LowHz, strike.LowHz + 2.6f };
-		var lam = new[] { strike.LowLevel, strike.LowLevel * 0.85f };
-		var lta = new[] { ring * RingTau( lhz[0], tauK, knee, sizzle ),
-			ring * RingTau( lhz[1], tauK, knee, sizzle ) };
-		e += lam[0] * lam[0] + lam[1] * lam[1];
-		maxTau = MathF.Max( maxTau, lta[0] );
 		// Energy-normalised, so the four strikes land comparably before the stroke level is applied.
 		float lvl = level / MathF.Sqrt( MathF.Max( 1e-6f, e ) );
 		// Long enough for the longest component to reach about −45 dB, and no longer: every sample
 		// past that is a multiply spent on silence, and this voice is rendered per HIT.
-		float dur = Math.Clamp( maxTau * 5.2f, 0.6f, 4.0f );
-		return new CymbalBands( hz, am, ta, lhz, lam, lta, dur, lvl, stick, stickCut,
+		// Long enough for the longest band to reach about −31 dB and no longer. A cymbal in a room
+		// keeps going past that; a cymbal in a mix with a whole kit over it does not, and every
+		// sample past the point it stops being audible is a multiply spent on silence.
+		float dur = Math.Clamp( maxTau * 3.6f, 0.6f, 3.0f );
+		return new CymbalBands( hz, am, ta, dur, lvl, stick, stickCut,
 			splash, splashTau, washLvl, washTau, noiseHp, washLp );
 	}
 }
@@ -1055,20 +1056,7 @@ public sealed partial class MusicGen
 			dies[b] = Math.Min( dur, (int)(_sr * c.Tau[b] * 5.0f) + 1 );
 		}
 
-		// The low pair: two sine rotors, phase-offset per hit, beating against each other.
-		int nl = c.LowHz.Length;
-		var cx = new float[nl]; var cy = new float[nl];
-		var rc = new float[nl]; var rs = new float[nl];
 		uint ns = seed;
-		for ( int p = 0; p < nl; p++ )
-		{
-			double w = 2.0 * Math.PI * c.LowHz[p] / _sr;
-			double d = Math.Exp( -1.0 / (_sr * (double)c.LowTau[p]) );
-			rc[p] = (float)(Math.Cos( w ) * d); rs[p] = (float)(Math.Sin( w ) * d);
-			double ph = HitNext( ref ns ) * Math.PI;
-			float a0 = c.LowAmp[p] * (1f + 0.12f * HitNext( ref ns ));
-			cx[p] = (float)(a0 * Math.Cos( ph )); cy[p] = (float)(a0 * Math.Sin( ph ));
-		}
 
 		int stickLen = (int)(_sr * 0.004f);
 		float sa = c.StickCut > 0f ? LpCoeff( c.StickCut ) : 0f;
@@ -1089,13 +1077,6 @@ public sealed partial class MusicGen
 				float v = bp[b].Next( n ) * c.Amp[b] * env[b];
 				env[b] *= dec[b];
 				if ( c.Hz[b] >= BandSplit ) hi += v; else lo += v;
-			}
-			for ( int p = 0; p < nl; p++ )
-			{
-				float x = cx[p] * rc[p] - cy[p] * rs[p];
-				cy[p] = cx[p] * rs[p] + cy[p] * rc[p];
-				cx[p] = x;
-				lo += x;
 			}
 			// The splash (broadband, and on a crash it keeps going for a third of a second) and the
 			// wash (the air, darker and long) — the layers the mode forest never carried anyway.

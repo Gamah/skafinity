@@ -80,6 +80,23 @@ Both were found by listening and both outlived every timbre change:
   shorter decay for as long as the cymbal is played and it compounds over a train the way the
   physics does. A cymbal with nothing landing on it still rings as measured.
 
+### Round 10's notes, and what they changed
+
+Verbatim, because the wording is diagnostic: *"crashes ring way too long in both mp3 files"*, and
+*"everything in the audition file has some fundamental sine/triangle sounding wave at a specific
+frequency ringing in it. besides that they do sound a lot better."*
+
+- **The tone was the low pair, and it should never have been there.** The distillation kept one pair
+  of real sine partials for the measured beating, on the argument that a beat is not a pitch. It is
+  a pitch: 232 Hz ringing 2.5 s under noise bands that decay far faster is the most exposed thing in
+  the voice. That is generation 5's church bell arriving through a side door with a better excuse.
+  There are no tonal components in a cymbal now at all; the band set reaches down to 180 Hz and
+  carries the bottom as noise. `--cymbal` + `spectool` confirms it: the ride resolves no sustained
+  partials, which is also what the reference measures.
+- **The crash ring is a MIX decision now, and labelled as one.** `CrashRingScale` keeps 45% of the
+  measured ring. A real crash rings three or four seconds and the analysis says so, but one lands
+  at every phrase end and every section start here, and at that density it never clears.
+
 ### What still wants ears
 
 - **The distilled cymbals themselves** — `~/audition.wav` (round 10). The RIDE lines isolate the
