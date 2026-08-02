@@ -254,8 +254,15 @@ sealed class GenreProfile
 		new()
 		{
 			SwingChance = 0f,   // 2 Tone dropped the shuffle for punk's straight eighths; the third wave never took it back
-			BpmMin = 150, BpmMax = 190, FastBpmMin = 178, FastBpmMax = 212,
-			TempoFloor = 132, TempoCeil = 235,
+			// Anchored on a record rather than on an adjective. "Ska is fast" first put this band at
+			// 150–190, which made a REFERENCE-FAST ska song the median and left the tempo knob no
+			// usable travel upward. Reel Big Fish's "Sell Out" is ~103 bpm as counted, i.e. ~206 in
+			// THIS engine's units — the skank fires once per beat here (the "and" of each beat), so
+			// the engine counts the double-time reading and every ska tempo has to be converted
+			// before it means anything. 206 is a fast ska song, so it belongs at the CEILING; the
+			// ordinary band sits well under it and the knob is what reaches up there.
+			BpmMin = 138, BpmMax = 172, FastBpmMin = 165, FastBpmMax = 190,
+			TempoFloor = 118, TempoCeil = 210,
 			ChordBars = 2, RideLean = 0.20f, HornLead = true,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },

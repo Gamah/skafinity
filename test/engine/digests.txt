@@ -6,8 +6,8 @@
 # (a file split, a type extraction) — bless before, run after, expect silence.
 # Re-bless in the same commit as any deliberate audible change:
 #   make test-engine-bless
-0:rotaliate:0 790eda6dc523d193671d145d0b441a3d9783b016032a1943b46c57e6a780685b
-0:skafinity:7 83b9b48ff0dfae2d7349cd3af0d9a54ed54304be79924a9b26b30d2cbdfcaea3
+0:rotaliate:0 c49e534e6c98b418f088b7e660a69a9cf3edbb340e44203137cabe63c2779c4b
+0:skafinity:7 012c887a16aa68d4cacdc9c5fa59c275cd64aa6fa423a09a4eae2cc10bf9f354
 1:rotaliate:0 05ac902e935eb3d75c158e1c51a5d27a07242bbaeb982fa47c741ed5aec24f96
 1:gamah:3 c9a57ecf7794427b047240f9300f0fbae962a2e1be346ad737ef22942007b2fb
 2:rotaliate:0 2b15d07b1fd95440502f4e235f2100b2850b8dd303534d5f86f8af546c3de47a
