@@ -32,12 +32,6 @@ static class Program
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }
-		int di = Array.IndexOf( args, "--groove" );
-		if ( di >= 0 && di + 1 < args.Length )
-		{
-			GrooveData.Run( args[di + 1], di + 2 < args.Length ? args[di + 2] : "beat" );
-			return 0;
-		}
 		int si = Array.IndexOf( args, "--seed" );
 		if ( si >= 0 && si + 1 < args.Length ) { Explain( args[si + 1] ); return 0; }
 		int ci = Array.IndexOf( args, "--score" );

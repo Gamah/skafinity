@@ -234,12 +234,16 @@ sealed class GenreProfile
 	// TD-11). Verified 2026-08-02: https://magenta.tensorflow.org/datasets/groove.
 	// VELOCITY IS THE ACCENT WEIGHT, which is the whole reason this stopped being a taste call.
 	//
-	// Reproduce with `-- --groove <dataset-dir> [beat|fill]` (test/engine/GrooveData.cs). It folds
-	// every 4/4 performance of a style onto one bar, normalises each drum by its OWN mean — else
-	// position and instrument are confounded, since hats sit on every eighth and would decide the
-	// offbeat bin by themselves — and scales the set so beat 3 = 1.00, which is the literal 1f
-	// MetricGain returns there. NOTHING FROM THE DATASET IS IN THIS REPO: it is input that drove a
-	// decision rather than an asset, and this citation is what CC BY asks for.
+	// NEITHER THE DATASET NOR THE TOOL THAT READ IT IS IN THIS REPO, and that is deliberate: no
+	// code here may depend on the dataset existing. It was input that drove a decision, not an
+	// asset — what is committed is these derived numbers and this citation, which is also what
+	// CC BY asks for. The measurement is reproducible from the method rather than from a checked-in
+	// script: read every note-on of every 4/4 performance of a style, fold it onto one bar at the
+	// nearest sixteenth, bin by metric position, and normalise each drum by its OWN mean before
+	// combining — otherwise position and instrument are confounded, since hats sit on every eighth
+	// and would decide the offbeat bin by themselves. Scale the set so beat 3 = 1.00, which is the
+	// literal 1f MetricGain returns there. The bar alignment checks itself: rock, pop and country
+	// all put their measured snare peaks exactly on beats 2 and 4.
 	//
 	// Measured (beat_type=beat, 4/4), with the bars behind each row:
 	//     style      down  back   off     bars
