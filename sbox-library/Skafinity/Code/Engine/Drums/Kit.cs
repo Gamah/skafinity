@@ -27,15 +27,31 @@ namespace Skafinity;
 struct BandPass
 {
 	float _low, _band;
-	readonly float _f, _q;
+	float _f;
+	readonly float _q;
 
 	public BandPass( float fc, float q, int sr )
 	{
 		_low = 0f; _band = 0f;
-		// Clamped well under Nyquist: the Chamberlin form goes unstable as f approaches 2.
-		_f = (float)(2 * Math.Sin( Math.PI * Math.Min( fc, sr * 0.15f ) / sr ));
-		_q = Math.Clamp( q, 0.004f, 2f );
+		_f = Coeff( fc, sr );
+		// The floor admits a mode whose natural ring is seconds long: a resonator's decay IS its
+		// bandwidth (τ ≈ 1/(π·q·fc)), so a floor of 0.004 capped a 370 Hz mode's ring at ~0.2 s
+		// and no envelope can put back what the filter has already damped. q → 0 is a marginally
+		// stable oscillator, not an unstable one, so the only cost of a tiny q is a quiet output —
+		// which the Q-normalisation below makes explicit and the caller's level compensates.
+		_q = Math.Clamp( q, 0.0002f, 2f );
 	}
+
+	/// <summary>The frequency coefficient, exposed so a caller can retune a running filter
+	/// (see Retune). Clamped well under Nyquist: the Chamberlin form goes unstable as f
+	/// approaches 2.</summary>
+	public static float Coeff( float fc, int sr )
+		=> (float)(2 * Math.Sin( Math.PI * Math.Min( fc, sr * 0.15f ) / sr ));
+
+	/// <summary>Move the centre frequency without resetting the state — struck metal's modes
+	/// fall slightly as the strike energy dissipates, and that glide is a property of the
+	/// ringing, so it has to happen to the resonance mid-ring rather than between hits.</summary>
+	public void Retune( float coeff ) => _f = coeff;
 
 	/// <summary>NORMALISED BY Q. A resonant band-pass has a centre gain of about 1/Q, so a
 	/// ringing resonance is ~100× louder than a gentle one for the same input — which makes the
@@ -474,21 +490,39 @@ readonly struct RideTone
 	/// <summary>The resonances outlive the strike — a bell rings on long after the wash has
 	/// gone, and that ratio is most of what says "bell".</summary>
 	public readonly double BandDecayFrac;
+	/// <summary>PER-MODE Q — and therefore PER-MODE DECAY, because a resonator's ring time is
+	/// its bandwidth (τ ≈ 1/(π·q·fc)). On a struck bell the low modes ring for seconds and the
+	/// high ones are gone in tens of milliseconds, and that divergence over time is a large part
+	/// of what identifies the sound; a stack under one decay is a chord, not a bell. null keeps
+	/// the shared BandQ with the index taper, which is every pre-gen-4 tone.</summary>
+	public readonly float[] BandQs;
+	/// <summary>Strike glide: the modes start this far SHARP and settle onto BandHz as the
+	/// strike energy dissipates, over roughly GlideMs. Struck metal does this in its first tens
+	/// of milliseconds; 0 = none.</summary>
+	public readonly float GlideCents;
+	public readonly float GlideMs;
 
 	public RideTone( float dur, double decayFrac, float cut, float level, float stick,
 		float stickCut = 0f, float[] bandHz = null, float[] bandLevel = null, float bandQ = 0.03f,
-		double bandDecayFrac = 1.0 )
+		double bandDecayFrac = 1.0, float[] bandQs = null, float glideCents = 0f,
+		float glideMs = 25f )
 	{
 		Dur = dur; DecayFrac = decayFrac; Cut = cut; Level = level; Stick = stick;
 		StickCut = stickCut; BandHz = bandHz; BandLevel = bandLevel; BandQ = bandQ;
-		BandDecayFrac = bandDecayFrac;
+		BandDecayFrac = bandDecayFrac; BandQs = bandQs; GlideCents = glideCents;
+		GlideMs = glideMs;
 	}
 
 	public RideTone With( float dur = -1f, double decayFrac = -1.0, float cut = -1f,
-		float level = -1f, float stick = -1f, float bandQ = -1f, double bandDecayFrac = -1.0 )
+		float level = -1f, float stick = -1f, float bandQ = -1f, double bandDecayFrac = -1.0,
+		float[] bandHz = null, float[] bandLevel = null, float[] bandQs = null,
+		float glideCents = -1f, float glideMs = -1f )
 		=> new( dur < 0 ? Dur : dur, decayFrac < 0 ? DecayFrac : decayFrac, cut < 0 ? Cut : cut,
-			level < 0 ? Level : level, stick < 0 ? Stick : stick, StickCut, BandHz, BandLevel,
-			bandQ < 0 ? BandQ : bandQ, bandDecayFrac < 0 ? BandDecayFrac : bandDecayFrac );
+			level < 0 ? Level : level, stick < 0 ? Stick : stick, StickCut,
+			bandHz ?? BandHz, bandLevel ?? BandLevel,
+			bandQ < 0 ? BandQ : bandQ, bandDecayFrac < 0 ? BandDecayFrac : bandDecayFrac,
+			bandQs ?? BandQs, glideCents < 0 ? GlideCents : glideCents,
+			glideMs < 0 ? GlideMs : glideMs );
 
 	/// <summary>The bow hit the groove path has always played.</summary>
 	public static readonly RideTone Bow = new(
@@ -563,6 +597,67 @@ readonly struct RideTone
 		bandHz: new[] { 1180f, 2360f, 3510f },
 		bandLevel: new[] { 4.3f, 6.5f, 3.6f },
 		bandQ: 0.030f, bandDecayFrac: 0.80 );
+
+	// ── Generation 4: the ring, treated as struck metal ──
+	// The lead came from the ping, not from the bell attempts: PingLowTwo ALLOWED TO RING was the
+	// first thing on this branch heard as bell-adjacent (RIDE.md). These start there and add the
+	// three properties of struck metal that a static filter bank cannot have:
+	//  - per-mode decay: each mode's own Q sets its own ring time, so the lows ring on for the
+	//    better part of a second while the stick modes are gone in tens of milliseconds — a stack
+	//    under one decay is a chord, not a bell;
+	//  - close-mode beating: the low modes are PAIRS a few Hz apart, because a real bell's
+	//    partials come in near-degenerate pairs and the warble between them is diagnostic;
+	//  - a strike glide: the stack starts slightly sharp and settles as the strike energy
+	//    dissipates.
+	// Still noise-excited resonators, not sine partials: each hit's mode phases and amplitudes
+	// come off the strike noise, so no two bells ring identically — that per-hit variation is the
+	// argument for why this is not generation 1 wearing envelopes.
+
+	/// <summary>The q whose natural ring is `ringSec` (τ ≈ 1/(π·q·fc)) — a mode's decay IS its
+	/// bandwidth, which is why per-mode decay is per-mode Q rather than an envelope bank.</summary>
+	public static float ModeQ( float fc, float ringSec ) => 1f / (MathF.PI * fc * ringSec);
+
+	/// <summary>A long ring is a narrow band, and a narrow band catches almost none of a 3.5 ms
+	/// strike — so a mode's level must scale with its ring time for its onset to survive the
+	/// physics. `onset` is the mode's strike amplitude in the stack, decay-independent.</summary>
+	public static float ModeLevel( float onset, float ringSec ) => onset * MathF.PI * ringSec;
+
+	public static readonly RideTone BellRing = new(
+		dur: 1.15f, decayFrac: 0.25, cut: 6000f, level: 0.18f, stick: 0.55f, stickCut: 5500f,
+		bandHz: new[] { 367f, 373f, 611f, 618f, 3150f, 5400f },
+		bandLevel: new[] { ModeLevel( 15f, 0.80f ), ModeLevel( 15f, 0.80f ),
+			ModeLevel( 10f, 0.60f ), ModeLevel( 10f, 0.60f ),
+			ModeLevel( 55f, 0.10f ), ModeLevel( 35f, 0.045f ) },
+		bandQs: new[] { ModeQ( 367f, 0.80f ), ModeQ( 373f, 0.80f ),
+			ModeQ( 611f, 0.60f ), ModeQ( 618f, 0.60f ),
+			ModeQ( 3150f, 0.10f ), ModeQ( 5400f, 0.045f ) },
+		glideCents: 20f, glideMs: 25f );
+
+	/// <summary>The same bell lower — mode set scaled by 0.78, lows ringing longer, for the case
+	/// where BellRing reads as too small a cymbal.</summary>
+	public static readonly RideTone BellRingLow = new(
+		dur: 1.30f, decayFrac: 0.25, cut: 5000f, level: 0.18f, stick: 0.55f, stickCut: 5500f,
+		bandHz: new[] { 286f, 291f, 477f, 482f, 2460f, 4210f },
+		bandLevel: new[] { ModeLevel( 15f, 1.00f ), ModeLevel( 15f, 1.00f ),
+			ModeLevel( 10f, 0.75f ), ModeLevel( 10f, 0.75f ),
+			ModeLevel( 55f, 0.12f ), ModeLevel( 35f, 0.055f ) },
+		bandQs: new[] { ModeQ( 286f, 1.00f ), ModeQ( 291f, 1.00f ),
+			ModeQ( 477f, 0.75f ), ModeQ( 482f, 0.75f ),
+			ModeQ( 2460f, 0.12f ), ModeQ( 4210f, 0.055f ) },
+		glideCents: 20f, glideMs: 30f );
+
+	/// <summary>And higher — scaled by 1.3, shorter lows, for the case where the bell should sit
+	/// clear above the bow rather than inside its register.</summary>
+	public static readonly RideTone BellRingHigh = new(
+		dur: 1.00f, decayFrac: 0.25, cut: 6000f, level: 0.18f, stick: 0.55f, stickCut: 5500f,
+		bandHz: new[] { 477f, 485f, 794f, 803f, 4095f, 6600f },
+		bandLevel: new[] { ModeLevel( 15f, 0.60f ), ModeLevel( 15f, 0.60f ),
+			ModeLevel( 10f, 0.45f ), ModeLevel( 10f, 0.45f ),
+			ModeLevel( 55f, 0.08f ), ModeLevel( 35f, 0.040f ) },
+		bandQs: new[] { ModeQ( 477f, 0.60f ), ModeQ( 485f, 0.60f ),
+			ModeQ( 794f, 0.45f ), ModeQ( 803f, 0.45f ),
+			ModeQ( 4095f, 0.08f ), ModeQ( 6600f, 0.040f ) },
+		glideCents: 20f, glideMs: 22f );
 
 	public static RideTone For( RideArt a ) => a switch
 	{
@@ -915,8 +1010,27 @@ public sealed partial class MusicGen
 		int nb = k.BandHz == null ? 0 : k.BandHz.Length;
 		var bp = nb > 0 ? new BandPass[nb] : null;
 		// The Q rises with the partial: the higher modes of a struck cymbal ring tighter, and a
-		// flat Q across the stack is what turns a bell back into a filtered wash.
-		for ( int b = 0; b < nb; b++ ) bp[b] = new BandPass( k.BandHz[b], k.BandQ / (1f + 0.35f * b), _sr );
+		// flat Q across the stack is what turns a bell back into a filtered wash. A gen-4 tone
+		// gives every mode its OWN q instead, because a mode's q is its decay (see ModeQ).
+		for ( int b = 0; b < nb; b++ )
+			bp[b] = new BandPass( k.BandHz[b],
+				k.BandQs != null ? k.BandQs[b] : k.BandQ / (1f + 0.35f * b), _sr );
+		// The strike glide: the stack starts GlideCents sharp and settles onto BandHz over
+		// GlideMs. Retuning lerps the frequency COEFFICIENT, which over a few tens of cents is
+		// the frequency to well under a cent.
+		float[] glideTo = null, glideFrom = null;
+		double glideDecay = 0;
+		if ( nb > 0 && k.GlideCents > 0f )
+		{
+			glideTo = new float[nb]; glideFrom = new float[nb];
+			float up = (float)Math.Pow( 2.0, k.GlideCents / 1200.0 );
+			for ( int b = 0; b < nb; b++ )
+			{
+				glideTo[b] = BandPass.Coeff( k.BandHz[b], _sr );
+				glideFrom[b] = BandPass.Coeff( k.BandHz[b] * up, _sr );
+			}
+			glideDecay = _sr * Math.Max( 1f, k.GlideMs ) * 0.001;
+		}
 		// The wash is the strike; the resonances outlive it. That ratio is most of "bell".
 		double bandDecay = dur * k.BandDecayFrac;
 		double strikeDecay = _sr * 0.0035;   // how long the stick is in contact
@@ -942,6 +1056,12 @@ public sealed partial class MusicGen
 				// they were so quiet: a tight resonance passes almost none of a broadband input.
 				float ex = n * (float)Math.Exp( -i / strikeDecay );
 				float benv = (float)Math.Exp( -i / bandDecay );
+				if ( glideTo != null )
+				{
+					float g = (float)Math.Exp( -i / glideDecay );
+					for ( int b = 0; b < nb; b++ )
+						bp[b].Retune( glideTo[b] + (glideFrom[b] - glideTo[b]) * g );
+				}
 				for ( int b = 0; b < nb; b++ ) v += bp[b].Next( ex ) * k.BandLevel[b] * benv;
 			}
 			if ( k.Stick > 0f && i < stickLen )
