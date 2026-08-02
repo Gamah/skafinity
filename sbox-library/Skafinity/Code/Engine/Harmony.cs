@@ -362,6 +362,46 @@ static class Harmony
 
 	/// <summary>Degree → MIDI pitch against <paramref name="scale"/>, wrapping octaves in both
 	/// directions so any degree resolves.</summary>
+	/// <summary>
+	/// How far a bend travels, in semitones, from a note sitting <paramref name="pc"/> semitones
+	/// above the tonic: to the nearest tone OF THE SCALE at or beyond <paramref name="depth"/>
+	/// semitones up, and never back to the note it started from. 0 means nothing in reach.
+	///
+	/// A PLAYER BENDS TO A NOTE, NOT BY AN INTERVAL. The string arrives at the next tone of the
+	/// scale, which is a whole step in some places and a semitone in others — the same fact about
+	/// seven-note scales that <see cref="VoicedTone"/> exists for, reached through the melody
+	/// instead of through a chord. Bent by a fixed interval the note lands off the key on every
+	/// degree whose step is the other size: a whole step off the third or the seventh of a major
+	/// scale, a semitone off almost anywhere. It is worst on a bend that is HELD, because the note
+	/// then spends its whole tail outside the key rather than passing through it — which is what
+	/// "out of tune" sounds like when nothing has actually been mistuned.
+	///
+	/// Depth stays the instrument's PREFERENCE — how far the hand reaches, which is the thing a
+	/// genre has an opinion about — rather than the distance the pitch travels.
+	/// </summary>
+	public static int BendSemis( int[] scale, int pc, float depth )
+	{
+		int want = Math.Max( 1, (int)MathF.Round( depth ) );
+		int best = 0, bestCost = int.MaxValue;
+		for ( int s = 1; s <= BendReach; s++ )
+		{
+			bool inKey = false;
+			foreach ( int t in scale )
+				if ( (((t % 12) + 12) % 12) == (pc + s) % 12 ) { inKey = true; break; }
+			if ( !inKey ) continue;
+			int cost = Math.Abs( s - want );
+			if ( cost >= bestCost ) continue;
+			bestCost = cost; best = s;
+		}
+		return best;
+	}
+
+	/// <summary>How far up a bend will look for a tone of the scale. A seven-note scale has one
+	/// within two semitones of anywhere, so this is slack for the pentatonic and blues tables
+	/// rather than a range a bend actually reaches — past it there is no note to arrive at and
+	/// the bend does not happen.</summary>
+	public const int BendReach = 4;
+
 	public static int ScaleMidi( int baseMidi, int[] scale, int degree )
 	{
 		int len = scale.Length;
@@ -404,6 +444,28 @@ static class Harmony
 	public const int MaxVoiceLead = 12;
 
 	/// <summary>
+	/// The song's chord plan: for every chord of the progression, WHICH note of the voicing each
+	/// voice takes and how far it is octave-shifted.
+	///
+	/// The two are one decision. Octave-shifting alone kills the octave-sized parallel leap but
+	/// leaves voice <c>i</c> permanently on the <c>i</c>th offset of the voicing, so a root move of
+	/// a fourth still moves every voice by that fourth — a smaller parallel slide rather than none,
+	/// and no common tone anywhere in it. Letting the chord ROTATE is what produces a common tone:
+	/// voice <c>i</c> plays offset <c>(i + Rot[c]) mod n</c>, so the voice that was on the fifth can
+	/// take the new chord's root and simply stay where it is.
+	/// </summary>
+	public readonly struct VoicePlan
+	{
+		/// <summary>Per chord, per voice: the octave offset in semitones.</summary>
+		public readonly int[][] Shift;
+
+		/// <summary>Per chord: voice <c>i</c> plays voicing offset <c>(i + Rot[c]) mod n</c>.</summary>
+		public readonly int[] Rot;
+
+		public VoicePlan( int[][] shift, int[] rot ) { Shift = shift; Rot = rot; }
+	}
+
+	/// <summary>
 	/// VOICE LEADING: per chord of <paramref name="prog"/>, the octave offset each voice of
 	/// <paramref name="voicing"/> takes so the chord sits near the one before it.
 	///
@@ -436,11 +498,20 @@ static class Harmony
 	/// Pitches are measured over a base of 0 — the shift is base-independent — and a voice may dip
 	/// a little under that base but no further (<see cref="VoiceLeadFloor"/>).
 	/// </summary>
-	public static int[][] PlanVoiceLeading( int[] scale, int[] prog, int[] voicing )
+	public static VoicePlan PlanVoiceLeading( int[] scale, int[] prog, int[] voicing )
 	{
 		int n = voicing.Length, np = prog.Length;
 		var shift = new int[np][];
 		for ( int c = 0; c < np; c++ ) shift[c] = new int[n];
+
+		// Root-position pitch of every voicing slot at every chord — the raw material both passes
+		// below read.
+		var tone = new int[np, n];
+		for ( int c = 0; c < np; c++ )
+			for ( int s = 0; s < n; s++ )
+				tone[c, s] = VoicedTone( 0, scale, prog[c], voicing[s] );
+
+		var rot = PlanRotation( tone, np, n );
 
 		int k = 2 * (MaxVoiceLead / 12) + 1;              // the octaves on offer: −1, 0, +1
 		var raw = new int[np];
@@ -450,7 +521,9 @@ static class Harmony
 
 		for ( int v = 0; v < n; v++ )
 		{
-			for ( int c = 0; c < np; c++ ) raw[c] = VoicedTone( 0, scale, prog[c], voicing[v] );
+			// Given the rotation, the voices are independent again: voice v simply plays whichever
+			// slot the rotation hands it at each chord, and chooses its own octaves over that line.
+			for ( int c = 0; c < np; c++ ) raw[c] = tone[c, (v + rot[c]) % n];
 
 			int bestTotal = int.MaxValue;
 			for ( int start = 0; start < k; start++ )     // the loop has to close on what it opened
@@ -486,13 +559,127 @@ static class Harmony
 			}
 			for ( int c = 0; c < np; c++ ) shift[c][v] = 12 * (chain[c] - MaxVoiceLead / 12);
 		}
-		return shift;
+		return new VoicePlan( shift, rot );
 
 		int Pitch( int r, int o ) => r + 12 * (o - MaxVoiceLead / 12);
 		// Motion is weighted so it always outranks the pull toward root position: an octave of
 		// register is worth having, but never at the price of a semitone of extra movement.
 		int Move( int ra, int a, int rb, int b ) => 2 * Math.Abs( Pitch( rb, b ) - Pitch( ra, a ) );
 		int Home( int o ) => Math.Abs( o - MaxVoiceLead / 12 );
+	}
+
+	/// <summary>
+	/// Which note of the voicing each voice takes, per chord — the rotation half of the plan.
+	///
+	/// Solved BEFORE the octaves and separately from them, which is what keeps the whole thing
+	/// cheap. Solving both at once would make the state a rotation plus an octave for every voice
+	/// (3^n × n rotations per chord), because a voice's octave at one chord is paid for on the edges
+	/// either side of it. Split, each pass is small: this one walks n rotations over np chords, and
+	/// the octave pass is then per-voice independent again.
+	///
+	/// The split is honest because of what this pass measures. It does not know the octaves yet, so
+	/// it costs a voice's move as the distance it would travel IF it may invert freely — the
+	/// interval folded into a tritone either way. That is exactly the question a rotation answers
+	/// ("can this voice hold a common tone, or must it move?") and exactly the question the octave
+	/// pass then answers concretely. A rotation that leaves a voice on the same pitch class costs
+	/// zero here, which is a common tone, which is the point of the row.
+	///
+	/// A PROGRESSION IS A CYCLE, on the same argument as the octave pass: solved with the wrap from
+	/// the last chord back to the first included, or every rotation the other changes avoided parks
+	/// itself on that seam. Ties pull toward rotation 0, so a plan that gains nothing from rotating
+	/// simply doesn't, and the voicing's own order — root at the bottom, as its table is written —
+	/// survives wherever it is free to.
+	/// </summary>
+	static int[] PlanRotation( int[,] tone, int np, int n )
+	{
+		var rot = new int[np];
+		if ( n < 2 || np < 2 ) return rot;
+
+		var cost = new int[np, n];
+		var from = new int[np, n];
+		int bestTotal = int.MaxValue;
+
+		for ( int start = 0; start < n; start++ )
+		{
+			for ( int c = 0; c < np; c++ )
+				for ( int r = 0; r < n; r++ ) { cost[c, r] = Unreachable; from[c, r] = 0; }
+			cost[0, start] = Home( start );
+
+			for ( int c = 1; c < np; c++ )
+				for ( int r = 0; r < n; r++ )
+					for ( int p = 0; p < n; p++ )
+					{
+						if ( cost[c - 1, p] >= Unreachable ) continue;
+						int t = cost[c - 1, p] + Move( c - 1, p, c, r ) + Home( r );
+						if ( t >= cost[c, r] ) continue;
+						cost[c, r] = t;
+						from[c, r] = p;
+					}
+
+			for ( int last = 0; last < n; last++ )
+			{
+				if ( cost[np - 1, last] >= Unreachable ) continue;
+				int total = cost[np - 1, last] + Move( np - 1, last, 0, start );
+				if ( total >= bestTotal ) continue;
+				bestTotal = total;
+				for ( int c = np - 1, r = last; c >= 0; c-- ) { rot[c] = r; r = from[c, r]; }
+			}
+		}
+		return rot;
+
+		// Motion outranks the pull toward the unrotated order, the same way it does for octaves.
+		int Move( int a, int ra, int b, int rb )
+		{
+			int sum = 0;
+			for ( int v = 0; v < n; v++ )
+				sum += Fold( tone[b, (v + rb) % n] - tone[a, (v + ra) % n] );
+			return 2 * sum;
+		}
+		int Home( int r ) => r == 0 ? 0 : 1;
+		// The interval a freely-inverting voice would actually travel: a minor seventh up is a whole
+		// tone down, and the octave pass is what will choose which.
+		static int Fold( int d )
+		{
+			d = ((d % 12) + 12) % 12;
+			return Math.Min( d, 12 - d );
+		}
+	}
+
+	/// <summary>
+	/// Octave offsets that put a chord built on <paramref name="rootDegree"/> as near as possible to
+	/// the pitches it follows — the one-off version of the plan above, for a chord that has no slot
+	/// in the progression's cycle.
+	///
+	/// The ENDING is what needs it. A song's last chord used to be built in root position on the
+	/// argument that a song should land where its genre voices the chord rather than where the last
+	/// change happened to leave the register — which is a reasonable thing to want and was still
+	/// wrong, because it put the only unled change in the song on its most exposed moment, and a
+	/// seventh-sized leap into the final chord is heard by everyone. The register a song has been
+	/// in for three minutes IS where it should land; a cadence is a change like any other, and the
+	/// ritard is not a licence to jump.
+	/// </summary>
+	public static int[] LeadToward( int[] scale, int[] prev, int baseMidi, int rootDegree, int[] voicing )
+	{
+		var shift = new int[voicing.Length];
+		if ( prev == null || prev.Length == 0 ) return shift;
+		for ( int i = 0; i < voicing.Length; i++ )
+		{
+			int raw = VoicedTone( baseMidi, scale, rootDegree, voicing[i] );
+			// Nearest to the voice that was on the same line, where there was one; the chord may be
+			// spelled with more notes than the one before it (a suspension resolving, a driven
+			// guitar), so anything past the end leans on the top voice.
+			int target = prev[Math.Min( i, prev.Length - 1 )];
+			int best = 0, bestCost = int.MaxValue;
+			for ( int o = -MaxVoiceLead; o <= MaxVoiceLead; o += 12 )
+			{
+				if ( raw + o < baseMidi + VoiceLeadFloor ) continue;
+				int cost = 2 * Math.Abs( raw + o - target ) + Math.Abs( o ) / 12;
+				if ( cost >= bestCost ) continue;
+				bestCost = cost; best = o;
+			}
+			shift[i] = best;
+		}
+		return shift;
 	}
 
 	/// <summary>How far under its own base a voice may be led, relative to the base the chord is
@@ -563,14 +750,32 @@ public sealed partial class MusicGen
 	///
 	/// This is also where the song's VOICE LEADING lands (<see cref="Harmony.PlanVoiceLeading"/>),
 	/// so the chord arrives in the inversion nearest the one before it instead of sliding a tenth.
-	/// Voice i keeps its index — the array stays aligned with <c>_voicing</c>, which is what lets
-	/// the driven guitar drop the third by position.</summary>
+	/// The array index is a VOICE, not a voicing slot — the plan rotates, so which offset voice i
+	/// plays is <c>(i + Rot[chord]) mod n</c> and changes chord to chord. Anything that needs to
+	/// know what a pitch IS asks <see cref="ChordOffsets"/> for the matching offsets rather than
+	/// indexing <c>_voicing</c> alongside it; the driven guitar is the one that does.</summary>
 	int[] ChordMidis( int baseMidi, int chord, int tick )
 	{
-		var m = VoicedMidis( baseMidi, _prog[chord], VoicingAt( tick ) );
+		var voicing = VoicingAt( tick );
+		int n = voicing.Length, r = _vlRot[chord];
 		var s = _vlShift[chord];
-		for ( int i = 0; i < m.Length; i++ ) m[i] += s[i];
+		var m = new int[n];
+		for ( int i = 0; i < n; i++ )
+			m[i] = Harmony.VoicedTone( baseMidi, _scale, _prog[chord], voicing[(i + r) % n] ) + s[i];
 		return m;
+	}
+
+	/// <summary>The voicing offsets <see cref="ChordMidis"/> just spelled, in the same order — what
+	/// each of its pitches IS. A rotated chord has to carry these alongside its pitches, because
+	/// the array index no longer names the voicing slot: without them the driven guitar drops
+	/// whatever happens to be third in the array rather than the chord's third.</summary>
+	int[] ChordOffsets( int chord, int tick )
+	{
+		var voicing = VoicingAt( tick );
+		int n = voicing.Length, r = _vlRot[chord];
+		var o = new int[n];
+		for ( int i = 0; i < n; i++ ) o[i] = voicing[(i + r) % n];
+		return o;
 	}
 
 	/// <summary>The spelling the chordal voices sound at <paramref name="tick"/>: the song's
@@ -629,7 +834,7 @@ public sealed partial class MusicGen
 		int n = voicing.Length;
 		int oct = (int)Math.Floor( i / (double)n );
 		int v = i - oct * n;
-		return Harmony.VoicedTone( baseMidi, _scale, _prog[chord], voicing[v] )
+		return Harmony.VoicedTone( baseMidi, _scale, _prog[chord], voicing[(v + _vlRot[chord]) % n] )
 			+ _vlShift[chord][v] + 12 * oct;
 	}
 }

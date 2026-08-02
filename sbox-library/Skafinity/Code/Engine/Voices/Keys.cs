@@ -101,7 +101,7 @@ public sealed partial class MusicGen
 			{
 				var tones = ChordMidis( kBase, chord, t );
 				foreach ( var m in tones )
-					EmitKeys( t, d, m, h.Vel * 0.85f, pluck < 0.5f,
+					EmitKeys( t, d, m, h.Vel * 0.85f * _compTrim, pluck < 0.5f,
 						tones.Length, vc );
 			}
 		}

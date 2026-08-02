@@ -181,7 +181,7 @@ public sealed partial class MusicGen
 			// The degree snap chose WHICH chord tone; this puts the note on the pitch the chord
 			// actually sounds, which is not the same thing on every degree (see NearestSoundingTone).
 			if ( resolve ) midi = NearestSoundingTone( midi, chord, h.Tick );
-			var vc = Roll( ex, midi, prevMidi, exprRng );
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( h.Tick, len ) );
 			prevMidi = midi;
 			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, len * 0.92 ),
 				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, len ) * 0.8,
