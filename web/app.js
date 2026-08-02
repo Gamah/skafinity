@@ -2,6 +2,7 @@
 // Port of MusicController's scheduling (not its s&box plumbing). The heavy synthesis runs
 // in worker.js; this file owns the AudioContext, crossfade scheduling, and the UI.
 import Skafinity from './engine.js';
+import { GenQueue } from './queue.js';
 
 // ── Tunables (mirror MusicController defaults) ──
 // Songs now have an intro→…→ending structure, so each plays once start-to-end (no internal
@@ -25,7 +26,9 @@ let mod = null;               // main-thread WASM (vibe/codec/export — light c
 // CROSSFADE). The fallback only covers the window before the runtime is up.
 let tailSeconds = 2.5;
 let pool = [];                // [{ worker, busy, n }]
-const pending = [];           // queue of song indices waiting for a free worker
+// Which songs are queued or rendering. Every drop of queued work goes through this object so the
+// claims go with it — see web/queue.js for why that is the whole ballgame.
+const gen = new GenQueue();
 
 // ── State ──
 let cfg = null;               // Float32Array — the live Config (vibe applied)
@@ -105,18 +108,24 @@ function genreForN(nn) {
 function pruneCache(center = displayN) {
   for (const k of rendered.keys()) if (Math.abs(k - center) > PCM_RADIUS) rendered.delete(k);
 }
-let seq = 0;                  // bumped on every restart; stale renders are dropped
+// Two counters, because a seek and a restart invalidate different things. `seq` is the AUDIO
+// SCHEDULE: bumped whenever committed nodes are torn down, so stale setTimeouts bail out.
+// `renderSeq` is what a rendered song was rendered FOR: bumped only when the cfg behind an index
+// changes (a new seed/vibe/genre, or shuffle re-rolling the line), because that is the only thing
+// that can make an in-flight render wrong. A seek moves where we are in a timeline whose vibes are
+// pinned per index — the render in flight is still the right song — so tying them together threw
+// away up to POOL_SIZE songs of work on every Prev/Next and re-rendered them immediately after.
+let seq = 0;
+let renderSeq = 0;
 let playing = false;
 
 let ctx = null, masterGain = null;
 const rendered = new Map();   // n -> { buffer, info }
-const requested = new Set();  // n currently being generated
-let nextN = 0;                // next index to schedule into the timeline
+let nextN = 0;               // next index to schedule into the timeline
 let nextTime = 0;             // ctx time the next song starts
 let firstScheduled = false;
 let activeNodes = [];         // live source/gain nodes for the current sequence
-let reqId = 0;
-const reqMap = new Map();     // worker request id -> n
+let reqId = 0;                // request id echoed back by the worker (correlates the reply)
 let restartTimer = null;
 
 // ── Helpers ──
@@ -140,32 +149,28 @@ function makeWorker(idx) {
 
 // Queue a song for generation, then hand queued work to any free worker.
 function requestSong(nn) {
-  if (rendered.has(nn) || requested.has(nn)) return;
-  requested.add(nn);
-  pending.push(nn);
-  dispatch();
+  if (rendered.has(nn)) return;
+  if (gen.want(nn)) dispatch();
 }
 
-// Assign pending songs to idle workers (fans look-ahead renders across the pool).
+// Assign queued songs to idle workers (fans look-ahead renders across the pool).
 function dispatch() {
   for (const slot of pool) {
-    if (slot.busy || pending.length === 0) continue;
-    const nn = pending.shift();
+    if (slot.busy) continue;
+    const nn = gen.take();
+    if (nn === undefined) break;
     const id = ++reqId;
-    reqMap.set(id, nn);
     slot.busy = true;
     slot.n = nn;
-    slot.worker.postMessage({ type: 'gen', id, n: nn, mySeq: seq, seed: seedFor(nn), cfg: cfgForN(nn).slice() });
+    slot.worker.postMessage({ type: 'gen', id, n: nn, mySeq: renderSeq, seed: seedFor(nn), cfg: cfgForN(nn).slice() });
   }
 }
 
 // Abort everything in flight: terminate workers mid-render (true cancellation) and replace them
 // so they're ready for the new seed; idle/booted workers stay and pick up the new seed at once.
 function abortAll() {
-  pending.length = 0;
+  gen.clear();
   rendered.clear();
-  requested.clear();
-  reqMap.clear();
   for (let i = 0; i < pool.length; i++) {
     if (pool[i].busy) { try { pool[i].worker.terminate(); } catch (_) {} makeWorker(i); }
   }
@@ -175,12 +180,11 @@ function onPoolMessage(idx, e) {
   const m = e.data;
   // free the slot regardless of outcome, then pull the next queued job
   if (pool[idx]) { pool[idx].busy = false; pool[idx].n = -1; }
-  if (m.type === 'error') { console.error('gen error', m.n, m.error); requested.delete(m.n); reqMap.delete(m.id); dispatch(); return; }
+  if (m.type === 'error') { console.error('gen error', m.n, m.error); gen.release(m.n); dispatch(); return; }
   if (m.type !== 'song') { dispatch(); return; }
-  requested.delete(m.n);
-  reqMap.delete(m.id);
+  gen.release(m.n);
   dispatch();
-  if (m.mySeq !== undefined && m.mySeq !== seq) return;
+  if (m.mySeq !== undefined && m.mySeq !== renderSeq) return;
   // Build a 2-channel AudioBuffer from the worker's float channels.
   const frames = m.left.length;
   const buf = ctx.createBuffer(2, frames, m.sampleRate);
@@ -234,7 +238,14 @@ function scheduleOneSong(buffer, songN, startTime) {
   src.start(startTime);
   src.stop(startTime + songPlay + 0.05);
   activeNodes.push(src, g);
-  src.onended = () => { try { src.disconnect(); g.disconnect(); } catch (_) {} };
+  // `activeNodes` exists to tear down what is still PLAYING (a seek/restart stops them), so a
+  // finished song has to leave it: a spent source still references its AudioBuffer, i.e. a whole
+  // song's PCM, and the list was only ever cleared by a seek. An hour of uninterrupted playback
+  // otherwise retains every song it played.
+  src.onended = () => {
+    try { src.disconnect(); g.disconnect(); } catch (_) {}
+    activeNodes = activeNodes.filter((x) => x !== src && x !== g);
+  };
 
   // UI: mark this song as the audible one when it begins, and persist n.
   const mySeq = seq;
@@ -294,6 +305,7 @@ function pump() {
 // from n. For a navigation that should PRESERVE the timeline (Prev/Next), use seekTo() instead.
 function startSequence() {
   seq++;
+  renderSeq++;           // the cfg behind every index may have changed; nothing in flight survives
   // tear down current audio
   for (const node of activeNodes) { try { node.stop && node.stop(); } catch (_) {} try { node.disconnect(); } catch (_) {} }
   activeNodes = [];
@@ -323,7 +335,20 @@ function seekTo(nn) {
   seq++;                 // invalidate the old audio schedule (stale setTimeouts/onended bail out)
   for (const node of activeNodes) { try { node.stop && node.stop(); } catch (_) {} try { node.disconnect(); } catch (_) {} }
   activeNodes = [];
-  pending.length = 0;    // drop queued work; the window around nn is re-requested below
+  // Drop queued work — the window around nn is re-requested below. This RELEASES the dropped
+  // indices' claims; holding them would bar those songs from ever being queued again (queue.js).
+  gen.dropQueued();
+  // A worker mid-render on a song the seek left behind holds a pool slot for the whole render, so
+  // a distant jump can hand the entire pool to work nobody will hear while the target waits.
+  // Only those are terminated: a Prev/Next lands inside the cache window, where what is in flight
+  // is still a song the timeline wants — and a terminate costs a runtime reboot.
+  for (let i = 0; i < pool.length; i++) {
+    const slot = pool[i];
+    if (!slot.busy || Math.abs(slot.n - nn) <= PCM_RADIUS) continue;
+    gen.release(slot.n);
+    try { slot.worker.terminate(); } catch (_) {}
+    makeWorker(i);       // replaces the slot (idle, ready for the target)
+  }
   nextN = nn;
   firstScheduled = false;
   bufferingN = rendered.has(nn) ? -1 : nn;   // stall indicator until the target is audible
@@ -424,7 +449,7 @@ function renderPlaylist() {
   for (let k = from; k <= to; k++) {
     const isNow = k === displayN;
     const cached = rendered.has(k);
-    const generating = requested.has(k) || (bufferingN === k && !cached);
+    const generating = gen.has(k) || (bufferingN === k && !cached);
     const row = document.createElement('div');
     row.className = 'plrow'
       + (isNow ? ' now' : '')
@@ -647,6 +672,7 @@ function toggleShuffle() {
   saveShuffle();
   for (const k of ledger.keys()) if (k >= displayN) ledger.delete(k);
   for (const k of rendered.keys()) if (k >= displayN) rendered.delete(k);
+  renderSeq++;           // the upcoming vibes just changed — discard whatever is mid-render
   updateShuffleBtn();
   if (playing) seekTo(displayN); else renderPlaylist();
 }

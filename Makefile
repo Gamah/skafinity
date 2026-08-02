@@ -151,11 +151,13 @@ stage:
 check-bundle:
 	@sh tools/bundle-stamp.sh check
 
-# Two halves: smoke.mjs checks the raw [JSExport] boundary; page.mjs checks the surface the
+# Three parts: queue.mjs checks the scheduler's generation queue (no wasm needed — it runs on a
+# bare checkout); smoke.mjs checks the raw [JSExport] boundary; page.mjs checks the surface the
 # PAGE uses (the `mod` object engine.js returns, against every call app.js/worker.js make).
-# Both derive what they expect from the source, so a new export or a new mod.* call is covered
-# without editing a list here.
+# The latter two derive what they expect from the source, so a new export or a new mod.* call is
+# covered without editing a list here.
 test:
+	$(NODE) test/queue.mjs
 	$(NODE) test/smoke.mjs
 	$(NODE) test/page.mjs
 
@@ -203,7 +205,7 @@ dist:
 		echo "Build it with 'make' (local .NET SDK) or 'make up' (Docker)." >&2; exit 1; }
 	rm -rf dist
 	mkdir -p dist
-	cp web/index.html web/app.js web/engine.js web/worker.js web/style.css dist/
+	cp web/index.html web/app.js web/engine.js web/worker.js web/queue.js web/style.css dist/
 	cp sbox-library/Skafinity/skafinity.config.json dist/config.json
 	mkdir -p dist/_framework
 	find web/_framework -maxdepth 1 -type f ! -name '*.br' ! -name '*.gz' -exec cp {} dist/_framework/ \;

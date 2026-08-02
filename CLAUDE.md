@@ -102,6 +102,7 @@ skafinity/
     index.html            # the page + vibe UI
     engine.js             # boots .NET, exposes the `mod` API app.js/worker.js expect
     app.js                # Web Audio sequencer (port of the controller's scheduling)
+    queue.js              # the sequencer's generation queue — DOM-free so a node test can drive it
     worker.js             # generation worker (its own runtime instance)
     style.css
     config.json           # house-mix overlay fetched at startup (make-copied from sbox-library)
@@ -110,6 +111,8 @@ skafinity/
     bundle-single.mjs     # builds dist/skafinity.html (the whole runtime inlined into one file)
   test/
     smoke.mjs             # node smoke test of the JS↔wasm boundary
+    page.mjs              # the mod.* surface app.js/worker.js actually call
+    queue.mjs             # the scheduler's generation queue (no wasm — runs on a bare checkout)
     dist-single.mjs       # boots dist/skafinity.html's inlined runtime under node
     engine/               # engine-only C# harness (make test-engine) — runs without s&box
   Makefile
@@ -215,7 +218,8 @@ muted.
 
 `make test` is the other half: it boots the *published wasm* runtime under node and checks the
 JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
-only runs where the bundle has been built.
+only runs where the bundle has been built — except `test/queue.mjs`, which touches no wasm and
+runs on a bare checkout (see the scheduling section).
 
 **A commit that changes `wasm/Exports.cs` or `web/engine.js` MUST re-publish and re-stage
 `web/_framework` in that same commit.** `web/_framework` is committed so a checkout is runnable
@@ -803,6 +807,20 @@ not divide the bar genuinely drifts and comes back.
   instance) so a render never janks the UI.
 - Persist `n` in `localStorage` so playback resumes.
 
+**A song is CLAIMED before it is rendered, and dropping the claim is what dropping the work means.**
+`web/queue.js` holds the one rule the scheduler cannot get wrong: `claimed === queued ∪ in-flight`.
+A claim is released only when a render lands, so any code path that discards queued work has to
+release its claims with it (`dropQueued`) — a claim with no queue entry and no worker behind it is
+permanent, and `want()` will then refuse that index forever. The timeline is walked in order, so one
+stranded index stops playback for the rest of the session rather than skipping a song. That is why
+the queue is a DOM-free object with its own node test (`test/queue.mjs`, in `make test`) instead of
+two collections inline in `app.js`: everything else in the scheduler needs a browser, and this does
+not. The same asymmetry applies to workers — `seekTo` terminates only renders that fall outside the
+cache window (a Prev/Next is still rendering songs the timeline wants, and a terminate costs a
+runtime reboot), while `startSequence` abandons everything. And `activeNodes` is what is still
+*playing*: a finished source removes itself in `onended`, because it holds its `AudioBuffer` — a
+whole song's PCM — for as long as the list does.
+
 Browsers require a user gesture before audio — `AudioContext.resume()` is gated on the play
 button.
 
@@ -951,9 +969,10 @@ GitHub only serves a branch's root or `/docs`, never `web/`, and it would run Je
 - No build framework beyond `make`. `make` → publish + stage `web/_framework`; `make dev`
   skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (a quick
   no-Docker preview — `make up` is the real nginx-parity host). `make test-engine` → the
-  engine-only C# tests (the check that runs on a bare dev host). `make test` → node smoke
-  test. `make fast`/`up`/`rebuild`/`down`/`logs`/`ps` drive the container. `make dist` →
-  the two handout artifacts (above); `make test-dist` boots the single-file one.
+  engine-only C# tests (the check that runs on a bare dev host). `make test` → the node
+  tests (wasm boundary, page surface, scheduler queue). `make fast`/`up`/`rebuild`/`down`/
+  `logs`/`ps` drive the container. `make dist` → the two handout artifacts (above);
+  `make test-dist` boots the single-file one.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched
   bundle, and inlining it does not change that: `dist/skafinity.html` needs http too (module
   scripts and `data:`/`blob:` imports off a `file://` origin). `web/` is self-contained (it
