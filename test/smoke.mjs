@@ -55,10 +55,15 @@ check('DefaultConfig genre is 0', E.GetGenre(cfg) === 0, `${E.GetGenre(cfg)}`);
 // Field counts follow the genre grids: globals shared by every genre, plus that genre's
 // instruments × 4 columns. Asserted as a SHAPE rather than a magic number — adding a knob or an
 // instrument should not mean editing a literal here, but the relationships must hold.
-const GLOBALS = E.VibeFieldCount(0) - 6 * 4;   // ska has 6 instruments
+// NOTE the anchor: GLOBALS is derived from SKA's count, so ska's instrument total is the one
+// number here that must be edited when a grid changes — and getting it wrong fails every OTHER
+// genre's check while ska's own passes tautologically. Ska has 7 since the third-wave retune gave
+// it a chorus guitar (it plays a driven comp in its loud sections, so it needs the same handles
+// the other genres have).
+const GLOBALS = E.VibeFieldCount(0) - 7 * 4;   // ska has 7 instruments
 const skaCount = E.VibeFieldCount(0);
 const rockCount = E.VibeFieldCount(1);
-check('ska is globals + 6 instruments × 4', skaCount === GLOBALS + 6 * 4, `${skaCount}`);
+check('ska is globals + 7 instruments × 4', skaCount === GLOBALS + 7 * 4, `${skaCount}`);
 check('rock is globals + 5 instruments × 4', rockCount === GLOBALS + 5 * 4, `${rockCount}`);
 check('country is globals + 5 instruments × 4', E.VibeFieldCount(2) === GLOBALS + 5 * 4, `${E.VibeFieldCount(2)}`);
 check('metal is globals + 4 instruments × 4', E.VibeFieldCount(3) === GLOBALS + 4 * 4, `${E.VibeFieldCount(3)}`);

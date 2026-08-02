@@ -565,75 +565,124 @@ static class Program
 
 	static void GenreProfileTests()
 	{
-		// Swing is genre character rather than a knob, so every genre must declare a usable band
-		// and a draw must stay inside it.
+		// Swing is genre character rather than a knob, and it is a YES/NO before it is a depth: a
+		// genre that never swings declares SwingChance 0 and needs no band at all. So a draw is one
+		// of exactly three things — straight, somewhere in the genre's swing band, or somewhere in
+		// its shuffle band — and nothing may land between them. A value just above zero is the
+		// specific thing this shape exists to make unrepresentable: it is inaudible, so it is a
+		// straight song claiming a feel.
+		int swingingGenres = 0, straightOnlyGenres = 0;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 		{
 			var p = GenreProfile.For( g );
+			Check( $"genre {g} swing chance is a probability", p.SwingChance >= 0f && p.SwingChance <= 1f );
 			Check( $"genre {g} swing band is ordered", p.SwingMin <= p.SwingMax );
 			Check( $"genre {g} swing band is in range", p.SwingMin >= 0f && p.SwingMax <= 0.4f );
+			// A genre that swings must swing AUDIBLY when it does. 0.08 of an eighth is around
+			// 18 ms at these tempos; below that the warp is a micro-timing texture, not a groove.
+			if ( p.SwingChance > 0f )
+				Check( $"genre {g} swings audibly when it swings", p.SwingMin >= 0.08f );
+			if ( p.SwingChance > 0f ) swingingGenres++; else straightOnlyGenres++;
 
-			bool inBand = true, fastStraight = true;
+			bool inBand = true, fastNeverDeeper = true, straightWhenNever = true;
 			for ( int i = 0; i < 300; i++ )
 			{
 				var rng = new Rng( $"swing:{g}:{i}" );
 				float s = p.DrawSwing( rng, false );
-				// A draw is either the genre's swing band or — where the genre has one — its
-				// shuffle band. Nothing may land between or outside the two.
+				bool straight = s == 0f;
 				bool swung = s >= p.SwingMin - 0.0001f && s <= p.SwingMax + 0.0001f;
 				bool shuffled = p.ShuffleChance > 0f
 					&& s >= p.ShuffleMin - 0.0001f && s <= p.ShuffleMax + 0.0001f;
-				inBand &= swung || shuffled;
+				inBand &= straight || swung || shuffled;
+				straightWhenNever &= p.SwingChance > 0f || straight;
 
-				// An uptempo song never shuffles and never swings wider than its band.
-				float fast = GenreProfile.For( g ).DrawSwing( new Rng( $"swing:{g}:{i}" ), true );
-				fastStraight &= fast <= p.SwingMax + 0.0001f;
+				// THE REGRESSION THIS SHAPE FIXES. An uptempo song never shuffles and swings LESS
+				// OFTEN — but when it does swing it swings at the genre's own depth. The old code
+				// halved the depth instead, which put the shallow end of the band under the
+				// audibility threshold, and did it worst where the eighth was already shortest: a
+				// fast ska song came out at ~9 ms of push, i.e. straight but not saying so.
+				float fast = p.DrawSwing( new Rng( $"swing:{g}:{i}" ), true );
+				fastNeverDeeper &= fast == 0f
+					|| (fast >= p.SwingMin - 0.0001f && fast <= p.SwingMax + 0.0001f);
 			}
-			Check( $"genre {g} draws inside its band (or its shuffle band)", inBand );
-			Check( $"genre {g} does not shuffle when fast", fastStraight );
+			Check( $"genre {g} draws straight, its band, or its shuffle band", inBand );
+			Check( $"genre {g} is straight when its swing chance is zero", straightWhenNever );
+			Check( $"genre {g} never swings shallower than its band when fast", fastNeverDeeper );
 		}
+		// Both checks above are vacuous unless the roster actually contains each kind.
+		Check( "some genres swing", swingingGenres > 0, $"{swingingGenres} of {VibeCodec.GenreCount}" );
+		Check( "some genres never swing", straightOnlyGenres > 0, $"{straightOnlyGenres} of {VibeCodec.GenreCount}" );
 
 		// ── the shuffle feel ──
-		// A 2:1 triplet shuffle is a different FEEL, not a wider swing — widening ska's band to
-		// reach ~0.33 would just make its ordinary songs sloppy on the way there.
-		bool shuffleGenres = GenreProfile.For( 0 ).ShuffleChance > 0f
-			&& GenreProfile.For( 2 ).ShuffleChance > 0f;
+		// A 2:1 triplet shuffle is a different FEEL, not a wider swing — widening a genre's band to
+		// reach ~0.33 would just make its ordinary songs sloppy on the way there. Country is the
+		// genre that kept it: ska is third wave now, and the third wave is straight.
+		var country = GenreProfile.For( 2 );
 		bool straightGenres = true;
-		foreach ( var g in new[] { 1, 3, 4, 5 } ) straightGenres &= GenreProfile.For( g ).ShuffleChance == 0f;
-		Check( "ska and country can draw a shuffle", shuffleGenres );
-		Check( "rock, metal, punk and pop never shuffle", straightGenres );
+		foreach ( var g in new[] { 0, 1, 3, 4, 5 } ) straightGenres &= GenreProfile.For( g ).ShuffleChance == 0f;
+		Check( "country can draw a shuffle", country.ShuffleChance > 0f );
+		Check( "every other genre never shuffles", straightGenres );
 		Check( "the shuffle band sits at a real 2:1 triplet",
-			GenreProfile.For( 0 ).ShuffleMin >= 0.28f && GenreProfile.For( 0 ).ShuffleMax <= 0.4f );
-		Check( "the shuffle band is clear of the swing band",
-			GenreProfile.For( 0 ).ShuffleMin > GenreProfile.For( 0 ).SwingMax );
+			country.ShuffleMin >= 0.28f && country.ShuffleMax <= 0.4f );
+		Check( "the shuffle band is clear of the swing band", country.ShuffleMin > country.SwingMax );
 
 		int shuffles = 0;
 		for ( int i = 0; i < 400; i++ )
-			if ( GenreProfile.For( 0 ).DrawSwing( new Rng( $"sh:{i}" ), false ) >= GenreProfile.For( 0 ).ShuffleMin )
+			if ( country.DrawSwing( new Rng( $"sh:{i}" ), false ) >= country.ShuffleMin )
 				shuffles++;
-		Check( "some ska songs shuffle and most do not", shuffles > 20 && shuffles < 200,
+		Check( "some country songs shuffle and most do not", shuffles > 20 && shuffles < 200,
 			$"{shuffles} of 400" );
 
-		// The point of the row: metal and punk are machine-straight, ska is pushed. Without this
-		// the bands could all quietly collapse to the same values and nothing would notice.
-		var metal = GenreProfile.For( 3 );
-		var punk = GenreProfile.For( 4 );
+		// The point of the row: the genres differ in FEEL, not just in tempo. Without this the
+		// chances could all quietly collapse to the same value and nothing would notice.
 		var ska = GenreProfile.For( 0 );
-		Check( "metal is effectively straight", metal.SwingMax <= 0.05f );
-		Check( "punk is effectively straight", punk.SwingMax <= 0.05f );
-		Check( "ska always has a pushed offbeat", ska.SwingMin >= 0.08f );
-		Check( "ska swings harder than metal", ska.SwingMin > metal.SwingMax );
+		var rock = GenreProfile.For( 1 );
+		Check( "metal never swings", GenreProfile.For( 3 ).SwingChance == 0f );
+		Check( "punk never swings", GenreProfile.For( 4 ).SwingChance == 0f );
+		Check( "pop never swings", GenreProfile.For( 5 ).SwingChance == 0f );
+		// Third-wave ska is straight — the shuffle belongs to the first wave, which this genre is
+		// no longer tuned as. If a first-wave or two-tone genre is ever added (see PLAN.md), that
+		// is where a swung offbeat comes back; it does not come back here.
+		Check( "third-wave ska never swings", ska.SwingChance == 0f );
+		Check( "country swings more often than rock", country.SwingChance > rock.SwingChance );
 
-		// Swing varies song to song rather than being one constant per genre.
+		// Swing varies song to song rather than being one constant per genre — and the straight
+		// songs are part of that variation, so the count includes zero.
 		var seen = new HashSet<int>();
 		for ( int i = 0; i < 100; i++ )
-			seen.Add( (int)Math.Round( ska.DrawSwing( new Rng( $"ska:{i}" ), false ) * 1000 ) );
+			seen.Add( (int)Math.Round( country.DrawSwing( new Rng( $"cy:{i}" ), false ) * 1000 ) );
 		Check( "swing varies between songs of the same genre", seen.Count > 10, $"{seen.Count} distinct values" );
+		Check( "a genre that swings still writes straight songs", seen.Contains( 0 ) );
 
 		// A song's swing must follow only from its seed, or the shuffle line would not be
 		// reproducible.
 		Check( "a song's swing is reproducible from its seed",
-			ska.DrawSwing( new Rng( "ska:7" ), false ) == ska.DrawSwing( new Rng( "ska:7" ), false ) );
+			country.DrawSwing( new Rng( "cy:7" ), false ) == country.DrawSwing( new Rng( "cy:7" ), false ) );
+
+		// ── the loud comp (a genre's dynamic) ──
+		// Where a genre changes technique for its loud sections, the pieces must all be present:
+		// a figure table to play and a style to play it in. A half-wired one would silently comp
+		// the loud sections with the quiet style and nothing would fail.
+		int loudGenres = 0;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			if ( p.LoudCompFigures == null ) continue;
+			loudGenres++;
+			Check( $"genre {g} loud comp has figures", p.LoudCompFigures.Length > 0 );
+			Check( $"genre {g} loud comp differs from its quiet comp", p.LoudComp != p.Comp );
+			// Reachable: the threshold must sit at or below the loudest energy any of its own
+			// sections actually reach, or the loud comp is dead code.
+			float peak = 0f;
+			foreach ( var part in p.Form ) peak = Math.Max( peak, part.Energy );
+			Check( $"genre {g} actually reaches its loud threshold", peak >= p.LoudFrom,
+				$"peak energy {peak:0.00} vs LoudFrom {p.LoudFrom:0.00}" );
+			// And it must NOT be reached by every section, or the quiet comp is the dead one.
+			float trough = 1f;
+			foreach ( var part in p.Form ) trough = Math.Min( trough, part.Energy );
+			Check( $"genre {g} still has quiet sections", trough < p.LoudFrom );
+		}
+		Check( "some genre has a loud comp", loudGenres > 0, $"{loudGenres} of {VibeCodec.GenreCount}" );
 
 		// SWING must be gone from the seed grid — that is what "not a knob" means on the wire.
 		bool noSwingKnob = true;

@@ -89,7 +89,11 @@ public sealed partial class MusicGen
 		// The DRAWN tempo, not the first section's. They differ by that section's TempoMul, and the
 		// drawn one is the number every tempo decision reads — the band, the knob's saturation and
 		// whether the guitar may play thirty-seconds.
-		sb.AppendLine( $"tempo     {_bpm} bpm{(_fast ? " (uptempo band)" : "")}, swing {_time.Swing:0.00}"
+		// Swing reads as STRAIGHT rather than "0.00": a song either swings or it does not, and a
+		// number that can be zero invited reading a very small one as "swings a little" — which is
+		// exactly the mistake the SwingChance draw exists to make unrepresentable.
+		sb.AppendLine( $"tempo     {_bpm} bpm{(_fast ? " (uptempo band)" : "")}, "
+			+ $"{(_time.Swing <= 0f ? "straight" : $"swing {_time.Swing:0.00}")}"
 			+ $"{(_time.Swing >= _prof.ShuffleMin && _prof.ShuffleChance > 0 ? " — SHUFFLE" : "")}"
 			+ $" [genre plays {_prof.TempoFloor}–{_prof.TempoCeil}"
 			+ $"{(_bpm <= _prof.TempoFloor || _bpm >= _prof.TempoCeil ? ", KNOB SATURATED" : "")}]" );
@@ -108,6 +112,7 @@ public sealed partial class MusicGen
 		sb.AppendLine( $"groove    {_groove.Name}, ride pref {_ridePref:0.00}" );
 		sb.AppendLine( $"parts     comp {_songComp.LengthTicks / _time.BarTicks} bar(s), bass {_songBass.LengthTicks / _time.BarTicks} bar(s)"
 			+ $"{(_songKeys != null ? $", keys {_songKeys.LengthTicks / _time.BarTicks} bar(s)" : "")}"
+			+ $"{(_songLoud != null ? $", loud comp {_songLoud.LengthTicks / _time.BarTicks} bar(s) as {_prof.LoudComp} from energy {_prof.LoudFrom:0.00}" : "")}"
 			+ $"{(_riffBass ? ", bass doubles the riff" : "")}" );
 		sb.AppendLine( $"tunes     chorus {(_chorusTune == null ? "—" : $"{_chorusTune.LengthTicks / _time.BarTicks} bars, {_chorusTune.Count} notes")}"
 			+ $" | verse {(_verseTune == null ? "—" : $"{_verseTune.LengthTicks / _time.BarTicks} bars, {_verseTune.Count} notes")}" );
@@ -249,6 +254,10 @@ public sealed partial class MusicGen
 	// The song's own figures — what its choruses play. Other sections draw their own against a
 	// stream keyed by section type, so the backing contrasts instead of looping one cell all song.
 	Pattern _songComp, _songKeys, _songBass;
+	// The figure the main chordal voice plays in the song's LOUD sections, where the genre has a
+	// loud comp at all (null otherwise). Drawn once per song rather than per section on purpose:
+	// the loud sections are the choruses, and every chorus must agree — that is the song's hook.
+	Pattern _songLoud;
 	DrumGroove _groove;      // the song's groove — per-genre tables, not a shared switch default
 	bool _riffBass;          // the bass reads the riff's onsets instead of playing its own pattern
 	EndingStyle _ending;     // how this song lands (see EndingStyle) — a per-song draw, not a fixed pad

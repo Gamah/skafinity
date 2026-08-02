@@ -56,6 +56,22 @@ static class CompFigure
 		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,Stab,R,R ),
 	};
 
+	// ── Ska (loud): what the same voice plays once the section is loud — see GenreProfile.LoudComp.
+	// The skank stops. These are the guitar part of a third-wave chorus: on the beat, ringing, and
+	// through a driven amp (so RhythmGtrTone's drive takes the third out and they land as power
+	// chords). The offbeat does not vanish from the song — the horns and the kit still carry it,
+	// which is what keeps a loud ska chorus from simply being a punk chorus.
+	public static readonly Pattern[] SkaLoud =
+	{
+		E( Ring, R, Stab, R, Ring, R, Stab, R ),
+		// Two bars, the second pushing back into the first: the chorus figure that answers itself.
+		E( Ring, R, R, Stab, Ring, R, Stab, R,
+		   Ring, R, R, Stab, Ring, Stab, Stab, R ),
+		// The one that keeps the offbeat inside the loud part — downbeat power chord, offbeat
+		// answer. This is the figure that still sounds like ska with the gain on.
+		E( Ring, Stab, R, Stab, Ring, Stab, R, Stab ),
+	};
+
 	// ── Rock: a real two-bar riff motif. NOT an every-eighth chug — the hits are placed, they
 	// ring, and the second bar answers the first.
 	public static readonly Pattern[] Rock =

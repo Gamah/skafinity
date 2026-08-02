@@ -76,6 +76,10 @@ public sealed partial class MusicGen
 		_drumPan = DrumPan * _widthScale;
 		_bassPat = _songBass = rng.Pick( prof.BassPatterns );
 		_compFig = _songComp = rng.Pick( prof.CompFigures );
+		// What the chordal voice plays where the section is loud enough to change technique. Drawn
+		// for every genre so the draw count does not depend on whether the genre has a loud comp;
+		// only the genres with one read the result (PickOrNull takes its value either way).
+		_songLoud = PickOrNull( rng, prof.LoudCompFigures );
 		// The second chordal voice's figure. Drawn even where the genre has none, so the genres
 		// that do have one are not the only ones consuming the value.
 		_keysFig = _songKeys = PickOrNull( rng, prof.KeysFigures );
@@ -401,8 +405,12 @@ public sealed partial class MusicGen
 		bool hemiola )
 	{
 		int to = barTick + barTicks;
-		var fig = hemiola ? CompFigure.Hemiola : _compFig;
-		RenderCompVoice( barTick, to, chord, fig, rhythmRng, exprRng );
+		// A loud section changes the TECHNIQUE, not just the level: the genre's loud figure through
+		// its loud style (third-wave ska's clean skank becoming driven power chords). The hemiola
+		// still wins where a section regroups — that is a metric device and it outranks the timbre.
+		bool loud = _songLoud != null && _energy >= _prof.LoudFrom;
+		var fig = hemiola ? CompFigure.Hemiola : (loud ? _songLoud : _compFig);
+		RenderCompVoice( barTick, to, chord, fig, rhythmRng, exprRng, loud );
 		if ( _prof.Keys != KeysStyle.None && _keysFig != null && _energy > 0.35f )
 			RenderKeysVoice( barTick, to, chord, keysRng, exprRng );
 	}

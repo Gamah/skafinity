@@ -225,6 +225,17 @@ public static class VibeCodec
 					F( "SECTION", 0f, 1f, false, c => c.HornSectionChance, ( c, v ) => c.HornSectionChance = v, "HORNS", 2 ),
 					F( "DENSITY", 0f, 1f, false, c => c.HornDensity, ( c, v ) => c.HornDensity = v, "HORNS", 3 ) ),
 				DrumsRow(),
+				// The chorus guitar. Third-wave ska drops the skank for driven power chords once the
+				// section is loud (GenreProfile.LoudComp), so the rhythm guitar is now a part a ska
+				// song actually plays and the listener needs the same handles the other genres get.
+				// It goes AFTER the drums, which is what append-only actually requires: a row's wire
+				// position is its INDEX in this grid, so slotting it next to the other instruments
+				// would have moved DRUMS from slot 5 to slot 6 and silently repointed every existing
+				// ska seed's drum knobs. New rows go on the end, however untidy that reads.
+				Row( "CHORUS GTR", vol( "CHORUS GTR", c => c.RhythmGtrVol, ( c, v ) => c.RhythmGtrVol = v ),
+					tone( "CHORUS GTR", 500f, 8000f, c => c.RhythmGtrCutoff, ( c, v ) => c.RhythmGtrCutoff = v ),
+					F( "DISTORTION", 1f, 5f, false, c => c.RhythmGtrDrive, ( c, v ) => c.RhythmGtrDrive = v, "CHORUS GTR", 2 ),
+					F( "CHUG", 0f, 1f, false, c => c.RhythmGtrChug, ( c, v ) => c.RhythmGtrChug = v, "CHORUS GTR", 3 ) ),
 			},
 		};
 	}

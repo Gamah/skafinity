@@ -13,14 +13,18 @@ public sealed partial class MusicGen
 	/// pattern with its own length, so a two-bar riff is a two-bar riff) and the STYLE says what
 	/// the voice does with each hit. Three genres sharing one comping rhythm was the loudest
 	/// duplication left in the engine — this is the seam that fixes it.</summary>
-	void RenderCompVoice( int barTick, int to, int chord, Pattern fig, Rng rng, Rng exprRng )
+	/// <param name="loud">The section is loud enough that the genre changes technique — see
+	/// <see cref="GenreProfile.LoudComp"/>. One voice, one chord, a different instrument gesture;
+	/// the caller has already picked the matching figure.</param>
+	void RenderCompVoice( int barTick, int to, int chord, Pattern fig, Rng rng, Rng exprRng,
+		bool loud = false )
 	{
 		var hits = fig.Slice( barTick, to, _sectionTick, _feel );
 		// Remember what the riff played: where the bass doubles it (metal, and punk's unison
 		// option) it reads these onsets rather than a table of its own.
 		_riffOnsets.AddRange( hits );
 
-		switch ( _prof.Comp )
+		switch ( loud ? _prof.LoudComp : _prof.Comp )
 		{
 			case CompStyle.Riff: RenderRiffBar( hits, chord, rng, exprRng ); break;
 			case CompStyle.BoomChick: RenderStrumBar( hits, chord, rng, exprRng ); break;
