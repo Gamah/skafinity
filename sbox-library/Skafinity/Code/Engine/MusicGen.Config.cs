@@ -14,7 +14,7 @@ public sealed partial class MusicGen
 {
 	public sealed class Config
 	{
-		// Genre — selects the instrument set + arrangement. 0 = Ska (bass/skank/organ/lead/
+		// Genre — selects the instrument set + arrangement. 0 = Ska-Punk (bass/skank/organ/lead/
 		// horns/drums), 1 = Rock (drums/bass/keys/lead-gtr/rhythm-gtr), 2 = Country, 3 = Metal,
 		// 4 = Punk (lean power-pop), 5 = Pop (synth/dance). New genres append here.
 		public int Genre = 0;

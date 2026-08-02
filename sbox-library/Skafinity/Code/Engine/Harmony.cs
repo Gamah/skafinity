@@ -88,31 +88,31 @@ static class Harmony
 	public static readonly int[] Power = { 0, 4 };
 	public static readonly int[] PowerFlat7 = { 0, 4, 6 };
 
-	// ── Ska harmony (Genre 0 — third wave) ──
+	// ── Ska-punk harmony (Genre 0) ──
 	// Bright and major: third-wave ska is upbeat major-key music, and mixolydian is what keeps its
 	// ♭VII moves available. The wave shift moved the WEIGHT toward plain major rather than the
 	// table itself — the modes were already right, which is the part of the genre that did not
 	// need retuning.
-	public static readonly int[][] SkaScales =
+	public static readonly int[][] SkaPunkScales =
 	{
 		new[] { 0, 2, 4, 5, 7, 9, 11 }, // major
 		new[] { 0, 2, 4, 5, 7, 9, 10 }, // mixolydian
 	};
-	public static readonly int[] SkaScaleWeights = { 4, 2 };
+	public static readonly int[] SkaPunkScaleWeights = { 4, 2 };
 
 	// The 7ths and 9ths stay: they are what make the CLEAN SKANK read as ska rather than as a
 	// bright rock stab, and the skank is still what the verses play. They cost nothing in the loud
 	// sections — the driven guitar drops its third there anyway (see DrivenVoicing), so the same
 	// voicing spells a rocksteady chop in the verse and a power chord in the chorus.
-	public static readonly int[][] SkaVoicings = { Seventh, Ninth, Triad, Sixth };
-	public static readonly int[] SkaVoicingWeights = { 3, 2, 3, 1 };
+	public static readonly int[][] SkaPunkVoicings = { Seventh, Ninth, Triad, Sixth };
+	public static readonly int[] SkaPunkVoicingWeights = { 3, 2, 3, 1 };
 
 	// The bright turnarounds ska keeps. The mixolydian ♭VII moves are the ones doing the work
 	// here: punk and pop hold the plain-major anthem loops (I–V–vi–IV, vi–IV–I–V, I–IV–V–V,
 	// I–V–IV–V), and ska-punk sits close enough to punk that ♭VII is most of what is left to tell
 	// them apart harmonically — so nothing here may drift toward those tables. The 50s/rocksteady
 	// ii–V turnaround went with the wave: it is the sound of the era this genre no longer is.
-	public static readonly int[][] SkaProgressions =
+	public static readonly int[][] SkaPunkProgressions =
 	{
 		new[] { 0, 3, 4, 3 }, // I–IV–V–IV
 		new[] { 0, 6, 3, 0 }, // I–♭VII–IV–I (mixolydian)
@@ -132,13 +132,13 @@ static class Harmony
 	// old tables shared literal rows ({0,0,0,0,0,0,0,App} was in four of the five).
 	static Pattern P( params int[] cells ) => Pattern.Eighths( cells );
 
-	// Ska (third wave): a DRIVING bass. The spacious one-drop and the long legato 1↔5 lines that
+	// Ska-punk: a DRIVING bass. The spacious one-drop and the long legato 1↔5 lines that
 	// used to live here are rocksteady/reggae playing — the right part for a genre this engine does
 	// not have yet (see PLAN.md), and recoverable from git history when it does. A ska-punk bassist
 	// runs eighths under the skank and pops the octave, closer to punk than to reggae; what keeps
 	// these apart from PunkBass is that they still MOVE — walking lines and octave answers rather
 	// than the undifferentiated chug that is punk's whole idea.
-	public static readonly Pattern[] SkaBass =
+	public static readonly Pattern[] SkaPunkBass =
 	{
 		P( 0, 0, 0, 0, 7, 0, 0, 0,
 		   0, 0, 0, 0, 12, 0, 7, Approach ),                              // driving eighths, octave on the way out (2 bars)

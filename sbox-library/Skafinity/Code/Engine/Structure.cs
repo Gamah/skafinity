@@ -30,8 +30,14 @@ readonly struct Part
 	/// density and its level off this rather than inventing its own verse/chorus rule.</summary>
 	public readonly float Energy;
 
-	/// <summary>Pattern-rate multiplier: 0.5 = half time, 2 = double time. NOT a tempo change —
-	/// the grid is untouched, the figures stretch or compress against it.</summary>
+	/// <summary>The RHYTHM SECTION's pattern-rate multiplier: 0.5 = half time, 2 = double time.
+	/// NOT a tempo change — the grid is untouched, the figures stretch or compress against it, and
+	/// the song's length does not move.
+	///
+	/// It is the rhythm section's and not the song's: <see cref="MusicGen.RenderTune"/> plays the
+	/// tune at the nominal rate whatever this says. Half and double time are a contrast BETWEEN
+	/// the band and the melody — the vocal holds its ground while the kit and the comp change gear
+	/// — so a multiplier applied to both at once expresses nothing at all.</summary>
 	public readonly float Feel;
 
 	/// <summary>Tempo multiplier for the section, applied to the time base's per-tick delta.</summary>
@@ -91,12 +97,17 @@ static class SongForm
 	// its chorus and a breakdown falls out of the bottom.
 	const float Low = 0.30f, Mid = 0.55f, Lift = 0.75f, Full = 1.00f;
 
-	// Ska — the third-wave shape, and it CLIMBS. The old form opened on the chorus and rotated
+	// Ska-punk — the third-wave shape, and it CLIMBS. The old form opened on the chorus and rotated
 	// around it because the genre was tuned laid-back; ska-punk is dynamic music built on the drop
 	// between a clean skank verse and a distorted chorus (GenreProfile.LoudComp reads the energy
 	// column below to make that happen), so the form has to set that drop up rather than sit level.
-	// The bridge is the breakdown — back to skank and bass before the last chorus.
-	public static readonly Part[] Ska =
+	// The bridge is the breakdown, and it is where this genre spends its FEEL: the band drops to
+	// half time behind a vocal that does not (Part.Feel), which is the third-wave breakdown and
+	// the one place the style genuinely changes gear rather than changing technique. The
+	// verse→chorus pivot is NOT done here — the skank/power-chord drop already carries it through
+	// GenreProfile.LoudComp, and doubling the band on top of a band already counted double (see
+	// the tempo comment in GenreProfile) would put the chorus at sixteenth downstrokes.
+	public static readonly Part[] SkaPunk =
 	{
 		new( Section.Intro,     4, energy: Low, tempoMul: 0.98f ),
 		new( Section.Verse,     8, 0, energy: Mid ),
@@ -104,7 +115,7 @@ static class SongForm
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Verse,     8, 1, energy: Mid, hemiola: true ),
 		new( Section.Chorus,    8, energy: Full ),
-		new( Section.Bridge,    8, energy: Low + 0.05f ),
+		new( Section.Bridge,    8, energy: Low + 0.05f, feel: 0.5f ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Ending,    4, energy: Lift ),
 	};

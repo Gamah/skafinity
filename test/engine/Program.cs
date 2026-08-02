@@ -787,11 +787,29 @@ static class Program
 		var train = GenreProfile.For( 2 ).Grooves[0];
 		Check( "country has a running train-beat snare",
 			train.Snare.Count >= 12 && train.Snare.LengthTicks <= 4 * Timing.TicksPerBeat );
-		// Punk's cymbal hand never stops, and metal's kick runs at the sixteenth.
+		// Punk's cymbal hand never stops — that one IS deliberate.
 		Check( "punk drives the cymbal on every eighth",
 			GenreProfile.For( 4 ).Grooves[0].Cymbal.Count >= 8 );
-		Check( "metal's double kick runs at the sixteenth",
-			GenreProfile.For( 3 ).Grooves[0].Kick.Count >= 16 );
+
+		// Metal's double kick is a BURST, and the two halves of that are separately assertable:
+		// it must still reach the sixteenth somewhere (or it is not a double kick), and it must
+		// NOT be the sixteenth everywhere (or it is the unbroken wall this replaced, which read as
+		// a blast beat at every tempo because nothing in it ever changed).
+		var dk = GenreProfile.For( 3 ).Grooves[0].Kick;
+		int bars = Math.Max( 1, dk.LengthTicks / (4 * Timing.TicksPerBeat) );
+		int sixteenthsPerBar = 4 * Timing.TicksPerBeat / (Timing.TicksPerEighth / 2);
+		int longestRun = 0, run = 0, prev = int.MinValue;
+		foreach ( var h in dk.Slice( 0, dk.LengthTicks ) )
+		{
+			run = h.Tick - prev == Timing.TicksPerEighth / 2 ? run + 1 : 1;
+			longestRun = Math.Max( longestRun, run );
+			prev = h.Tick;
+		}
+		Check( "metal's double kick still bursts at the sixteenth", longestRun >= sixteenthsPerBar,
+			$"longest run {longestRun}" );
+		Check( "metal's double kick is a burst, not an unbroken wall",
+			bars > 1 && dk.Count < bars * sixteenthsPerBar,
+			$"{dk.Count} hits over {bars} bars" );
 
 		bool grooveDrawn = true;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
@@ -987,11 +1005,20 @@ static class Program
 			keys.Count == Enum.GetValues( typeof( Section ) ).Length );
 
 		// Half-time is a PATTERN rate, not a tempo: a section that halves the feel must not change
-		// how long the song runs. (Metal's breakdown and pop's drop are the two that use it.)
-		bool halfTime = false;
+		// how long the song runs. (Metal's breakdown, pop's drop, ska-punk's bridge.)
+		bool halfTime = false, feelUnderTune = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in MusicGen.BuildStructure( g ) ) halfTime |= p.Feel < 1f;
+			foreach ( var p in MusicGen.BuildStructure( g ) )
+			{
+				halfTime |= p.Feel < 1f;
+				// Feel is the RHYTHM SECTION's rate and the tune is exempt, so half time is a
+				// contrast between the band and the melody. A form where every feel change lands
+				// on a section with no tune expresses none of that — the exemption would be
+				// unreachable and the rule untested by anything that renders.
+				feelUnderTune |= p.Feel != 1f && MusicGen.SectionSingsTune( p.Type );
+			}
 		Check( "some genre drops into half time", halfTime );
+		Check( "some genre changes feel UNDER a tune", feelUnderTune );
 
 		// The final-chorus lift, and the hemiola the transitional sections regroup into. A constant
 		// per-section displacement used to live here too; it is gone deliberately (see SongForm) and

@@ -109,9 +109,10 @@ sealed class Pattern
 	///
 	/// <see cref="Timing.TicksPerBeat"/> is 48, so a 32nd is exactly 6 ticks: the same clean
 	/// division that gives a sixteenth 12 and a sixteenth-triplet 8, and it sits on the grid the
-	/// suite measures against. WHERE a figure this fine may be played is a tempo question, not a
-	/// genre one — 32nds/second is bpm × 2/15, so 200 bpm asks 27 notes a second of a picking hand
-	/// and 110 bpm asks 15, which is about the real ceiling. See <c>GenreProfile.DenseBpmMax</c>.
+	/// suite measures against. Nothing gates where a figure this fine may be played — not a genre
+	/// and not a tempo. What keeps it playable is the GESTURE: 32nds are authored as bursts that
+	/// resolve into the next beat, and a burst is as playable at the top of a genre's band as at
+	/// the bottom. A bar of unbroken 32nds is not, and that is an authoring judgement.
 	/// </summary>
 	public static Pattern ThirtySeconds( params int[] cells ) => Grid( Timing.TicksPerEighth / 4, cells );
 

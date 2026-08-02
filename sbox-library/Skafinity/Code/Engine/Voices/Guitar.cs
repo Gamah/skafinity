@@ -23,7 +23,7 @@ public sealed partial class MusicGen
 	// to sit UNDER the kit — it is the bed, not the song.
 	(float Drive, float CutEnv, float Reso, float Level) RhythmGtrTone() => _genre switch
 	{
-		// Ska plays this voice only in its LOUD sections (the verses are the skank), so this is the
+		// Ska-punk plays this voice only in its LOUD sections (the verses are the skank), so this is the
 		// third-wave chorus tone specifically: brighter than punk's and driven past DirtyChord, so
 		// the chorus lands as power chords while the clean skank keeps the song's 7ths and 9ths.
 		// Level sits above punk's because the loud figures are placed hits rather than a wall of
