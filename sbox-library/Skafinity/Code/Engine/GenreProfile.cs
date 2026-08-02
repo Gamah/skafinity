@@ -220,10 +220,55 @@ sealed class GenreProfile
 	// ── Dynamics ──
 	/// <summary>Velocity weights by metric position: the downbeat, the backbeat (2 and 4), and
 	/// the offbeats. This is what a genre's accent pattern IS — country leans on the offbeat
-	/// "chick", metal flattens everything, ska pushes the offbeat hardest.</summary>
+	/// "chick", metal flattens everything, ska pushes the offbeat hardest.
+	///
+	/// FITTED TO A DATASET, not chosen — see the block below.</summary>
 	public float AccentDown { get; init; } = 1f;
 	public float AccentBack { get; init; } = 1f;
 	public float AccentOff { get; init; } = 0.85f;
+
+	// THE ACCENT WEIGHTS ARE A MEASUREMENT, the way the *Balance values are a measurement off
+	// --levels. Source: Google Magenta's Groove MIDI Dataset (CC BY 4.0; 1150 files, 13.6 h, 10
+	// drummers with 80%+ professionals, every performance played to a metronome at a stated tempo
+	// so it is bar-aligned with no beat-tracking step, and carrying per-hit VELOCITY off a Roland
+	// TD-11). Verified 2026-08-02: https://magenta.tensorflow.org/datasets/groove.
+	// VELOCITY IS THE ACCENT WEIGHT, which is the whole reason this stopped being a taste call.
+	//
+	// NEITHER THE DATASET NOR THE TOOL THAT READ IT IS IN THIS REPO, and that is deliberate: no
+	// code here may depend on the dataset existing. It was input that drove a decision, not an
+	// asset — what is committed is these derived numbers and this citation, which is also what
+	// CC BY asks for. The measurement is reproducible from the method rather than from a checked-in
+	// script: read every note-on of every 4/4 performance of a style, fold it onto one bar at the
+	// nearest sixteenth, bin by metric position, and normalise each drum by its OWN mean before
+	// combining — otherwise position and instrument are confounded, since hats sit on every eighth
+	// and would decide the offbeat bin by themselves. Scale the set so beat 3 = 1.00, which is the
+	// literal 1f MetricGain returns there. The bar alignment checks itself: rock, pop and country
+	// all put their measured snare peaks exactly on beats 2 and 4.
+	//
+	// Measured (beat_type=beat, 4/4), with the bars behind each row:
+	//     style      down  back   off     bars
+	//     rock       0.99  1.16  0.82     6521
+	//     pop        0.92  1.02  0.57      319
+	//     punk       1.09  1.05  1.10      278
+	//     country    1.04  1.33  1.22      120
+	//     reggae     0.81  0.92  0.84      286
+	//
+	// TWO THINGS THESE NUMBERS ARE NOT. They are DRUM velocities, but MetricGain feeds NoteGain for
+	// every voice, so adopting them scales the guitar's and the keys' offbeats too — a dataset can
+	// say what a drummer does and cannot say what the band does. Pop's 0.57 is where that gap is
+	// widest, and it is the figure to revisit first if a genre reads thin off the beat. And the row
+	// counts are wildly uneven: rock's 6521 bars settle rock, while country's 120 (two
+	// performances) are an INDICATION that its backbeat and its offbeat "chick" both carry more
+	// than the engine gave them — corroborated by its 27 fill performances landing off at 1.12 —
+	// rather than a settled figure. Widen country before trusting it further.
+	//
+	// GENRE 0 IS DELIBERATELY UNCHANGED, AND GENRE 3 HAS NO DATA AT ALL. The dataset's closest
+	// style to genre 0 is reggae, and genre 0 is no longer reggae — it is the third wave. Its
+	// measured profile is a downbeat QUIETER than everything around it, which is the one drop
+	// stated in velocity, so it describes the music genre 0 was retuned AWAY from; it is recorded
+	// above because the reggae row of the roster plan will want it, not because it corrects
+	// anything here. Metal is simply not in the dataset (E-GMD may answer it later), so metal's
+	// flat weights remain a design decision and say so rather than borrowing rock's.
 
 	/// <summary>The genre's mix trim.</summary>
 	public MixProfile Mix { get; init; }
@@ -341,7 +386,7 @@ sealed class GenreProfile
 			KeysFigures = CompFigure.RockKeys, Keys = KeysStyle.Stabs,
 			Grooves = DrumGroove.Rock, GrooveWeights = new[] { 3, 2 },
 			Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
-			AccentDown = 1.05f, AccentBack = 1.1f, AccentOff = 0.8f,
+			AccentDown = 0.99f, AccentBack = 1.16f, AccentOff = 0.82f,   // measured, 6521 bars
 			Mix = new MixProfile( 1f, 1f, 1f, 1.05f, 1f ),
 		},
 		// ── country — 90s/00s NASHVILLE: the slowest band; a light shuffle under the train beat ──
@@ -376,7 +421,9 @@ sealed class GenreProfile
 			KeysFigures = CompFigure.CountryKeys, Keys = KeysStyle.HonkyTonk,
 			Grooves = DrumGroove.Country, GrooveWeights = new[] { 3, 2 },
 			Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
-			AccentDown = 1f, AccentBack = 1.05f, AccentOff = 1f,    // boom AND chick carry weight
+			// Boom AND chick carry weight — and the measurement says both carry MORE than this
+			// genre was giving them. Thin (120 bars), so it is an indication rather than settled.
+			AccentDown = 1.04f, AccentBack = 1.33f, AccentOff = 1.22f,
 			Mix = new MixProfile( 0.75f, 0.85f, 1f, 1.05f, 0.95f ), // dry and centred
 		},
 		// ── metal — 90s/00s GROOVE AND THRASH: the widest band, doom-slow through thrash ──
@@ -447,7 +494,9 @@ sealed class GenreProfile
 			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2 },
 			Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
 			RiffBassChance = 0.35f,
-			AccentDown = 1.1f, AccentBack = 1.15f, AccentOff = 0.9f,
+			// Punk's offbeat is as loud as its downbeat — the relentless eighth has no dynamic in
+			// it, which is the measurement disagreeing with the 0.9 this genre used to assume.
+			AccentDown = 1.09f, AccentBack = 1.05f, AccentOff = 1.1f,
 			Mix = new MixProfile( 0.7f, 0.95f, 0.95f, 1.1f, 1f ),
 		},
 		// ── pop — 90s/00s RADIO POP: four-on-the-floor, or the half-time backbeat under it ──
@@ -489,7 +538,9 @@ sealed class GenreProfile
 			KeysFigures = CompFigure.PopArp, Keys = KeysStyle.Arp,
 			Grooves = DrumGroove.Pop, GrooveWeights = new[] { 3, 2 },
 			Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
-			AccentDown = 1.1f, AccentBack = 1.05f, AccentOff = 0.85f,
+			// The widest gap between what was assumed and what was measured, and the one to
+			// revisit first: a programmed pop kit puts its off-beat hats far under the pulse.
+			AccentDown = 0.92f, AccentBack = 1.02f, AccentOff = 0.57f,
 			Mix = new MixProfile( 1.1f, 1.2f, 1.1f, 0.95f, 1.15f ),  // wide, bright, loud sub
 		},
 	};
