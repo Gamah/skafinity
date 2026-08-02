@@ -195,6 +195,23 @@ sealed class GenreProfile
 	public float LoudFrom { get; init; } = 0.9f;
 
 
+	/// <summary>The genre's FLOURISH: a two-bar variant of its comp figure whose tail breaks into
+	/// thirty-seconds — the ska flick, the rock riff's pickup, country's chicken-pickin' pull-off,
+	/// metal's tremolo into the bar line, punk's turnaround.
+	///
+	/// IT IS NOT AN ENTRY IN <see cref="CompFigures"/>, and that is the whole of this field. It was
+	/// one, and figures are drawn per SECTION — so a song that drew it played the flourish every
+	/// two bars for the length of a chorus, on a schedule, and a song that did not never heard the
+	/// genre's signature gesture at all. A thing that arrives every two bars is not heard as an
+	/// ornament, it is heard as the part; that is the same mistake as harmonising every long note
+	/// (the country double-stop) and as running the double kick as a setting rather than a burst.
+	/// Held out here it becomes a per-occurrence roll instead, which is also how the lead's
+	/// ornaments have always worked.
+	///
+	/// Null where the genre has no such gesture — pop's lives on its arp, not on its pad.</summary>
+	public Pattern CompOrnament { get; init; }
+	public Pattern KeysOrnament { get; init; }
+
 	/// <summary>The second chordal voice — the keys/piano/synth layer, where the genre has one.
 	/// </summary>
 	public Pattern[] KeysFigures { get; init; }
@@ -359,6 +376,7 @@ sealed class GenreProfile
 			Voicings = Harmony.SkaPunkVoicings, VoicingWeights = Harmony.SkaPunkVoicingWeights,
 			BassPatterns = Harmony.SkaPunkBass,
 			CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
+			CompOrnament = CompFigure.SkaPunkFlick,
 			// The dynamic that IS third-wave ska: the skank stops for the chorus and the same voice
 			// plays power chords through a driven amp. LoudComp reuses punk's downstroke because the
 			// technique genuinely is punk's — what keeps the genre distinct is that it only does this
@@ -405,6 +423,7 @@ sealed class GenreProfile
 			Voicings = Harmony.RockVoicings, VoicingWeights = Harmony.RockVoicingWeights,
 			BassPatterns = Harmony.RockBass,
 			CompFigures = CompFigure.Rock, Comp = CompStyle.Riff,
+			CompOrnament = CompFigure.RockPickup,
 			KeysFigures = CompFigure.RockKeys, Keys = KeysStyle.Stabs,
 			Grooves = DrumGroove.Rock, GrooveWeights = new[] { 3, 2 },
 			FillHits = 13.2f, FillShapes = new[] { 4, 3, 2, 1 },   // measured, 204 bars of fill
@@ -441,6 +460,7 @@ sealed class GenreProfile
 			Voicings = Harmony.CountryVoicings, VoicingWeights = Harmony.CountryVoicingWeights,
 			BassPatterns = Harmony.CountryBass,
 			CompFigures = CompFigure.Country, Comp = CompStyle.BoomChick,
+			CompOrnament = CompFigure.CountryPickOff,
 			KeysFigures = CompFigure.CountryKeys, Keys = KeysStyle.HonkyTonk,
 			Grooves = DrumGroove.Country, GrooveWeights = new[] { 3, 2 },
 			// The sparsest kit on the roster and the most gestural: country's fill vocabulary is a
@@ -486,6 +506,7 @@ sealed class GenreProfile
 			Voicings = Harmony.MetalVoicings, VoicingWeights = Harmony.MetalVoicingWeights,
 			BassPatterns = Harmony.MetalBass,
 			CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
+			CompOrnament = CompFigure.MetalTremolo,
 			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2 },
 			// The one genre whose fill really is the wall. It is also the genre that showed the
 			// density model up: past ~13.4/bar a flat scale had nothing left to give, so what metal
@@ -521,6 +542,7 @@ sealed class GenreProfile
 			Voicings = Harmony.PunkVoicings, VoicingWeights = Harmony.PunkVoicingWeights,
 			BassPatterns = Harmony.PunkBass,
 			CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
+			CompOrnament = CompFigure.PunkTurnaround,
 			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2 },
 			// Busy, but at punk's tempo a bar of fill is over in a second: the pickup is the shape
 			// that reads there, because there is no room for anything longer to develop.
@@ -569,6 +591,7 @@ sealed class GenreProfile
 			BassPatterns = Harmony.PopBass,
 			CompFigures = CompFigure.Pop, Comp = CompStyle.Pad,
 			KeysFigures = CompFigure.PopArp, Keys = KeysStyle.Arp,
+			KeysOrnament = CompFigure.PopArpRun,
 			Grooves = DrumGroove.Pop, GrooveWeights = new[] { 3, 2 },
 			// Programmed and sparse — a pop fill is a single reversed crash or a two-hit pickup far
 			// more often than it is a drummer going round the kit.

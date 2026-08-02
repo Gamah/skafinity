@@ -47,14 +47,16 @@ static class CompFigure
 		   R, Stab, R, Stab, R, Stab, Stab, Stab ),
 		E( R, Stab, R, Stab, R, Stab, R, R,
 		   R, Stab, R, Stab, R, Stab, R, Stab ),
-		// The flick: the last chop of the two-bar phrase doubles at the THIRTY-SECOND, so the
-		// skank pushes into the next bar instead of just stopping. Two notes off a wrist that is
-		// already moving — the same hand that plays the chop plays the flick.
+	};
+
+	// The flick: the last chop of the two-bar phrase doubles at the THIRTY-SECOND, so the
+	// skank pushes into the next bar instead of just stopping. Two notes off a wrist that is
+	// already moving — the same hand that plays the chop plays the flick.
+	public static readonly Pattern SkaPunkFlick =
 		T( R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,R,R,R,
 		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,R,R,R,
 		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,R,R,R,
-		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,Stab,R,R ),
-	};
+		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,Stab,R,R );
 
 	// ── Ska-punk (loud): what the same voice plays once the section is loud — see GenreProfile.LoudComp.
 	// The skank stops. These are the guitar part of a third-wave chorus: on the beat, ringing, and
@@ -82,15 +84,17 @@ static class CompFigure
 		   Ring, R, Stab, R, R, Ring, Stab, R ),
 		E( Ring, Mute, Mute, Ring, R, Mute, Ring, R,
 		   Ring, Mute, Mute, Ring, R, Ring, R, Stab ),
-		// The first figure with a THIRTY-SECOND pickup pushing the phrase back round to bar 1 — a
-		// riff's pickup is the oldest ornament in rock guitar. Note it REPLACES the last stab
-		// rather than joining it: an ornament that adds notes makes the comp louder as well as
-		// busier, and the comp is the bed (see the mix balance in the engine suite).
+	};
+
+	// The first figure with a THIRTY-SECOND pickup pushing the phrase back round to bar 1 — a
+	// riff's pickup is the oldest ornament in rock guitar. Note it REPLACES the last stab
+	// rather than joining it: an ornament that adds notes makes the comp louder as well as
+	// busier, and the comp is the bed (see the mix balance in the engine suite).
+	public static readonly Pattern RockPickup =
 		T( Ring,R,R,R, R,R,R,R, R,R,R,R, Stab,R,R,R,
 		   Ring,R,R,R, R,R,R,R, Stab,R,R,R, R,R,R,R,
 		   Ring,R,R,R, R,R,R,R, R,R,R,R, Stab,R,R,R,
-		   Ring,R,R,R, R,R,R,R, Stab,R,R,R, R,R,Stab,Stab ),
-	};
+		   Ring,R,R,R, R,R,R,R, Stab,R,R,R, R,R,Stab,Stab );
 
 	// ── Rock keys: the syncopated Charleston push. Kept as its own voice with its own figure so
 	// the two interlock rather than doubling.
@@ -108,16 +112,18 @@ static class CompFigure
 		E( R, Stab, R, Stab, R, Stab, R, Stab ),
 		E( R, Stab, R, Stab, R, Stab, R, Stab,
 		   R, Stab, R, Stab, R, Stab, Stab, R ),
-		// Chicken-pickin': a chick snaps a THIRTY-SECOND pull-off after it — one plucked note and
-		// one that costs the picking hand nothing, which is why the gesture survives at country's
-		// fastest and its slowest alike. TWICE in two bars, not on every chick: a second note on
-		// every one of them is a different instrument rather than an ornament, which is the same
-		// lesson the lead's double-stops learned.
+	};
+
+	// Chicken-pickin': a chick snaps a THIRTY-SECOND pull-off after it — one plucked note and
+	// one that costs the picking hand nothing, which is why the gesture survives at country's
+	// fastest and its slowest alike. TWICE in two bars, not on every chick: a second note on
+	// every one of them is a different instrument rather than an ornament, which is the same
+	// lesson the lead's double-stops learned.
+	public static readonly Pattern CountryPickOff =
 		T( R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,R,R,R,
 		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,R,R,R,
 		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,Stab,R,R,
-		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,Stab,R,R ),
-	};
+		   R,R,R,R, Stab,R,R,R, R,R,R,R, Stab,Stab,R,R );
 
 	// ── Country keys: honky-tonk piano stabs on 2 and 4 — it answers the backbeat rather than
 	// keeping time, which is what stops it from doubling the guitar.
@@ -137,14 +143,16 @@ static class CompFigure
 		   Ring, Ring, Ring, Ring, Ring, Ring, Ring, Ring,
 		   Ring, Ring, Ring, Ring, Ring, Ring, Ring, Ring,
 		   Ring, Ring, Ring, Ring, Ring, Ring, R, Ring ),
-		// The turnaround flurry: two bars of downstrokes, and the last eighth breaks into
-		// THIRTY-SECONDS on the way back round. Punk's whole idea is that nothing lets up, so the
-		// ornament is where it hands over, not scattered through the bar.
+	};
+
+	// The turnaround flurry: two bars of downstrokes, and the last eighth breaks into
+	// THIRTY-SECONDS on the way back round. Punk's whole idea is that nothing lets up, so the
+	// ornament is where it hands over, not scattered through the bar.
+	public static readonly Pattern PunkTurnaround =
 		T( Ring,R,R,R, Ring,R,R,R, Ring,R,R,R, Ring,R,R,R,
 		   Ring,R,R,R, Ring,R,R,R, Ring,R,R,R, Ring,R,R,R,
 		   Ring,R,R,R, Ring,R,R,R, Ring,R,R,R, Ring,R,R,R,
-		   Ring,R,R,R, Ring,R,R,R, Ring,R,R,R, Ring,Ring,Ring,Ring ),
-	};
+		   Ring,R,R,R, Ring,R,R,R, Ring,R,R,R, Ring,Ring,Ring,Ring );
 
 	// ── Metal: the palm-muted gallop, authored at the sixteenth it actually lives on. Ring hits
 	// are the power-chord accents; everything between them is the muted root.
@@ -158,16 +166,18 @@ static class CompFigure
 		   Mute, Ring, Mute, Mute, Ring, Ring, Mute, Mute ),   // the classic "gallop" (2 bars)
 		S( Ring, R, Mute, Mute, Ring, R, Mute, Mute,
 		   Ring, R, Mute, Mute, Ring, Ring, R, R ),
-		// Authored at the THIRTY-SECOND so the chug can burst. Most of the bar is the same
-		// sixteenth chug as the figures above (a cell, then a rest cell); the last beat runs
-		// 32nds into the bar line. That is the tremolo gesture as a player uses it — a flurry
-		// pulling into the next downbeat — rather than a bar of it, and being a handful of notes
-		// it stays a gesture at the top of the genre's band as much as the bottom.
+	};
+
+	// Authored at the THIRTY-SECOND so the chug can burst. Most of the bar is the same
+	// sixteenth chug as the figures above (a cell, then a rest cell); the last beat runs
+	// 32nds into the bar line. That is the tremolo gesture as a player uses it — a flurry
+	// pulling into the next downbeat — rather than a bar of it, and being a handful of notes
+	// it stays a gesture at the top of the genre's band as much as the bottom.
+	public static readonly Pattern MetalTremolo =
 		T( Ring, R, Mute, R, Mute, R, Mute, R,
 		   Ring, R, Mute, R, Mute, R, Mute, R,
 		   Ring, R, Mute, R, Mute, R, Mute, R,
-		   Ring, R, Mute, R, Mute, Mute, Mute, Mute ),
-	};
+		   Ring, R, Mute, R, Mute, Mute, Mute, Mute );
 
 	// ── Pop: a held pad. One hit a bar, ringing the whole way — the harmony is a bed here, not a
 	// rhythm part, which is exactly what the arp on top needs.
@@ -186,14 +196,16 @@ static class CompFigure
 		   Tone( 0 ), Tone( 1 ), Tone( 2 ), Tone( 3 ), Tone( 2 ), Tone( 1 ), Tone( 2 ), Tone( 1 ) ),
 		S( Tone( 0 ), R, Tone( 2 ), Tone( 1 ), Tone( 0 ), R, Tone( 2 ), Tone( 3 ),
 		   Tone( 0 ), R, Tone( 2 ), Tone( 1 ), Tone( 3 ), Tone( 2 ), Tone( 1 ), Tone( 0 ) ),
-		// The sixteenth arp with a THIRTY-SECOND run home over the last beat — the synth-pop
-		// flourish that resolves the two-bar phrase. A sequencer plays it and so does a keyboard
-		// player; either way it is one beat of the figure, not the figure's rate.
+	};
+
+	// The sixteenth arp with a THIRTY-SECOND run home over the last beat — the synth-pop
+	// flourish that resolves the two-bar phrase. A sequencer plays it and so does a keyboard
+	// player; either way it is one beat of the figure, not the figure's rate.
+	public static readonly Pattern PopArpRun =
 		T( Tone(0),R, Tone(1),R, Tone(2),R, Tone(3),R,
 		   Tone(2),R, Tone(1),R, Tone(2),R, Tone(3),R,
 		   Tone(0),R, Tone(1),R, Tone(2),R, Tone(3),R,
-		   Tone(2),R, Tone(1),R, Tone(3),Tone(2), Tone(1),Tone(0) ),
-	};
+		   Tone(2),R, Tone(1),R, Tone(3),Tone(2), Tone(1),Tone(0) );
 
 	// ── Hemiola: the cadential regrouping. Three eighths long, so it does NOT divide the bar —
 	// the figure and the bar line pull apart and re-converge, which is Biamonte's grouping

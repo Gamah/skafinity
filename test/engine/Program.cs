@@ -636,7 +636,14 @@ static class Program
 			{
 				if ( table == null || table.Length < 2 ) continue;
 				float loT = float.MaxValue, hiT = 0f, loR = float.MaxValue, hiR = 0f;
-				foreach ( var fig in table )
+				// The flourish is measured WITH the table it drops into, not as part of it. It is
+				// the densest thing the voice plays and it is trimmed against the table's mean, so
+				// leaving it out is how this check would go vacuous — pulling the ornaments out of
+				// the tables took the untrimmed spread from 4 dB to 1.8 and the check said so.
+				var played = new List<Pattern>( table );
+				if ( ReferenceEquals( table, prof.CompFigures ) && prof.CompOrnament != null )
+					played.Add( prof.CompOrnament );
+				foreach ( var fig in played )
 				{
 					float d = MathF.Sqrt( fig.Count / (float)fig.LengthTicks );
 					float t = d * MusicGen.DensityTrim( fig, table );
@@ -960,10 +967,39 @@ static class Program
 			var p = GenreProfile.For( g );
 			foreach ( var f in p.CompFigures ) anyFine |= MinSpan( f ) <= thirtySecond;
 			foreach ( var f in p.BassPatterns ) anyFine |= MinSpan( f ) <= thirtySecond;
+			// The flourishes are where most of the 32nds live, and they are deliberately NOT in
+			// the figure tables (see GenreProfile.CompOrnament) — so a check that only reads the
+			// tables would have gone quietly vacuous the moment they moved out. It did.
+			if ( p.CompOrnament != null ) anyFine |= MinSpan( p.CompOrnament ) <= thirtySecond;
+			if ( p.KeysOrnament != null ) anyFine |= MinSpan( p.KeysOrnament ) <= thirtySecond;
 			if ( p.KeysFigures == null ) continue;
 			foreach ( var f in p.KeysFigures ) anyFine |= MinSpan( f ) <= thirtySecond;
 		}
 		Check( "some authored figure reaches the thirty-second", anyFine );
+
+		// ── the flourish is a flourish ──
+		// Held out of the table it could quietly become just another figure, so: every genre that
+		// has one is DENSER than the bed it drops into (or it is not an ornament), and no genre
+		// smuggles its ornament back into the table it substitutes for (or the per-occurrence roll
+		// is competing with a per-section draw of the same thing).
+		bool ornDenser = true, ornOutOfTable = true, anyOrn = false;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			foreach ( var (orn, table) in new[] { (p.CompOrnament, p.CompFigures), (p.KeysOrnament, p.KeysFigures) } )
+			{
+				if ( orn == null || table == null ) continue;
+				anyOrn = true;
+				float mean = 0f;
+				foreach ( var f in table ) mean += f.Count / (float)f.LengthTicks;
+				mean /= table.Length;
+				ornDenser &= orn.Count / (float)orn.LengthTicks > mean;
+				foreach ( var f in table ) ornOutOfTable &= !ReferenceEquals( f, orn );
+			}
+		}
+		Check( "a genre's flourish is denser than the bed it drops into", ornDenser );
+		Check( "…and is not also an entry in the table it substitutes for", ornOutOfTable );
+		Check( "…and some genre actually has one", anyOrn );
 
 		// A figure that fine still has to land on the grid the voices are measured against — the
 		// per-voice grid checks below cover the rendered result, this covers the table.

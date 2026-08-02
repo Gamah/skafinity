@@ -257,6 +257,7 @@ public sealed partial class MusicGen
 	Pattern _bassPat;        // the song's bass line — a Pattern, so it can be a 2- or 4-bar phrase
 	Pattern _compFig;        // the main chordal voice's comp figure (the CURRENT section's)
 	Pattern _keysFig;        // the second chordal voice's figure (null where the genre has none)
+	bool _compOrn, _keysOrn; // this two-bar window plays the genre's flourish (see RenderComp)
 	// The song's own figures — what its choruses play. Other sections draw their own against a
 	// stream keyed by section type, so the backing contrasts instead of looping one cell all song.
 	Pattern _songComp, _songKeys, _songBass;

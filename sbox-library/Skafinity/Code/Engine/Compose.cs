@@ -418,10 +418,32 @@ public sealed partial class MusicGen
 		// its loud style (third-wave ska's clean skank becoming driven power chords). The hemiola
 		// still wins where a section regroups — that is a metric device and it outranks the timbre.
 		bool loud = _songLoud != null && _energy >= _prof.LoudFrom;
-		var fig = hemiola ? CompFigure.Hemiola : (loud ? _songLoud : _compFig);
+
+		// ── the flourish ──
+		// A player throws a flick in SOMETIMES. It used to be one entry in the genre's figure
+		// table, and figures are drawn per section — so a song that drew it played the flourish
+		// every two bars for a whole chorus, on a schedule, and a song that did not never heard
+		// the genre's signature gesture. Neither is an ornament; the first is a loop and the second
+		// is a coin toss. So it is rolled per OCCURRENCE, over the two-bar window the flourish
+		// figures are written on, which is the way the lead's ornaments have always worked.
+		//
+		// The roll happens for every genre on every window, ornament or not, so carrying one costs
+		// no extra values out of the composition stream (the PickOrNull discipline).
+		if ( (barTick - _sectionTick) % (barTicks * 2) == 0 )
+		{
+			_compOrn = rhythmRng.Chance( OrnamentChance ) && _prof.CompOrnament != null;
+			_keysOrn = keysRng.Chance( OrnamentChance ) && _prof.KeysOrnament != null;
+		}
+		// The hemiola outranks it, the same way it outranks the loud figure: a metric device beats
+		// a gesture. So does the loud technique — a third-wave chorus is a different part, not the
+		// skank with a flick on it.
+		bool plain = !hemiola && !loud;
+		var fig = hemiola ? CompFigure.Hemiola
+			: loud ? _songLoud
+			: _compOrn ? _prof.CompOrnament : _compFig;
 		RenderCompVoice( barTick, to, chord, fig, rhythmRng, exprRng, loud );
 		if ( _prof.Keys != KeysStyle.None && _keysFig != null && _energy > 0.35f )
-			RenderKeysVoice( barTick, to, chord, keysRng, exprRng );
+			RenderKeysVoice( barTick, to, chord, keysRng, exprRng, plain && _keysOrn );
 	}
 
 	// ── the ending ──
