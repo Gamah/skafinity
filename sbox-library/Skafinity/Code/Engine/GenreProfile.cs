@@ -268,11 +268,15 @@ sealed class GenreProfile
 	//     country    1.04  1.33  1.22      120
 	//     reggae     0.81  0.92  0.84      286
 	//
-	// TWO THINGS THESE NUMBERS ARE NOT. They are DRUM velocities, but MetricGain feeds NoteGain for
-	// every voice, so adopting them scales the guitar's and the keys' offbeats too — a dataset can
-	// say what a drummer does and cannot say what the band does. Pop's 0.57 is where that gap is
-	// widest, and it is the figure to revisit first if a genre reads thin off the beat. And the row
-	// counts are wildly uneven: rock's 6521 bars settle rock, while country's 120 (two
+	// THESE ARE DRUM VELOCITIES AND THEY REACH NOTHING BUT THE DRUMS. A dataset can say what a
+	// drummer does and it cannot say what the band does. MetricGain used to feed NoteGain, so these
+	// weights set the level of every pitched note by where in the bar it fell — and a melody drawn
+	// on the eighth grid alternates on and off the beat continuously, so the lead stepped 3 dB a
+	// note in rock and 5 dB in pop out of metric position alone. Pop's 0.57 was flagged here as the
+	// figure to revisit first if a genre read thin off the beat; what it actually needed was for the
+	// numbers to stay where they were measured. KitGain is the only door out of MetricGain now.
+	//
+	// The row counts are wildly uneven: rock's 6521 bars settle rock, while country's 120 (two
 	// performances) are an INDICATION that its backbeat and its offbeat "chick" both carry more
 	// than the engine gave them — corroborated by its 27 fill performances landing off at 1.12 —
 	// rather than a settled figure. Widen country before trusting it further.

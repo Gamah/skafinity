@@ -91,13 +91,13 @@ public sealed partial class MusicGen
 					EmitBass( _time.EvenSpan( h.Tick, h.SpanTicks, k / (double)n ),
 						_time.SpanSamples( h.Tick, h.SpanTicks / (double)n * 0.9 ), bm,
 						_time.SpanSeconds( h.Tick, h.SpanTicks ) / n * 0.8,
-						NoteGain( h.Tick, h.Vel ), vc );
+						NoteGain( h.Vel ), vc );
 				}
 				continue;
 			}
 
 			EmitBass( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.95 ),
-				midi, _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.8, NoteGain( h.Tick, h.Vel ), vc );
+				midi, _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.8, NoteGain( h.Vel ), vc );
 		}
 	}
 
@@ -126,7 +126,7 @@ public sealed partial class MusicGen
 			prev = root;
 			EmitBass( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.95 ),
 				root, _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.8,
-				NoteGain( h.Tick, h.Vel ) * (h.Value == CompFigure.Mute ? 0.85f : 1f), vc );
+				NoteGain( h.Vel ) * (h.Value == CompFigure.Mute ? 0.85f : 1f), vc );
 		}
 	}
 

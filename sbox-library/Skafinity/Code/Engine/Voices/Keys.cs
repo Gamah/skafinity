@@ -30,7 +30,7 @@ public sealed partial class MusicGen
 		var keys = new Patch
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
-			Amp = _c.KeysVol * _c.KeysBalance * KeysLevel() * _midMul / Math.Max( 1, voices ) * NoteGain( tick, vel ),
+			Amp = _c.KeysVol * _c.KeysBalance * KeysLevel() * _midMul / Math.Max( 1, voices ) * NoteGain( vel ),
 			Attack = 0.004f, Decay = dec, Sustain = ring ? 0.6f : 0.2f, Sustained = ring,
 			Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
 			Drive = KeysDriveFor(), Pan = 0f,

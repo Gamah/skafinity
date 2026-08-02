@@ -321,7 +321,7 @@ public sealed partial class MusicGen
 			// The genre's own accent weight decides how a hat off the beat sits against one on it.
 			// A flat 0.75 was a house rule where the measurement is per genre and disagrees in both
 			// directions — country and ska lean ON the offbeat, pop's programmed kit buries it.
-			float amp = _c.HatVol * h.Vel * MetricGain( h.Tick ) * EnergyGain( 0.55f );
+			float amp = _c.HatVol * KitGain( h.Tick, h.Vel, 0.55f );
 			if ( _ride && !open ) RenderRide( at, onBeat, amp, noise );
 			else RenderHat( at, open, amp, noise );
 
@@ -511,7 +511,7 @@ public sealed partial class MusicGen
 				// A fill is a phrase: it leans into the bar line it is landing on, and it reads
 				// the genre's accent weights like every other voice in the song.
 				float u = (b + i / (float)n) / beats;
-				float gain = NoteGain( cellTick, 0.72f + 0.33f * u );
+				float gain = KitGain( cellTick, 0.72f + 0.33f * u, 0.35f );
 
 				// A fill goes round the kit high to low, which is what the toms are laid out for
 				// (RenderTom pans by pitch). Snare-led unless the fill is a tom figure; the ride

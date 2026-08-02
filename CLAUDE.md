@@ -852,9 +852,18 @@ not divide the bar genuinely drifts and comes back.
   both at once expresses nothing, so a form that only ever changes feel on a section with no tune
   (`MusicGen.SectionSingsTune`) is not using the mechanism — the suite checks that some genre does.
 - **Voices read the state; they never ask "am I in a verse?"** Density and level come from
-  `NoteGain(tick, vel)` = the cell's velocity × the genre's accent weight for that metric position
-  × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is how the mix got flat and mechanical in
-  the first place — route it through `NoteGain`.
+  `NoteGain(vel)` = the cell's velocity × `EnergyGain(depth)`. Scaling a patch's `Amp` by hand is
+  how the mix got flat and mechanical in the first place — route it through `NoteGain`.
+- **The metric accent is a DRUMS thing, and `NoteGain` takes no tick so that it stays one.** The
+  genre's `AccentDown`/`AccentBack`/`AccentOff` were measured off drum-hit velocities, and they
+  used to multiply into every voice — so a pitched note's level was decided by where in the bar it
+  landed. A melody is drawn on the eighth grid and therefore alternates on-beat and off-beat
+  continuously, so the lead stepped 3 dB a note in rock and 5 dB in pop out of metric position
+  alone: a drummer's dynamic worn by a singer. `KitGain(tick, vel, depth)` is the only door out of
+  `MetricGain`, and a pitched voice cannot open it — the same trick as `Register(octaves)`, where
+  the wrong version is made unwriteable rather than merely documented. **A phrase-shaped dynamic
+  for the melody is a different and real thing**; it comes off the tune rather than off the grid,
+  so it belongs in `Melody` and it is a `PLAN.md` row.
 - `BarBeats` is the anomalous-measure hook (a 2/4 bar inside a 4/4 section). Bars are laid out per
   section before anything renders, so a short bar is a length, not a special case. **No form uses
   one today**: dropping a beat out of a bar under a melody reads as the song jumping to a downbeat

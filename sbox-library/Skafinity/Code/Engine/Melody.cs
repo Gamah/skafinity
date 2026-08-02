@@ -189,7 +189,7 @@ public sealed partial class MusicGen
 					BendBias( len, pu ) );
 			prevMidi = midi;
 			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, len * 0.92 ),
-				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, len ) * 0.8,
+				midi, amp * NoteGain( h.Vel ), _time.SpanSeconds( h.Tick, len ) * 0.8,
 				drive, vc );
 
 			// The genre's own hand on the same tune: country punctuates it with double-stops, metal
@@ -199,13 +199,13 @@ public sealed partial class MusicGen
 			// parallel thirds replaces the melody with a two-note chord (see EmitDoubleStop).
 			if ( _prof.Lead == LeadStyle.DoubleStop && len >= Timing.TicksPerEighth * 2
 				&& rng.Chance( DoubleStopChance ) )
-				EmitDoubleStop( h.Tick, len, degree, amp * NoteGain( h.Tick, h.Vel ) );
+				EmitDoubleStop( h.Tick, len, degree, amp * NoteGain( h.Vel ) );
 			else if ( _prof.Lead == LeadStyle.Shred && len >= Timing.TicksPerBeat && rng.Chance( 0.18f ) )
 				for ( int k = 1; k <= 3; k++ )
 				{
 					int m2 = ScaleMidi( melBase, degree + k );
 					RenderLeadNote( _time.EvenSpan( h.Tick + len / 2, len / 2, (k - 1) / 3.0 ),
-						_time.SpanSamples( h.Tick, len / 8.0 ), m2, amp * 0.8f * NoteGain( h.Tick, h.Vel ),
+						_time.SpanSamples( h.Tick, len / 8.0 ), m2, amp * 0.8f * NoteGain( h.Vel ),
 						_time.SpanSeconds( h.Tick, len / 8.0 ) * 0.8, drive, vc );
 				}
 		}

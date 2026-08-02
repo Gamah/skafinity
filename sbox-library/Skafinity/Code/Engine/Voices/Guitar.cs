@@ -95,7 +95,7 @@ public sealed partial class MusicGen
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / Math.Max( 1, voices )
-				* NoteGain( tick, vel ) * _compTrim,
+				* NoteGain( vel ) * _compTrim,
 			Attack = 0.002f, Decay = dec, Sustain = ring ? 0.45f : 0f, Sustained = ring,
 			Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso,
 			Drive = drive, Pan = 0f,

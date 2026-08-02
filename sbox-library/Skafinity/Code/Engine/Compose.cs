@@ -443,21 +443,21 @@ public sealed partial class MusicGen
 				RenderCrash( at, noise, false );
 				EndingChord( barTick, beat / 2, 0.35, 1f );
 				EmitBass( at, _time.SpanSamples( barTick, beat / 2 ), ChordRoot( 0 ), 0.3,
-					NoteGain( barTick, 1f ), default );
+					NoteGain( 1f ), default );
 				break;
 
 			case EndingStyle.Cadence:
 				// V, then home on beat 3 — an actual cadence rather than a single held chord.
 				EndingChord( barTick, beat, 0.5, 0.8f, rootDegree: 4 );
 				EmitBass( at, _time.SpanSamples( barTick, beat ), ChordRoot4(), 0.45,
-					NoteGain( barTick, 0.85f ), default );
+					NoteGain( 0.85f ), default );
 				RenderKick( at, noise );
 				int land = barTick + 2 * beat;
 				RenderKick( _time.TickToSample( land ), noise );
 				RenderCrash( _time.TickToSample( land ), noise, false );
 				EndingChord( land, (int)(_sr * tail), tail, 1f, samples: true );
 				EmitBass( _time.TickToSample( land ), (int)(_sr * tail), ChordRoot( 0 ), tail,
-					NoteGain( land, 1f ), default );
+					NoteGain( 1f ), default );
 				break;
 
 			case EndingStyle.Fall:
@@ -469,14 +469,14 @@ public sealed partial class MusicGen
 					EndingChord( t, beat, 0.4, v );
 					if ( i % 2 == 0 ) RenderKick( _time.TickToSample( t ), noise );
 					EmitBass( _time.TickToSample( t ), _time.SpanSamples( t, beat ), ChordRoot( 0 ),
-						0.4, NoteGain( t, v ), default );
+						0.4, NoteGain( v ), default );
 				}
 				break;
 
 			default: // Ring — the band hits the tonic together and lets it decay into the tail.
 				RenderKick( at, noise );
 				EndingChord( barTick, (int)(_sr * tail), tail, 1f, samples: true );
-				EmitBass( at, (int)(_sr * tail), ChordRoot( 0 ), tail * 1.1, NoteGain( barTick, 1f ), default );
+				EmitBass( at, (int)(_sr * tail), ChordRoot( 0 ), tail * 1.1, NoteGain( 1f ), default );
 				break;
 		}
 	}
@@ -542,7 +542,7 @@ public sealed partial class MusicGen
 					p = new Patch
 					{
 						Osc = 1, Voices = 3, Detune = _c.Detune,
-						Amp = _c.HornVol * _c.HornBalance * _midMul / tones.Length * NoteGain( tick, vel ),
+						Amp = _c.HornVol * _c.HornBalance * _midMul / tones.Length * NoteGain( vel ),
 						Attack = 0.01f, Decay = decay, Sustain = ring ? 0.35f : 0f, Sustained = false,
 						Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f, Drive = _c.HornDrive,
 						Pan = 0f, Vibrato = _c.MelodyVibrato,
@@ -553,7 +553,7 @@ public sealed partial class MusicGen
 					{
 						Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 						Amp = _c.KeysVol * _c.KeysBalance * KeysLevel() * _midMul / tones.Length
-							* NoteGain( tick, vel ),
+							* NoteGain( vel ),
 						Attack = 0.004f, Decay = decay, Sustain = ring ? 0.5f : 0f, Sustained = false,
 						Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f, Drive = KeysDriveFor(),
 						Pan = 0f,
@@ -565,7 +565,7 @@ public sealed partial class MusicGen
 					{
 						Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 						Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / tones.Length
-							* NoteGain( tick, vel ),
+							* NoteGain( vel ),
 						Attack = 0.002f, Decay = decay, Sustain = ring ? 0.4f : 0f, Sustained = false,
 						Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso, Drive = drive,
 						Pan = 0f,
@@ -578,11 +578,30 @@ public sealed partial class MusicGen
 	}
 
 	// ── dynamics ──
-	// Velocity as a first-class value: the pattern cell's own weight, times where the note falls
-	// in the bar (the genre's accent pattern), times the section's energy. Every voice scales its
-	// level through here rather than inventing its own — a per-patch constant with two ad-hoc
-	// exceptions was the flat, mechanical tell that survived every rhythmic fix.
-	float NoteGain( int tick, float vel ) => vel * MetricGain( tick ) * EnergyGain( 0.35f );
+	// Velocity as a first-class value: the pattern cell's own weight times the section's energy.
+	// Every voice scales its level through here rather than inventing its own — a per-patch
+	// constant with two ad-hoc exceptions was the flat, mechanical tell that survived every
+	// rhythmic fix.
+	//
+	// THERE IS NO TICK HERE, AND THAT IS THE POINT. This used to multiply in MetricGain, so a
+	// pitched note's level was decided by WHERE IN THE BAR IT LANDED — and the weights MetricGain
+	// returns were measured off drum hits. A melody is drawn on the eighth grid, so it alternates
+	// on-beat and off-beat constantly and its level stepped with it: 3 dB a note in rock and 5 dB
+	// in pop, out of metric position alone. That is a drummer's dynamic worn by a singer, and it
+	// reads as strange as it is. A DATASET OF DRUM VELOCITIES CAN SAY WHAT A DRUMMER DOES AND
+	// CANNOT SAY WHAT THE BAND DOES — GenreProfile's accent block already said so as a caveat, and
+	// it is the rule now. Taking the parameter away is what makes it one: a pitched voice cannot
+	// ask for a metric accent, the same way Register makes a non-octave base unwriteable.
+	//
+	// A phrase-shaped dynamic for the melody is a different thing and a real one — it would come
+	// off the TUNE rather than off the grid, so it belongs in Melody, and it is a PLAN row.
+	float NoteGain( float vel ) => vel * EnergyGain( 0.35f );
+
+	/// <summary>The kit's gain: the genre's accent weight for where <paramref name="tick"/> falls
+	/// in the bar, times the cell's own velocity and the section's energy. The accent weights were
+	/// measured off drums and this is the only door out of MetricGain — see NoteGain.</summary>
+	/// <param name="depth">how much this drum voice cares about the section's energy.</param>
+	float KitGain( int tick, float vel, float depth ) => vel * MetricGain( tick ) * EnergyGain( depth );
 
 	/// <summary>The genre's accent weight for where <paramref name="tick"/> falls in the bar.</summary>
 	float MetricGain( int tick )

@@ -41,7 +41,7 @@ public sealed partial class MusicGen
 			{
 				Osc = 1, Voices = 3, Detune = _c.Detune,
 				Amp = _c.HornVol * _c.HornBalance * _midMul / tones.Length * gain * sectionGain
-					* NoteGain( tickNow, gainNow ),
+					* NoteGain( gainNow ),
 				Attack = 0.008f, Decay = dec,
 				Sustain = 0.2f, Sustained = false,
 				Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
