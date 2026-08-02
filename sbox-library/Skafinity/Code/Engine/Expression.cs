@@ -92,8 +92,14 @@ public sealed partial class MusicGen
 				// bender or a steel plays and what the old ±0.3 of a semitone never was.
 				return _genre switch
 				{
+					// The RATE is a weighting, not a floor — see BendBias. The floor said "45% of
+					// every note that can carry one" and there was no position on the slider at
+					// which country bent rarely; what the floor was really reaching for is that
+					// the genre still reads as country at the knob's low end, and 0.2 against a
+					// bias that reaches ~2.4 on a long landing note keeps that while leaving the
+					// runs alone.
 					2 => new Expression( 0.30f, MathF.Max( knob, 0.5f ), 0.10f, knob,
-						bend: MathF.Max( knob, 0.45f ), bendDepth: 2f ),
+						bend: MathF.Max( knob * 0.7f, 0.2f ), bendDepth: 2f ),
 					// Shred passes through its notes; when it bends it is a semitone on the way by.
 					3 => new Expression( 0.30f, knob, 0.10f, knob, bend: knob * 0.5f, bendDepth: 1f ),
 					// POP DOES NOT BEND: its lead is a plucky synth, not a string, and it is only
@@ -102,6 +108,9 @@ public sealed partial class MusicGen
 					// buys — a bend here would be the one knob in the toy whose label describes a
 					// different gesture from the one it performs.
 					5 => new Expression( 0.30f, knob, 0.10f, knob ),
+					// Rock, punk, and ska when its lead is a guitar. Pop is NOT here — it has its
+					// own case above, because reaching this default by elimination is how a synth
+					// came to bend a string.
 					_ => new Expression( 0.30f, knob, 0.10f, knob, bend: knob * 0.8f, bendDepth: 2f ),
 				};
 			}
@@ -119,9 +128,35 @@ public sealed partial class MusicGen
 	/// back. Seconds rather than ticks, for the reason BendTime is (see Patch).</summary>
 	const float BendStartSeconds = 0.09f, BendRiseSeconds = 0.11f, BendHoldSeconds = 0.10f;
 
+	/// <summary>How much THIS note wants a bend, as a multiplier on the instrument's propensity.
+	///
+	/// A FLAT PER-NOTE CHANCE CANNOT SAY WHERE A PLAYER BENDS, and that is the whole of it. Country
+	/// ran at a floor of 0.45 — at least 45% of every note long enough to carry one, with no
+	/// position on the slider at which the genre bent rarely — and the listening note was exactly
+	/// that: right gesture, too often. A smaller constant is the wrong repair, because what is
+	/// wrong is not the number but that one number is being asked to describe a hand. A bender or a
+	/// pedal steel leans on the long note and on the note a phrase LANDS on, and passes straight
+	/// through the run.
+	///
+	/// So it is two factors and they multiply. LENGTH, because the gesture needs a note to happen
+	/// in — this is a preference, not the hard test in <see cref="Roll"/>, which throws away a bend
+	/// the note is too short to carry at all. And PHRASE POSITION, read over each HALF of the
+	/// phrase rather than the whole of it: a call-and-answer lands twice, and the end of the call
+	/// is as much a landing as the end of the answer.</summary>
+	/// <param name="phraseU">where this note sits in its phrase — 0 at the start, 1 at the end.</param>
+	internal static float BendBias( int spanTicks, float phraseU )
+	{
+		float len = Math.Clamp( spanTicks / (float)(Timing.TicksPerBeat * 2), 0f, 1f );
+		float u = phraseU * 2f - MathF.Floor( phraseU * 2f );   // position within the current half
+		return (0.4f + 1.2f * len) * (0.6f + 0.9f * u * u);
+	}
+
 	/// <param name="noteSeconds">How long the note lasts, for the bend's length test only. 0 means
 	/// "the caller does not know", which reads as too short — a voice that wants bends passes it.</param>
-	Voicing Roll( in Expression ex, int midi, int prevMidi, Rng rng, float noteSeconds = 0f )
+	/// <param name="bendBias">See <see cref="BendBias"/>. 1 is "no opinion", which is what a voice
+	/// with no phrase to speak of passes.</param>
+	Voicing Roll( in Expression ex, int midi, int prevMidi, Rng rng, float noteSeconds = 0f,
+		float bendBias = 1f )
 	{
 		var v = new Voicing();
 		// Vibrato depth is a SMALL pitch fraction (lean 0.5 ≈ ±10 cents) and it's delayed in
@@ -145,7 +180,7 @@ public sealed partial class MusicGen
 		// expression stream gives up, or the same seed would compose differently every time a
 		// figure changed a note's span. A note too short to carry a bend just does not get the one
 		// it rolled.
-		if ( ex.Bend > 0f && ex.BendDepth > 0f && rng.Chance( ex.Bend ) )
+		if ( ex.Bend > 0f && ex.BendDepth > 0f && rng.Chance( ex.Bend * bendBias ) )
 		{
 			// A BEND IS MOSTLY RELEASED, because a held one REPLACES the composed note. The
 			// melody's pitch was chosen against the chord it sits on (NearestSoundingTone); a bend

@@ -181,7 +181,12 @@ public sealed partial class MusicGen
 			// The degree snap chose WHICH chord tone; this puts the note on the pitch the chord
 			// actually sounds, which is not the same thing on every degree (see NearestSoundingTone).
 			if ( resolve ) midi = NearestSoundingTone( midi, chord, h.Tick );
-			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( h.Tick, len ) );
+			// Where this note sits in the TUNE, which is the phrase a bend leans into. The tune's
+			// own length is the cycle, so this is the same 0..1 whatever bar the section is on.
+			float pu = ((h.Tick - anchor) % tune.LengthTicks + tune.LengthTicks)
+					% tune.LengthTicks / (float)tune.LengthTicks;
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( h.Tick, len ),
+					BendBias( len, pu ) );
 			prevMidi = midi;
 			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, len * 0.92 ),
 				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, len ) * 0.8,

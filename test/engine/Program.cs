@@ -53,6 +53,7 @@ static class Program
 			( "time base",          TimingTests ),
 			( "patterns",           PatternTests ),
 			( "melody",             MelodyTests ),
+			( "bend placement",     BendBiasTests ),
 			( "genre feel",         GenreProfileTests ),
 			( "wired knobs",        WiredKnobTests ),
 			( "structure",          StructureTests ),
@@ -1202,6 +1203,29 @@ static class Program
 		int sparse = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.2f, 0.2f ).Count;
 		int busy = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.9f, 0.2f ).Count;
 		Check( "density controls how much a tune moves", busy > sparse, $"{busy} vs {sparse} notes" );
+	}
+
+	// ── where a player bends ──
+	// The bend rate stopped being a floor and became a weighting, so what is assertable is the
+	// SHAPE of that weighting: a bender leans on the long note and on the note a phrase lands on,
+	// and passes through the run. None of these is a number chosen to make a check pass — each is
+	// the sentence the row was written to express, turned round.
+	static void BendBiasTests()
+	{
+		int longNote = Timing.TicksPerBeat * 2, shortNote = Timing.TicksPerEighth;
+		float runNote = MusicGen.BendBias( shortNote, 0.2f );
+		float landing = MusicGen.BendBias( longNote, 0.98f );
+		Check( "a long note landing a phrase outweighs a short one mid-run, several times over",
+			landing > runNote * 4f, $"{landing:0.00} vs {runNote:0.00}" );
+		Check( "…and the ordinary note is weighted DOWN, or the rate is still a floor",
+			runNote < 0.6f, $"{runNote:0.00}" );
+		Check( "length alone moves it", MusicGen.BendBias( longNote, 0.5f ) > MusicGen.BendBias( shortNote, 0.5f ), null );
+		Check( "phrase position alone moves it",
+			MusicGen.BendBias( longNote, 0.95f ) > MusicGen.BendBias( longNote, 0.55f ), null );
+		// Call and answer lands TWICE. Reading the position over the whole phrase would make the
+		// end of the call — the most bent note in a country lick — the flattest point of the curve.
+		Check( "the end of the CALL is a landing too, not the middle of one long phrase",
+			MusicGen.BendBias( longNote, 0.48f ) > MusicGen.BendBias( longNote, 0.55f ), null );
 	}
 
 	static bool SameTune( Pattern a, Pattern b )
