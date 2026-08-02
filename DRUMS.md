@@ -92,9 +92,10 @@ physics is the design, one factory's cymbal is not):
    overhead mic. **The same kit has the crashes**: `Samples/oh/crash/oh_crash_crash_vl3_rr*` (plus
    a `sizzle` articulation), and `Samples/oh/*/flatride/*_flatride_crash_*` — a second cymbal
    crashed, which is the natural source for the engine's dark/bright pair.
-2. **Analysis**: decode with the static ffmpeg in `~/.local/share/toolchains/`, analyse with a
-   throwaway C# tool (the ride's lives in the job tmp dir; rewrite freely — long-FFT sustained
-   peaks, STFT per-band decay fits, attack-window spectrum). No pip/numpy on this host.
+2. **Analysis**: decode with the static ffmpeg in `~/.local/share/toolchains/`, analyse with
+   **`tools/spectool`** (committed: long-FFT sustained peaks, STFT per-band decay fits,
+   attack-window spectrum; `--sus 1.5` moves the sustain window later — a crash's roar buries
+   its partials for the first second). No pip/numpy on this host.
 3. **Reduce to laws.** The ride's three, which the crash should be re-fit against, not assumed:
    ring time τ·√f = K (ride: K ≈ 39 — a crash's K may differ, and its τ curve may not even fit
    the same form: measure it); mode forest at constant density (plate physics; ride: 27/kHz over
@@ -107,6 +108,22 @@ physics is the design, one factory's cymbal is not):
 5. **Validate by re-analysis**: run the same tool over the synthesized single hit and compare band
    decays and sustain spectrum against the reference (this caught the ride being 15 dB light in
    sizzle above 4.7 kHz — the forest cap, not the wash, was the culprit).
+
+**The crash measurements are already taken** (2026-08-02, same kit, oh mic, vl3/vl4; samples
+deleted after analysis — refetch only if a number below needs re-deriving):
+
+- **Crash (`oh_crash_crash_vl3`), the bright one.** At 0.33 s in, essentially NO resolved
+  partials — a crash's sustain is a continuum, not a forest; the forest only surfaces once the
+  roar dies (SUS=1.5: a low pair 172/174.5 + 258, and a dense 1.4–2.0 kHz cluster). Decay is NOT
+  the ride's law: lows die fast (τ ≈ 0.9 s at 375 Hz where τ·√f=39 would say 2.0), and τ·√f ≈ 45
+  only holds above ~1 kHz. Energy centre 2.2–4.7 kHz (+8 dB over mids in the 50–400 ms window);
+  attack broadband. So the crash wants: forest gated on later time (or amps that emerge as the
+  splash fades), a low-frequency τ CUT rather than the monotone law, and much more splash.
+- **Flat ride crashed (`oh_flatride_crash_vl4`), the dark one.** The opposite shape: strong
+  resolved LOWS (208/211, 255/258, 284, 401 — real beating pairs), fast low-mids (τ 0.5–0.7 s at
+  300–700), and a sizzly top that outlives everything (τ 1.5 s at 6.8–10 k, 2.0 s at 10–14 k —
+  rivets/wash behaviour, the inverse of the ride's τ·√f). Attack is low-heavy (+13 dB at
+  300–700). A one-form τ(f) will not cover both cymbals; the law layer needs to be per-cymbal.
 
 Implementation shape: generalize rather than duplicate — `RideModal`'s builder is already
 "(forest constants, strike bump, splash/wash)"; a crash is the same struct built from crash
