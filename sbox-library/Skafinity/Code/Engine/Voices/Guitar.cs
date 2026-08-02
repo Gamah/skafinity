@@ -49,16 +49,20 @@ public sealed partial class MusicGen
 	/// third and passes through whole, which is why those voicings work driven in the first place.
 	/// The keys keep the third, so the band still states the quality — guitar on the fifths,
 	/// keyboard on the colour, which is how the parts are actually divided.</summary>
-	int[] GuitarMidis( int baseMidi, int chord ) => DrivenVoicing( ChordMidis( baseMidi, chord ) );
+	int[] GuitarMidis( int baseMidi, int chord, int tick )
+		=> DrivenVoicing( ChordMidis( baseMidi, chord, tick ), VoicingAt( tick ) );
 
 	/// <summary>As <see cref="GuitarMidis"/>, for pitches the caller already has (the ending
-	/// builds its chord from a root degree rather than a progression slot).</summary>
-	int[] DrivenVoicing( int[] tones )
+	/// builds its chord from a root degree rather than a progression slot). The spelling those
+	/// pitches were built from comes in with them, because a sus4 arrives as a sus4 and leaves as
+	/// a power chord once its third lands (see MusicGen.VoicingAt) — the guitar plays the
+	/// suspension whole and drops the note it resolves to.</summary>
+	int[] DrivenVoicing( int[] tones, int[] voicing )
 	{
 		if ( RhythmGtrTone().Drive < DirtyChord ) return tones;
 		var keep = new List<int>( tones.Length );
-		for ( int i = 0; i < tones.Length && i < _voicing.Length; i++ )
-			if ( _voicing[i] != Harmony.Third ) keep.Add( tones[i] );
+		for ( int i = 0; i < tones.Length && i < voicing.Length; i++ )
+			if ( voicing[i] != Harmony.Third ) keep.Add( tones[i] );
 		return keep.Count > 0 ? keep.ToArray() : tones;
 	}
 
@@ -95,7 +99,6 @@ public sealed partial class MusicGen
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord ) + 12;               // chunky register, an octave up
 		int triBase = _rootMidi + _keyShift + 12;
-		var tones = GuitarMidis( triBase, chord );
 		foreach ( var h in hits )
 		{
 			bool ring = h.Value != CompFigure.Mute;
@@ -107,8 +110,12 @@ public sealed partial class MusicGen
 			}
 			int len = (int)(CompLen( h.SpanTicks, h.Value == CompFigure.Ring )
 				* (h.Value == CompFigure.Ring ? 1f - 0.4f * chug : 0.9f));
-			foreach ( var m in tones )
-				EmitGuitar( h.Tick, Math.Max( 1, len ), m, h.Vel, ring, tones.Length );
+			foreach ( var (t, d) in ChordSegments( h.Tick, Math.Max( 1, len ) ) )
+			{
+				var tones = GuitarMidis( triBase, chord, t );
+				foreach ( var m in tones )
+					EmitGuitar( t, d, m, h.Vel, ring, tones.Length );
+			}
 		}
 	}
 
@@ -119,16 +126,18 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int triBase = _rootMidi + _keyShift + 12;
-		var tones = GuitarMidis( triBase, chord );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.7f - 0.4f * chug)) );
 			// A strum is not a block chord: the strings sound in sequence. ~4 ms per string is a
 			// pick crossing them — enough for the ear to hear the gesture, short enough that the
 			// chord still lands on the beat.
-			for ( int i = 0; i < tones.Length; i++ )
-				EmitGuitar( h.Tick, len, tones[i], h.Vel, true, tones.Length,
-					nudgeMs: i * 4f );
+			foreach ( var (t, d) in ChordSegments( h.Tick, len ) )
+			{
+				var tones = GuitarMidis( triBase, chord, t );
+				for ( int i = 0; i < tones.Length; i++ )
+					EmitGuitar( t, d, tones[i], h.Vel, true, tones.Length, nudgeMs: i * 4f );
+			}
 		}
 	}
 
@@ -140,12 +149,15 @@ public sealed partial class MusicGen
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord ) + 12;
 		int triBase = _rootMidi + _keyShift + 12;
-		var tones = GuitarMidis( triBase, chord );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.85f - 0.35f * chug)) );
-			foreach ( var m in tones )
-				EmitGuitar( h.Tick, len, m, h.Vel, true, tones.Length );
+			foreach ( var (t, d) in ChordSegments( h.Tick, len ) )
+			{
+				var tones = GuitarMidis( triBase, chord, t );
+				foreach ( var m in tones )
+					EmitGuitar( t, d, m, h.Vel, true, tones.Length );
+			}
 		}
 	}
 
@@ -157,7 +169,6 @@ public sealed partial class MusicGen
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord );                    // low, chunky — no octave bump
 		int triBase = _rootMidi + _keyShift;
-		var tones = GuitarMidis( triBase, chord );
 		foreach ( var h in hits )
 		{
 			if ( h.Value == CompFigure.Mute )
@@ -167,8 +178,12 @@ public sealed partial class MusicGen
 				continue;
 			}
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * 0.9f) );
-			foreach ( var m in tones )
-				EmitGuitar( h.Tick, len, m, h.Vel, true, tones.Length );
+			foreach ( var (t, d) in ChordSegments( h.Tick, len ) )
+			{
+				var tones = GuitarMidis( triBase, chord, t );
+				foreach ( var m in tones )
+					EmitGuitar( t, d, m, h.Vel, true, tones.Length );
+			}
 		}
 	}
 }

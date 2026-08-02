@@ -21,7 +21,7 @@ public sealed partial class MusicGen
 	{
 		int spe = _time.Spe;
 		int baseMidi = _rootMidi + _keyShift + 19;
-		var tones = ChordMidis( baseMidi, chord );
+		var tones = ChordMidis( baseMidi, chord, barTick );
 		float spread = _c.PanAmount * 0.7f;
 		float sectionGain = TuneFor( _sectionType ) != null ? 0.7f : 1f;
 		int six = spe / 2;

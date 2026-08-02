@@ -50,15 +50,18 @@ public sealed partial class MusicGen
 	void RenderKeysStabBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
 		int kBase = _rootMidi + _keyShift + 24;
-		var tones = ChordMidis( kBase, chord );
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
 		bool ring = chug < 0.5f;
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, ring ) * Math.Max( 0.25f, 1f - 0.7f * chug )) );
-			foreach ( var m in tones )
-				EmitKeys( h.Tick, len, m, h.Vel, ring, tones.Length, vc );
+			foreach ( var (t, d) in ChordSegments( h.Tick, len ) )
+			{
+				var tones = ChordMidis( kBase, chord, t );
+				foreach ( var m in tones )
+					EmitKeys( t, d, m, h.Vel, ring, tones.Length, vc );
+			}
 		}
 	}
 
@@ -68,15 +71,18 @@ public sealed partial class MusicGen
 	void RenderHonkyTonkBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
 		int kBase = _rootMidi + _keyShift + 24;
-		var tones = ChordMidis( kBase, chord );
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, false ) * 0.9f) );
-			foreach ( var m in tones )
-				EmitKeys( h.Tick, len, m, h.Vel, false, tones.Length + 1, vc );
-			EmitKeys( h.Tick, len, tones[0] - 12, h.Vel * 0.8f, false,
-				tones.Length + 1, vc );
+			foreach ( var (t, d) in ChordSegments( h.Tick, len ) )
+			{
+				var tones = ChordMidis( kBase, chord, t );
+				foreach ( var m in tones )
+					EmitKeys( t, d, m, h.Vel, false, tones.Length + 1, vc );
+				EmitKeys( t, d, tones[0] - 12, h.Vel * 0.8f, false,
+					tones.Length + 1, vc );
+			}
 		}
 	}
 
@@ -86,15 +92,18 @@ public sealed partial class MusicGen
 	void RenderPadBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
 		int kBase = _rootMidi + _keyShift + 24;
-		var tones = ChordMidis( kBase, chord );
 		float pluck = Math.Clamp( _c.KeysChug, 0f, 1f );
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(h.SpanTicks * Math.Max( 0.2f, 1f - 0.75f * pluck )) );
-			foreach ( var m in tones )
-				EmitKeys( h.Tick, len, m, h.Vel * 0.85f, pluck < 0.5f,
-					tones.Length, vc );
+			foreach ( var (t, d) in ChordSegments( h.Tick, len ) )
+			{
+				var tones = ChordMidis( kBase, chord, t );
+				foreach ( var m in tones )
+					EmitKeys( t, d, m, h.Vel * 0.85f, pluck < 0.5f,
+						tones.Length, vc );
+			}
 		}
 	}
 
@@ -109,7 +118,8 @@ public sealed partial class MusicGen
 		{
 			if ( !CompFigure.IsTone( h.Value ) ) continue;
 			int len = Math.Max( 1, (int)(h.SpanTicks * 0.9f) );
-			EmitKeys( h.Tick, len, ChordToneMidi( kBase, chord, CompFigure.ToneIndex( h.Value ) ),
+			EmitKeys( h.Tick, len,
+				ChordToneMidi( kBase, chord, CompFigure.ToneIndex( h.Value ), h.Tick ),
 				h.Vel * 0.7f, false, 1, vc );
 		}
 	}

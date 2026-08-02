@@ -341,7 +341,7 @@ with no third present to explain either. That is what "way off key" sounds like,
 makes it far worse. A guitarist frets the same power-chord shape on every degree; the shape does
 not go diminished because of the key. `Harmony.VoicedTone` forces the fourth and the fifth perfect
 and leaves everything else diatonic, and **every voice that SOUNDS a chord goes through it** —
-`ChordMidis(baseMidi, chord)` / `ChordToneMidi` / `VoicedMidis(baseMidi, rootDegree)`.
+`ChordMidis(baseMidi, chord, tick)` / `ChordToneMidi` / `VoicedMidis(baseMidi, rootDegree, voicing)`.
 `ChordDegrees` survives as the MELODIC view (what tones a line may land on); if you find a chordal
 voice calling `ScaleMidi` over it, that voice is spelling its chords wrong. The engine test asserts
 the invariant over every genre × scale × voicing × progression degree, and separately asserts that
@@ -352,12 +352,44 @@ difference tones between everything fed into it; a root and a fifth are a simple
 survive that and a third is not. That is why guitarists play power chords through a driven amp and
 full triads through a clean one — and `RockVoicings` includes `Triad`, so a rock song at
 `DISTORTION 4` was a full triad through gain 5.5 and read exactly the way it reads on a real amp:
-"something is out of tune". `GuitarDegrees()` in `Guitar.cs` drops the voicing's third
+"something is out of tune". `DrivenVoicing()` in `Guitar.cs` drops the voicing's third
 (`Harmony.Third`) once the effective drive passes `DirtyChord`; country's clean strum never
 reaches it, punk and metal always do. **The song's `_voicing` is untouched** — every chordal voice
 must still agree what the chord IS — this drops a note on the way out of ONE voice, so the keys
 keep the third and the band still states the quality. Guitar on the fifths, keyboard on the
 colour, which is how the parts divide in a real band.
+
+**A suspension is a delayed third, not a chord quality — so it has to land.** `Sus4` and `Sus2` put
+the fourth or the second where the third belongs, and the song's `_voicing` is drawn ONCE, so a
+suspended voicing means no chordal voice states a third on any chord for the whole song. Nothing is
+out of key and every voice agrees; the song simply has no major and no minor, and an ear with
+nothing to resolve to hears that ambiguity as dissonance — "spooky", "off", "all wrong". Rock draws
+`Sus4` 2 times in 7 and pop `Sus2` 2 in 8, so it is not rare. `Harmony.SuspendedVoice(voicing)`
+names the voice that owes a third — **a voicing is suspended exactly when it REPLACES the third,
+never when it omits it (`Power`) or colours it (`Sixth`, `Add9`)** — and `MusicGen.VoicingAt(tick)`
+hands the chordal voices the resolved spelling over the back half of each chord's span. Four things
+this rests on:
+
+- **The resolve point is a TICK, not a bar.** `_susResolveTick` is half way through the current
+  chord, whatever `ChordBars` is: the second bar at 2 bars/chord, the second half of the bar at
+  pop's 1. A sus that only resolved on a bar line could never resolve at all in a genre where the
+  chord *is* a bar.
+- **The chord is re-articulated, not switched under a ringing note.** `ChordSegments(tick, ticks)`
+  splits a held note at the resolution, because a suspension that resolves silently is not *heard*
+  to resolve — the landing is the gesture. It matters most for pop's pad, which sounds one chord a
+  bar and would otherwise never move. The guitar and the keys read it; ska's skank and horns don't,
+  because every ska voicing states its third.
+- **The voice-leading table is not recomputed.** Resolving moves one voice a step inside the
+  inversion the song already chose — a finger, not a re-voicing. Rebuilding `_vlShift` for the
+  resolved spelling would make the landing a jump.
+- **The guitar and the keys divide the same way as ever.** Driven, the guitar plays the suspension
+  whole and then drops the note it resolves to, so a rock sus4 lands as a power chord while the keys
+  state the quality. The ending is always the resolved spelling — a song must land on a chord that
+  says what it is.
+
+The engine test asserts the classification (and that some genre actually draws a suspension, or the
+check is vacuous); the digests confirm the scope — the eight non-suspended matrix seeds are
+byte-identical across this change and only the two suspended ones move.
 
 **A chord change must not move the whole comp in parallel.** Built upward from its degree, a
 chord's register is wherever that degree falls, so the same shape slides: a progression that steps

@@ -184,6 +184,42 @@ static class Program
 					- Harmony.ScaleMidi( 48, scale, deg ) != 7;
 		Check( "a diatonic fifth really is diminished on some degree", diatonicBreaks );
 
+		// ── a suspension is a delayed third, so it must have a third to land on ──
+		// sus4 and sus2 put the fourth or the second in the third's place. Held for a whole song
+		// that states no quality at all — every voice agrees and nothing is out of key, but there
+		// is no major and no minor, and the ambiguity reads as dissonance. Harmony.SuspendedVoice
+		// names the voice that owes a third and MusicGen.VoicingAt hands the chordal voices the
+		// resolved spelling over the back half of each chord. What is asserted is the
+		// CLASSIFICATION: a voicing is suspended exactly when it replaces the third rather than
+		// omitting it (the power chord) or colouring it (the sixth, the add9).
+		bool classified = true, resolves = true, anySus = false;
+		string susAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			foreach ( var voicing in GenreProfile.For( g ).Voicings )
+			{
+				bool hasThird = Array.IndexOf( voicing, Harmony.Third ) >= 0;
+				bool replaces = !hasThird && (Array.IndexOf( voicing, Harmony.Second ) >= 0
+					|| Array.IndexOf( voicing, Harmony.Fourth ) >= 0);
+				int sus = Harmony.SuspendedVoice( voicing );
+				if ( (sus >= 0) != replaces )
+				{
+					classified = false;
+					susAt = $"genre {g} voicing [{string.Join( " ", voicing )}] -> {sus}";
+				}
+				if ( sus < 0 ) continue;
+				anySus = true;
+				// The resolved spelling is the same chord with the suspension landed — same voice
+				// count, so every voice keeps its index and the voice-leading table still applies.
+				var res = (int[])voicing.Clone();
+				res[sus] = Harmony.Third;
+				resolves &= res.Length == voicing.Length
+					&& Array.IndexOf( res, Harmony.Third ) >= 0;
+			}
+		Check( "a voicing is suspended exactly when it replaces the third", classified, susAt );
+		Check( "a suspension resolves to a spelling that states the third", resolves );
+		// …and some genre actually draws one, or neither check above is testing anything.
+		Check( "some genre's voicings include a suspension", anySus );
+
 		// ── voice leading: a chord change must not move the whole comp in parallel ──
 		// Built upward from its root degree, a chord's register is wherever that degree falls, so
 		// a progression that steps a third slides every voice a tenth with no common tone — the

@@ -95,6 +95,10 @@ public sealed partial class MusicGen
 			+ $"{(_bpm <= _prof.TempoFloor || _bpm >= _prof.TempoCeil ? ", KNOB SATURATED" : "")}]" );
 		sb.AppendLine( $"key       root midi {_rootMidi}, scale [{string.Join( " ", _scale )}]" );
 		sb.AppendLine( $"changes   [{string.Join( " ", _prog )}] at {_chordBars} bar(s)/chord, voicing [{string.Join( " ", _voicing )}]" );
+		sb.AppendLine( _susVoice >= 0
+			? $"sus       voice {_susVoice} resolves to the third half way through each chord"
+			  + $" -> [{string.Join( " ", _voicingRes )}]"
+			: "sus       none (the voicing states its third)" );
 		// What each chord's inversion cost the voices: the octave each one was shifted so the chord
 		// lands near the one before it. All zeros means the changes needed no re-voicing.
 		var vl = new string[_vlShift.Length];
@@ -224,6 +228,10 @@ public sealed partial class MusicGen
 	GenreProfile _prof;      // the genre's character table — every per-genre decision reads this
 	int[] _scale, _prog;
 	int[] _voicing;          // the song's chord voicing, in scale-degree offsets (Harmony)
+	int[] _voicingRes;       // the same voicing with any suspension resolved to the third; the SAME
+	                         // array as _voicing when the voicing is not suspended
+	int _susVoice = -1;      // index of the suspended voice in _voicing, or -1 (Harmony.SuspendedVoice)
+	int _susResolveTick;     // tick the current chord's suspension resolves on (VoicingAt)
 	int[][] _vlShift;        // per chord of _prog, the octave offset each voice takes so the chord
 	                         // sits near the one before it (Harmony.PlanVoiceLeading)
 	int _rootMidi;
