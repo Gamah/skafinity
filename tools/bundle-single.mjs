@@ -70,7 +70,7 @@ function assertScriptSafe(name, text) {
 }
 
 // ── Inputs ──
-for (const f of ['index.html', 'app.js', 'engine.js', 'worker.js', 'style.css', 'config.json'])
+for (const f of ['index.html', 'app.js', 'engine.js', 'worker.js', 'queue.js', 'style.css', 'config.json'])
   try { readFileSync(join(web, f)); } catch { fail(`web/${f} is missing.`); }
 try { readFileSync(join(fw, 'dotnet.js')); } catch {
   fail(`web/_framework/dotnet.js is missing — build the bundle first ('make' with the .NET SDK, or 'make up').`);
@@ -110,10 +110,18 @@ let workerSrc = read(join(web, 'worker.js'));
 assertScriptSafe('worker.js', workerSrc);
 workerSrc = sub(workerSrc, "import Skafinity from './engine.js';", '', 'worker.js engine import');
 
-// ── app.js: drop its import, inline config.json, build workers from the blob module ──
+// ── queue.js: un-export the class so it can sit in app.js's scope ──
+// Main thread only (the worker renders, it does not schedule), so it goes in the main bundle.
+let queueSrc = read(join(web, 'queue.js'));
+assertScriptSafe('queue.js', queueSrc);
+queueSrc = sub(queueSrc, 'export class GenQueue', 'class GenQueue', 'queue.js class export');
+if (hasTopLevelVar(queueSrc)) fail('queue.js declares a top-level `var` — use let/const.');
+
+// ── app.js: drop its imports, inline config.json, build workers from the blob module ──
 let appSrc = read(join(web, 'app.js'));
 assertScriptSafe('app.js', appSrc);
 appSrc = sub(appSrc, "import Skafinity from './engine.js';", '', 'app.js engine import');
+appSrc = sub(appSrc, "import { GenQueue } from './queue.js';", '', 'app.js queue import');
 appSrc = sub(appSrc, "fetch('./config.json', { cache: 'no-store' })",
   '__skafConfigResponse()', 'app.js config.json fetch');
 appSrc = sub(appSrc, "new Worker(new URL('./worker.js', import.meta.url), { type: 'module' })",
@@ -219,6 +227,7 @@ function __skafMakeWorker() {
   return w;
 }`,
   runtimeBlock('__skafAssets'),
+  queueSrc,
   appSrc,
 ].join('\n');
 
