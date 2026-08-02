@@ -220,6 +220,34 @@ static class Program
 		// …and some genre actually draws one, or neither check above is testing anything.
 		Check( "some genre's voicings include a suspension", anySus );
 
+		// ── the melodic view of a chord and the sounding one really do disagree ──
+		// ChordDegrees is diatonic; the sounding chord is not, because VoicedTone forces the fourth
+		// and the fifth perfect. Where they differ, a melody snapped to a "chord tone" in degree
+		// space lands a semitone off the chord that is playing — which is why RenderTune follows the
+		// degree snap with NearestSoundingTone. If this ever stops finding a case, that second snap
+		// has become dead code and should go, rather than being kept because it looks careful.
+		bool viewsDiffer = false;
+		string differAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount && !viewsDiffer; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			foreach ( var scale in prof.Scales )
+				foreach ( var voicing in prof.Voicings )
+					foreach ( var prog in prof.Progressions )
+						foreach ( var deg in prog )
+							foreach ( var offset in voicing )
+							{
+								int sounding = Harmony.VoicedTone( 48, scale, deg, offset ) % 12;
+								int melodic = Harmony.ScaleMidi( 48, scale, deg + offset ) % 12;
+								if ( sounding == melodic ) continue;
+								viewsDiffer = true;
+								differAt = $"genre {g} degree {deg} offset {offset}: "
+									+ $"sounds pc {sounding}, degree view says pc {melodic}";
+							}
+		}
+		Check( "the diatonic chord-tone view differs from the sounding chord somewhere",
+			viewsDiffer, differAt );
+
 		// ── voice leading: a chord change must not move the whole comp in parallel ──
 		// Built upward from its root degree, a chord's register is wherever that degree falls, so
 		// a progression that steps a third slides every voice a tenth with no common tone — the

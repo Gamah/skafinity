@@ -486,12 +486,12 @@ public sealed partial class MusicGen
 		int root = rootDegree < 0 ? _prog[0] : rootDegree;
 		// The register is the genre's own chordal voice; a driven guitar drops its third here too
 		// (see GuitarMidis) — a song must not land on the one chord it spent three minutes avoiding.
-		int chordBase = _rootMidi + _keyShift + _prof.Comp switch
+		int chordBase = Register( _prof.Comp switch
 		{
-			CompStyle.Skank => 19,   // ska: the horn section
-			CompStyle.Pad => 24,     // pop: the synth
-			_ => 12,                 // the guitar genres
-		};
+			CompStyle.Skank => 2,    // ska: the horn section
+			CompStyle.Pad => 2,      // pop: the synth
+			_ => 1,                  // the guitar genres
+		} );
 		// A song lands on a chord that STATES its quality, so the final chord is always the resolved
 		// spelling — a suspension is a thing owed, and the ending is where it is paid.
 		var tones = VoicedMidis( chordBase, root, _voicingRes );

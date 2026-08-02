@@ -49,7 +49,7 @@ public sealed partial class MusicGen
 	// interlock instead of doubling.
 	void RenderKeysStabBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
-		int kBase = _rootMidi + _keyShift + 24;
+		int kBase = Register( 2 );
 		float chug = Math.Clamp( _c.KeysChug, 0f, 1f );
 		bool ring = chug < 0.5f;
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
@@ -70,7 +70,7 @@ public sealed partial class MusicGen
 	// the root doubled an octave down the way a piano player's left hand does.
 	void RenderHonkyTonkBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
-		int kBase = _rootMidi + _keyShift + 24;
+		int kBase = Register( 2 );
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{
@@ -91,7 +91,7 @@ public sealed partial class MusicGen
 	// what lets the arp on top be the moving voice.
 	void RenderPadBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
-		int kBase = _rootMidi + _keyShift + 24;
+		int kBase = Register( 2 );
 		float pluck = Math.Clamp( _c.KeysChug, 0f, 1f );
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
@@ -112,7 +112,7 @@ public sealed partial class MusicGen
 	// knowing what a 9th is (the cell names a voice index; the song's voicing says what that is).
 	void RenderArpBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
-		int kBase = _rootMidi + _keyShift + 24;
+		int kBase = Register( 2 );
 		var vc = Roll( Expr( "KEYS" ), 0, NoPrev, exprRng );
 		foreach ( var h in hits )
 		{

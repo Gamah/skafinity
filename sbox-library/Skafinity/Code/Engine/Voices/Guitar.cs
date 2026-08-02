@@ -98,7 +98,7 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord ) + 12;               // chunky register, an octave up
-		int triBase = _rootMidi + _keyShift + 12;
+		int triBase = Register( 1 );
 		foreach ( var h in hits )
 		{
 			bool ring = h.Value != CompFigure.Mute;
@@ -125,7 +125,7 @@ public sealed partial class MusicGen
 	void RenderStrumBar( List<Hit> hits, int chord, Rng rng, Rng exprRng )
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
-		int triBase = _rootMidi + _keyShift + 12;
+		int triBase = Register( 1 );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.7f - 0.4f * chug)) );
@@ -148,7 +148,7 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord ) + 12;
-		int triBase = _rootMidi + _keyShift + 12;
+		int triBase = Register( 1 );
 		foreach ( var h in hits )
 		{
 			int len = Math.Max( 1, (int)(CompLen( h.SpanTicks, true ) * (0.85f - 0.35f * chug)) );
@@ -168,7 +168,7 @@ public sealed partial class MusicGen
 	{
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		int root = ChordRoot( chord );                    // low, chunky — no octave bump
-		int triBase = _rootMidi + _keyShift;
+		int triBase = Register( 0 );
 		foreach ( var h in hits )
 		{
 			if ( h.Value == CompFigure.Mute )

@@ -635,15 +635,39 @@ pre-chorus over an eight-bar tune otherwise stated the call and was cut off by t
 the answer arrived — a phrase interrupted by the next phrase, which is what "two ideas at once"
 sounds like from the outside.
 
-**The melody needs an octave of its own** (`LeadBase()` in `Lead.cs`). The comp registers are
-fixed and known — the rhythm guitar voices its chord over `_rootMidi + 12`, the skank and the keys
-over `+24`, a full voicing reaching about `+31` — so a lead based at `+21`/`+24` sang its whole
-line inside the chordal bed and no amount of gain brought it out. `+31` clears that bed. Two
-exceptions are relational, not absolute: metal's shred already sat clear at `+26` and ranges far
-wider than a tune, and punk's unison IS the riff an octave up, so it stays one octave over the
-guitar's `+12`. Level is the second half of the same problem: the lead's target is **+2 dB over
-the genre's drums**, not level with them (see `LeadLevel`, and the ceiling in the suite is that
-target plus a seed's worth of variance).
+**A REGISTER IS A NUMBER OF OCTAVES, AND ONLY EVER THAT.** `ScaleMidi` and `VoicedTone` treat
+their base as **the tonic** and add the scale offset on top, so a base of `_rootMidi + 31` does not
+raise a part by a fifth — it spells that part **in the key a fifth up**. The part then disagrees
+with the band about one note of the scale (two of them, a whole tone up), which is a melody in the
+wrong key, because it is one. Every voice takes its base through **`Register(octaves)`** so a
+non-octave base cannot be written at all; that is worth more than a test, because the wrong version
+stays in tune roughly six notes in seven and never announces itself. Transposing an actual *pitch*
+by an octave (`ChordRoot(c) + 12`) is a different thing and is fine — the scale is already spelled
+by then.
+
+The registers: rhythm guitar `Register(1)` (metal `Register(0)`, low and chunky), skank and keys
+`Register(2)`, the sung lead `Register(3)`. Three octaves for the lead because the comp is a known
+bed — a full voicing over `Register(2)` reaches about `+31`, so a melody at two octaves sings
+inside it and no amount of gain brings it out. Two exceptions are relational: metal's shred ranges
+far wider than a tune and its own comp sits at the root, so `Register(2)` clears it; punk's unison
+IS the riff an octave over the guitar, so it is `Register(2)` by definition. **The cost is that
+register is quantised** — a part sits an octave up or it doesn't. If one ends up too high, narrow
+what it plays (a melody's degree range) rather than reaching for a base between two octaves.
+
+Level is the second half of the same problem: the lead's target is **+2 dB over the genre's
+drums**, not level with them (see `LeadLevel`, and the ceiling in the suite is that target plus a
+seed's worth of variance).
+
+**A melody resolves to what the chord SOUNDS, not to what its degrees say.** `ChordDegrees` is
+diatonic; the sounding chord is not, because `VoicedTone` forces the fourth and the fifth perfect.
+On the one degree of every scale whose diatonic fourth is augmented the two disagree by a semitone,
+so a note the composer deliberately snapped to a chord tone arrives a semitone off the chord — the
+one place a "consonant on the strong beats" melody can still grind. `NearestChordTone` chooses
+*which* chord tone in degree space; `NearestSoundingTone(midi, chord, tick)` then puts the note on
+the pitch that is actually playing, preserving the octave. Because `ChordMidis` is tick-aware, the
+melody follows a suspension to its resolution too. The one strong beat it must NOT touch is the
+horn answer's deliberate step off the chord tone (`RenderSungPhrase`) — that dissonance is the
+gesture.
 
 ---
 

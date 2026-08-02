@@ -505,6 +505,26 @@ public sealed partial class MusicGen
 	// calls these rather than reaching for _scale directly. The section's KeyShift rides on the
 	// root here, so a modulation moves the whole band at once (see Part.KeyShift).
 	int ScaleMidi( int baseMidi, int degree ) => Harmony.ScaleMidi( baseMidi, _scale, degree );
+
+	/// <summary>A voice's register: the pitch it spells its scale over, <paramref name="octaves"/>
+	/// octaves above the song's root.
+	///
+	/// A REGISTER IS A NUMBER OF OCTAVES, AND ONLY EVER THAT. <see cref="Harmony.ScaleMidi"/> and
+	/// <see cref="Harmony.VoicedTone"/> treat their base as THE TONIC and add the scale offset on
+	/// top, so a base of root + 31 does not raise a part by a fifth — it spells that part in the
+	/// key a fifth up. The part then disagrees with the band about one note of the scale (about two
+	/// of them, a whole tone up), and a melody in a different key from its backing is exactly what
+	/// it sounds like. Every voice takes its register through here so a base that is not a whole
+	/// octave cannot be written in the first place, which is worth more than a test for it: the
+	/// wrong version stays in tune roughly six notes in seven, so it does not announce itself.
+	///
+	/// The cost is that register is QUANTISED — a part sits an octave up or it doesn't, and there
+	/// is no landing between. If a part ends up too high, narrow what it plays (a melody's degree
+	/// range) rather than reaching for a base between two octaves.
+	///
+	/// Transposing an actual PITCH by an octave (<c>ChordRoot(c) + 12</c>) is a different thing and
+	/// is fine — the scale has already been spelled by then.</summary>
+	int Register( int octaves ) => _rootMidi + _keyShift + 12 * octaves;
 	int ChordRoot( int c ) => Harmony.ChordRoot( _rootMidi + _keyShift, _scale, _prog[c] );
 
 	/// <summary>Degree of the <paramref name="i"/>th voice of the chord, in the song's own

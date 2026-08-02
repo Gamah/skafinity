@@ -19,7 +19,7 @@ public sealed partial class MusicGen
 	{
 		// +24: skank/organ sit an octave above the bass register — at +12 the chop was too
 		// low/muddy to cut through. The organ stays a further octave down via the -12 below.
-		int gBase = _rootMidi + _keyShift + 24;
+		int gBase = Register( 2 );
 		var tones = ChordMidis( gBase, chord, _barTick );
 		// Skank is dead straight (default); the organ bubble gets a gentle vibrato depth.
 		var organVc = Roll( Expr( "ORGAN" ), 0, NoPrev, exprRng );

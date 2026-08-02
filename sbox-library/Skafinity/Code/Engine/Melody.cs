@@ -168,8 +168,12 @@ public sealed partial class MusicGen
 			// tone and is left alone — that is the difference between a melody and an arpeggio.
 			// (Snapping only the on-beat notes left long off-beat non-chord tones ringing over the
 			// backing for up to two beats, which is what a clash sounds like.)
-			if ( onBeat || len >= Timing.TicksPerBeat ) degree = NearestChordTone( tones, degree );
+			bool resolve = onBeat || len >= Timing.TicksPerBeat;
+			if ( resolve ) degree = NearestChordTone( tones, degree );
 			int midi = ScaleMidi( melBase, degree );
+			// The degree snap chose WHICH chord tone; this puts the note on the pitch the chord
+			// actually sounds, which is not the same thing on every degree (see NearestSoundingTone).
+			if ( resolve ) midi = NearestSoundingTone( midi, chord, h.Tick );
 			var vc = Roll( ex, midi, prevMidi, exprRng );
 			prevMidi = midi;
 			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, len * 0.92 ),
