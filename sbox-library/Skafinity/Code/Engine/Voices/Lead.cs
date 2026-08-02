@@ -114,7 +114,7 @@ public sealed partial class MusicGen
 
 			int midi = ScaleMidi( melBase, degree );
 			if ( onChordTone ) midi = NearestSoundingTone( midi, chord, t );
-			var vc = Roll( ex, midi, prevMidi, exprRng );
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, len ) );
 			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi,
 				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, len ) * 0.7, drive, vc );
 			prevMidi = midi;
@@ -156,7 +156,7 @@ public sealed partial class MusicGen
 			degree += dir;
 			if ( degree > _prog[chord] + 14 || degree < _prog[chord] - 7 ) { dir = -dir; degree += 2 * dir; }
 			int midi = ScaleMidi( melBase, degree );
-			var vc = Roll( ex, midi, prevMidi, exprRng );
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, step ) );
 			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, step * 0.95 ), midi,
 				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, step ) * 0.8,
 				_c.LeadGtrDrive, vc );
@@ -188,7 +188,7 @@ public sealed partial class MusicGen
 			if ( rng.Chance( 0.25f ) ) { t += len; continue; }       // country leaves space
 
 			int midi = ScaleMidi( melBase, degree );
-			var vc = Roll( ex, midi, prevMidi, exprRng );
+			var vc = Roll( ex, midi, prevMidi, exprRng, (float)_time.SpanSeconds( t, len ) );
 			float gain = amp * NoteGain( t, 1f );
 			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi, gain,
 				_time.SpanSeconds( t, len ) * 0.75, _c.LeadGtrDrive, vc );
@@ -236,7 +236,7 @@ public sealed partial class MusicGen
 		{
 			if ( h.Value == CompFigure.Mute ) continue;              // the muted chug is not a note
 			int midi = ScaleMidi( melBase, _prog[chord] );
-			var vc = Roll( ex, midi, prev, exprRng );
+			var vc = Roll( ex, midi, prev, exprRng, (float)_time.SpanSeconds( h.Tick, h.SpanTicks ) );
 			prev = midi;
 			RenderLeadNote( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.9 ),
 				midi, amp * NoteGain( h.Tick, h.Vel ), _time.SpanSeconds( h.Tick, h.SpanTicks ) * 0.7,

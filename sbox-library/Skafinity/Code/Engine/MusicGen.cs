@@ -239,6 +239,12 @@ public sealed partial class MusicGen
 	int _susResolveTick;     // tick the current chord's suspension resolves on (VoicingAt)
 	int[][] _vlShift;        // per chord of _prog, the octave offset each voice takes so the chord
 	                         // sits near the one before it (Harmony.PlanVoiceLeading)
+	int[] _vlRot;            // per chord, which voicing offset each voice takes: voice i plays
+	                         // offset (i + _vlRot[c]) mod n — the rotation half of the same plan
+	int[] _endingPrev;       // pitches the ending's chord is voice-led out of; null before the
+	                         // ending's first chord, which is then left in root position
+	float _compTrim = 1f;    // the drawn comp figure's density trim (Comp.DensityTrim) — set per
+	                         // section by RenderCompVoice and read by the comp voice's emitters
 	int _rootMidi;
 	Instrument _lead;
 	float _leadPan;

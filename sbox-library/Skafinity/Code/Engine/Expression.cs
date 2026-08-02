@@ -17,17 +17,40 @@ namespace Skafinity;
 //   BendIn — #2 bend up INTO the note from a step below (per-note chance)
 //   Glide  — #3 portamento from the previous note's pitch (per-note chance)
 //   Scoop  — #4 bend up-and-back within the note (per-note chance)
+//   Bend   — #5 THE BEND: up to a target part way through the note, held or released
+//
+// The first four are APPROACH gestures — a singer or a horn easing onto a pitch — and they are
+// right for what they are. None of them is the thing a listener points at and calls a bend, which
+// happens in the MIDDLE of a note and goes somewhere: a semitone or a whole step pushed up and
+// held. That is #5, and it carries its own DEPTH because depth is a property of the instrument
+// and the style, not a constant: a pedal-steel-inflected country lead bends a whole step, a shred
+// line bends a semitone on the way past. Propensity alone could not say "bends deep" from "bends
+// barely", so a genre could not have an opinion about it.
 readonly struct Expression
 {
-	public readonly float Vib, BendIn, Glide, Scoop;
-	public Expression( float vib, float bendIn, float glide, float scoop )
-	{ Vib = vib; BendIn = bendIn; Glide = glide; Scoop = scoop; }
+	public readonly float Vib, BendIn, Glide, Scoop, Bend;
+
+	/// <summary>How far this instrument bends, in SEMITONES — 1 is the semitone bend, 2 the whole
+	/// step. Only <see cref="Bend"/> reads it; the approach gestures keep their own small fixed
+	/// leans, because "eased onto from a fifth of a semitone below" is what an approach IS.</summary>
+	public readonly float BendDepth;
+
+	public Expression( float vib, float bendIn, float glide, float scoop,
+		float bend = 0f, float bendDepth = 0f )
+	{
+		Vib = vib; BendIn = bendIn; Glide = glide; Scoop = scoop;
+		Bend = bend; BendDepth = bendDepth;
+	}
 }
 
 // A rolled-per-note voicing: the concrete pitch-shaping a note will get. Vibrato is a
 // constant depth (no draw); bend-in/glide/scoop are rolled against their propensities, so
 // only voices that lean on them ever pull from the expression stream.
-struct Voicing { public float VibDepth, BendSemis, BendTime, ScoopSemis; }
+struct Voicing
+{
+	public float VibDepth, BendSemis, BendTime, ScoopSemis;
+	public float BendUpSemis, BendUpStart, BendUpTime, BendUpHold;
+}
 
 public sealed partial class MusicGen
 {
@@ -58,15 +81,41 @@ public sealed partial class MusicGen
 			case "RHYTHM GTR": return default;                          // power chords — straight
 			case "LEAD GTR":
 			{
-				// Country leans hard into bends (the telecaster twang); rock/metal ride the knob.
-				float bend = _genre == 2 ? MathF.Max( _c.LeadGtrBend, 0.5f ) : _c.LeadGtrBend;
-				return new Expression( 0.30f, bend, 0.10f, bend );
+				float knob = _c.LeadGtrBend;
+				// COUNTRY BENDS UP INTO THE NOTE; IT DOES NOT SCOOP EVERY NOTE. Both propensities
+				// used to come off one floored value, so raising the twang raised the wobble with
+				// it and half the line arrived off-pitch at the front and humped in the middle. A
+				// bend up into the note is the telecaster gesture; a scoop inside it is a horn's,
+				// and country's lead is not a horn. So the floor stays on BendIn alone, the scoop
+				// falls back to whatever the listener's knob says, and the twang the floor was
+				// reaching for is carried by the real bend instead — a whole step, which is what a
+				// bender or a steel plays and what the old ±0.3 of a semitone never was.
+				return _genre switch
+				{
+					2 => new Expression( 0.30f, MathF.Max( knob, 0.5f ), 0.10f, knob,
+						bend: MathF.Max( knob, 0.45f ), bendDepth: 2f ),
+					// Shred passes through its notes; when it bends it is a semitone on the way by.
+					3 => new Expression( 0.30f, knob, 0.10f, knob, bend: knob * 0.5f, bendDepth: 1f ),
+					_ => new Expression( 0.30f, knob, 0.10f, knob, bend: knob * 0.8f, bendDepth: 2f ),
+				};
 			}
 			default:           return default;
 		}
 	}
 
-	Voicing Roll( in Expression ex, int midi, int prevMidi, Rng rng )
+	/// <summary>A bend needs a middle of the note to happen in. Under this the note is over before
+	/// the hand has finished moving, so a rolled bend is simply not applied — it is not a shorter
+	/// bend, because the gesture does not scale.</summary>
+	const float BendMinSeconds = 0.30f;
+
+	/// <summary>Where a bend sits inside its note, in seconds: past the attack, up over a beat of
+	/// the hand, and — when it is released rather than held — a moment at pitch before it comes
+	/// back. Seconds rather than ticks, for the reason BendTime is (see Patch).</summary>
+	const float BendStartSeconds = 0.09f, BendRiseSeconds = 0.11f, BendHoldSeconds = 0.10f;
+
+	/// <param name="noteSeconds">How long the note lasts, for the bend's length test only. 0 means
+	/// "the caller does not know", which reads as too short — a voice that wants bends passes it.</param>
+	Voicing Roll( in Expression ex, int midi, int prevMidi, Rng rng, float noteSeconds = 0f )
 	{
 		var v = new Voicing();
 		// Vibrato depth is a SMALL pitch fraction (lean 0.5 ≈ ±10 cents) and it's delayed in
@@ -85,6 +134,23 @@ public sealed partial class MusicGen
 		}
 		if ( ex.Scoop > 0f && rng.Chance( ex.Scoop ) )
 			v.ScoopSemis = rng.Chance( 0.5f ) ? 0.15f : 0.3f;        // a slight attack hump
+		// The bend. Both draws happen inside the branch whatever the note length, and the LENGTH
+		// TEST comes after them: a note's duration must never decide how many values the
+		// expression stream gives up, or the same seed would compose differently every time a
+		// figure changed a note's span. A note too short to carry a bend just does not get the one
+		// it rolled.
+		if ( ex.Bend > 0f && ex.BendDepth > 0f && rng.Chance( ex.Bend ) )
+		{
+			bool release = rng.Chance( 0.45f );                       // bent and released, or bent and held
+			float depth = rng.Chance( 0.3f ) ? MathF.Max( 1f, ex.BendDepth - 1f ) : ex.BendDepth;
+			if ( noteSeconds >= BendMinSeconds )
+			{
+				v.BendUpSemis = depth;
+				v.BendUpStart = BendStartSeconds;
+				v.BendUpTime = BendRiseSeconds;
+				v.BendUpHold = release ? BendHoldSeconds : 0f;
+			}
+		}
 		return v;
 	}
 
@@ -95,5 +161,7 @@ public sealed partial class MusicGen
 	{
 		if ( v.VibDepth > 0f ) p.VibDepth = v.VibDepth;
 		p.BendSemis = v.BendSemis; p.BendTime = v.BendTime; p.ScoopSemis = v.ScoopSemis;
+		p.BendUpSemis = v.BendUpSemis; p.BendUpStart = v.BendUpStart;
+		p.BendUpTime = v.BendUpTime; p.BendUpHold = v.BendUpHold;
 	}
 }

@@ -252,6 +252,17 @@ sealed class GenreProfile
 	// a genre whose anchors are ambiguous keeps the band it has until somebody counts them by ear.
 	// Ranges quoted as "the genre tables" are the published per-genre bpm guides, used only to
 	// corroborate an anchor and never on their own.
+	//
+	// WHERE THIS ENGINE'S BEAT IS, so an anchor can be CONVERTED rather than guessed: read
+	// DrumGroove. Every groove in genres 1–5 puts the snare on cells 2 and 6 of an eight-eighth bar
+	// — beats 2 and 4 — so for those five the engine's bpm IS the ordinary backbeat-on-2-and-4
+	// count, and an anchor converts by identity. Genre 0 is the exception and says so in its own
+	// block: its skank fires once per beat, so ska counts the double-time reading. Pop's "half-time
+	// backbeat" groove moves the snare to beat 3 alone, which halves the PULSE without touching the
+	// tempo — a groove within the band, not a second counting convention, so a pop anchor is still
+	// counted at the four-on-the-floor pulse. That much is settled from the source, and settling it
+	// is what leaves only the per-record half-or-double question below instead of a per-genre
+	// convention question stacked on top of it.
 	static readonly GenreProfile[] Profiles =
 	{
 		// ── ska-punk — THE THIRD WAVE: straight and fast, clean skank verses into loud choruses ──
@@ -335,11 +346,18 @@ sealed class GenreProfile
 		},
 		// ── country — 90s/00s NASHVILLE: the slowest band; a light shuffle under the train beat ──
 		// Era: the Garth Brooks / Shania Twain / Brooks & Dunn radio decade, not the Bakersfield
-		// 60s and not modern bro-country. Band UNCHANGED by the tempo study — the published
-		// country range (80–120) sits under this one, but it averages in the ballads and the
-		// old-time material this genre is not, and 95–130 with a 130–150 uptempo band is where the
-		// two-step singles of that decade actually sit. Left alone deliberately rather than
-		// dragged down to a number that describes a different country.
+		// 60s and not modern bro-country.
+		//
+		// Anchors (2026-08-02): "Friends in Low Places" 108, "Man! I Feel Like a Woman!" 125,
+		// "Boot Scootin' Boogie" 131. Band UNCHANGED — 108 and 125 sit inside the ordinary band
+		// and the 131 two-step is exactly what the uptempo band is for, so the anchors corroborate
+		// the numbers rather than moving them. The published country range (80–120) still sits
+		// under this one and is still ignored: it averages in the ballads and the old-time material
+		// this genre is not.
+		//
+		// None of the three has a pulse to resolve. The half readings would be 54/62/65 and the
+		// double 216/250/262, and country is neither of those at any point in the decade — which is
+		// what makes these usable anchors where a thrash record is not.
 		new()
 		{
 			// The genre that kept the shuffle. Straight country is real country, so this is not 1.
@@ -362,17 +380,30 @@ sealed class GenreProfile
 			Mix = new MixProfile( 0.75f, 0.85f, 1f, 1.05f, 0.95f ), // dry and centred
 		},
 		// ── metal — 90s/00s GROOVE AND THRASH: the widest band, doom-slow through thrash ──
-		// Era: Pantera, late Metallica, the turn-of-the-century groove/nu lineage. Anchors
-		// (2026-08-02): Pantera "Walk" 118, Metallica "Enter Sandman" 123 — both squarely inside
-		// the ordinary band, which is the corroboration. The band is UNCHANGED, and the reason the
-		// uptempo end is not pushed further on evidence is the count: "Raining Blood" is reported
-		// at 89 and played at 216, and until someone decides by ear which pulse a thrash record is
-		// in, 160–200 is a judgement rather than a measurement and is honest about being one.
+		// Era: Pantera, late Metallica, the turn-of-the-century groove/nu lineage.
+		//
+		// Ordinary-band anchors (2026-08-02): Pantera "Walk" 118, "Cowboys from Hell" 112,
+		// Metallica "Enter Sandman" 123 — all squarely inside 90–160, which is the corroboration,
+		// and none of them ambiguous (a groove-metal half-time riff at 118 is not 59 and not 236).
+		//
+		// THE UPTEMPO BAND MOVED, AND THE COUNT IS WHY. Aggregators return Slayer's "Angel of Death"
+		// at 106–108, which is the HALF reading: the transcribed backing tracks for it are published
+		// at 50% = 104, 90% = 187, 100% = 208 and 105% = 218, four figures whose arithmetic only
+		// closes at a base of ~208. Those are a player's count — a backing track has to be at the
+		// pulse the player counts — and 208 is where the snare lands on 2 and 4, which is this
+		// engine's beat. Metallica's "Master of Puppets" holds ~212 the same way. So thrash's real
+		// pulse sits ABOVE the old 160–200 ceiling, and a genre whose fast band stopped at 200 could
+		// not reach the records it is named for. 170–210, saturating at 225.
+		//
+		// This is the row-40 obstacle actually being cleared rather than restated: the ambiguity was
+		// never resolvable from a bpm field, and it did not need an ear either — it needed a source
+		// that states its own pulse. "Raining Blood" (89 vs 216) still has no such source and is
+		// still not used as an anchor.
 		new()
 		{
 			SwingChance = 0f,   // machine-straight; the old 0–0.02 band was ~3 ms and claimed a feel it never had
-			BpmMin = 90, BpmMax = 160, FastBpmMin = 160, FastBpmMax = 200,
-			TempoFloor = 70, TempoCeil = 210,
+			BpmMin = 90, BpmMax = 160, FastBpmMin = 170, FastBpmMax = 210,
+			TempoFloor = 70, TempoCeil = 225,
 			ChordBars = 2, RideLean = 0.65f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 4, 2 },
@@ -390,13 +421,19 @@ sealed class GenreProfile
 		},
 		// ── punk — 90s SKATE PUNK: always hot, a chord per bar so the loop IS the hypermeasure ──
 		// Era: NOFX / Bad Religion / Rancid, the melodic-hardcore end of the decade rather than
-		// 1977 or pop-punk radio. Band UNCHANGED: the published punk range (150–180) is the
-		// umbrella, and skate punk lives at the top of it and past it, which is what 165–200
-		// already says.
+		// 1977 or pop-punk radio.
+		//
+		// Anchors (2026-08-02): NOFX "Linoleum" 198, Bad Religion "American Jesus" 181, Rancid
+		// "Roots Radicals" 162 — counted where the snare falls on 2 and 4, which at these tempos is
+		// also the only reading that is punk (the halves, 81–99, are the tempos these songs get
+		// reported at when a detector locks onto the backbeat instead of the pulse). The top of the
+		// band was already right; the FLOOR was not, and 165 excluded the slowest of the three
+		// outright. 160–200. The published punk range (150–180) remains the umbrella and skate punk
+		// still lives at the top of it and past it.
 		new()
 		{
 			SwingChance = 0f,   // machine-straight
-			BpmMin = 165, BpmMax = 200, FastBpmMin = 165, FastBpmMax = 200, AlwaysFast = true,
+			BpmMin = 160, BpmMax = 200, FastBpmMin = 160, FastBpmMax = 200, AlwaysFast = true,
 			TempoFloor = 130, TempoCeil = 225,
 			ChordBars = 1, RideLean = 0.20f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
@@ -413,14 +450,27 @@ sealed class GenreProfile
 			AccentDown = 1.1f, AccentBack = 1.15f, AccentOff = 0.9f,
 			Mix = new MixProfile( 0.7f, 0.95f, 0.95f, 1.1f, 1f ),
 		},
-		// ── pop — 90s/00s RADIO POP: dance tempo over four-on-the-floor, a chord per bar ──
-		// Era: the teen-pop and post-teen-pop singles decade. Band UNCHANGED: 100–128 with a
-		// 124–140 uptempo band is exactly the published pop range (100–130, clustering 118–128),
-		// which is the one genre where the guess and the evidence already agreed.
+		// ── pop — 90s/00s RADIO POP: four-on-the-floor, or the half-time backbeat under it ──
+		// Era: the teen-pop and post-teen-pop singles decade.
+		//
+		// Anchors (2026-08-02), and they come in the genre's two grooves rather than one. The
+		// four-on-the-floor side: Madonna "Hung Up" 125, Kylie Minogue "Can't Get You Out of My
+		// Head" 126 (its session began on a 125 bpm drum loop, which is as unambiguous as an anchor
+		// gets), Cher "Believe" 133 — the first two inside the ordinary band and the third exactly
+		// what the uptempo band is for. The HALF-TIME BACKBEAT side, which this genre's second
+		// groove is and which nothing had ever been anchored against: Britney Spears "...Baby One
+		// More Time" 93 and Backstreet Boys "I Want It That Way" 99, both UNDER the old 100 floor.
+		// So the ceiling holds and the floor drops to 92: the band has to cover both grooves,
+		// because DrumGroove.Pop draws both. The published pop range (100–130) describes the dance
+		// half alone, which is how the floor came to be set above two of the decade's biggest pop
+		// singles.
+		//
+		// *NSYNC "Bye Bye Bye" is deliberately NOT an anchor: it is reported at 173 and at 86–87 and
+		// nothing here decides which, so it is exactly the coin flip the header warns about.
 		new()
 		{
 			SwingChance = 0f,   // quantised by construction — the grid is the genre
-			BpmMin = 100, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
+			BpmMin = 92, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
 			TempoFloor = 84, TempoCeil = 152,
 			ChordBars = 1, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Fall, EndingStyle.Ring, EndingStyle.Cadence },

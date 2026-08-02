@@ -65,7 +65,9 @@ public sealed partial class MusicGen
 		// How each chord inverts to stay near the one before it. A property of the changes and
 		// the voicing, so it is decided once and every chordal voice reads the same table — the
 		// guitar and the keys must agree on the inversion as much as on the chord. Costs no draw.
-		_vlShift = Harmony.PlanVoiceLeading( _scale, _prog, _voicing );
+		var plan = Harmony.PlanVoiceLeading( _scale, _prog, _voicing );
+		_vlShift = plan.Shift; _vlRot = plan.Rot;
+		_endingPrev = null;
 		_rootMidi = 28 + rng.Int( 8 );                    // E1..B1 bass root
 		// Which horn/organ voice takes the ska lead, weighted by the config. Rolled for every
 		// genre so the draw count doesn't depend on the genre; only ska reads the result (the
@@ -348,6 +350,13 @@ public sealed partial class MusicGen
 			// "one", it doesn't roll forward as if looping. The bar before it fills to lead in.
 			if ( isEnding && bar == part.Bars - 1 )
 			{
+				// The final chord is led out of the chord that was actually sounding before it
+				// (see EndingChord), so the ending has to be told what that was. Read at the last
+				// tick of the previous bar, which is past any suspension's landing — the same
+				// resolved spelling the ending itself uses.
+				_endingPrev = bar > 0
+					? ChordMidis( EndingBase(), ChordIndexAt( part, bar - 1 ), barTick - 1 )
+					: null;
 				RenderEnding( barTick, barTicks, noise );
 				break;
 			}
@@ -485,6 +494,15 @@ public sealed partial class MusicGen
 	/// <c>_prog[0] + d + shift</c> on top of a <c>ChordDegrees</c> that had already added
 	/// <c>_prog[0]</c>: harmless while every progression started on the tonic, and a chord built a
 	/// third or a sixth off home for the pop and punk loops that do not.</param>
+	/// <summary>The register the ending's chord is voiced in — the genre's own chordal voice, so a
+	/// ska song lands on its horn section and a metal one on its guitar.</summary>
+	int EndingBase() => Register( _prof.Comp switch
+	{
+		CompStyle.Skank => 2,    // ska: the horn section
+		CompStyle.Pad => 2,      // pop: the synth
+		_ => 1,                  // the guitar genres
+	} );
+
 	void EndingChord( int tick, int dur, double decay, float vel, int rootDegree = -1,
 		bool samples = false )
 	{
@@ -494,15 +512,24 @@ public sealed partial class MusicGen
 		int root = rootDegree < 0 ? _prog[0] : rootDegree;
 		// The register is the genre's own chordal voice; a driven guitar drops its third here too
 		// (see GuitarMidis) — a song must not land on the one chord it spent three minutes avoiding.
-		int chordBase = Register( _prof.Comp switch
-		{
-			CompStyle.Skank => 2,    // ska: the horn section
-			CompStyle.Pad => 2,      // pop: the synth
-			_ => 1,                  // the guitar genres
-		} );
+		int chordBase = EndingBase();
 		// A song lands on a chord that STATES its quality, so the final chord is always the resolved
 		// spelling — a suspension is a thing owed, and the ending is where it is paid.
+		//
+		// AND IT IS VOICE-LED, like every other change. Building it in root position was deliberate
+		// once — a song should land where its genre voices the chord rather than where the last
+		// change left the register — but it made the ending the ONE unled change in the song and put
+		// it on the most exposed moment there is, so the last chord could leap a seventh out of the
+		// one before it. A cadence is a change; the register the band has held for three minutes is
+		// where it lands; and the ritard is not cover for a jump. The genre's own voicing and its
+		// own register still decide the chord — this only picks the inversion, inside the same one
+		// octave every other change gets (Harmony.LeadToward). _endingPrev is what was sounding
+		// before it, which is null for the first chord of the ending, and a null simply leaves root
+		// position where there is nothing to lead from.
 		var tones = VoicedMidis( chordBase, root, _voicingRes );
+		var lead = Harmony.LeadToward( _scale, _endingPrev, chordBase, root, _voicingRes );
+		for ( int i = 0; i < tones.Length; i++ ) tones[i] += lead[i];
+		_endingPrev = (int[])tones.Clone();
 		if ( _prof.Comp is not (CompStyle.Skank or CompStyle.Pad) )
 			tones = DrivenVoicing( tones, _voicingRes );
 

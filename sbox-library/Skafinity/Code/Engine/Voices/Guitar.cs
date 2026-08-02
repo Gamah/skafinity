@@ -56,19 +56,24 @@ public sealed partial class MusicGen
 	/// The keys keep the third, so the band still states the quality — guitar on the fifths,
 	/// keyboard on the colour, which is how the parts are actually divided.</summary>
 	int[] GuitarMidis( int baseMidi, int chord, int tick )
-		=> DrivenVoicing( ChordMidis( baseMidi, chord, tick ), VoicingAt( tick ) );
+		=> DrivenVoicing( ChordMidis( baseMidi, chord, tick ), ChordOffsets( chord, tick ) );
 
 	/// <summary>As <see cref="GuitarMidis"/>, for pitches the caller already has (the ending
 	/// builds its chord from a root degree rather than a progression slot). The spelling those
 	/// pitches were built from comes in with them, because a sus4 arrives as a sus4 and leaves as
 	/// a power chord once its third lands (see MusicGen.VoicingAt) — the guitar plays the
 	/// suspension whole and drops the note it resolves to.</summary>
-	int[] DrivenVoicing( int[] tones, int[] voicing )
+	/// <param name="offsets">What each pitch IS, aligned one-for-one with
+	/// <paramref name="tones"/>. It is NOT interchangeable with the song's <c>_voicing</c>: the
+	/// chord plan rotates, so which offset the ith pitch carries changes chord to chord
+	/// (<see cref="MusicGen.ChordOffsets"/>). Handed <c>_voicing</c> instead, this would drop
+	/// whatever note happened to land in the third's array position.</param>
+	int[] DrivenVoicing( int[] tones, int[] offsets )
 	{
 		if ( RhythmGtrTone().Drive < DirtyChord ) return tones;
 		var keep = new List<int>( tones.Length );
-		for ( int i = 0; i < tones.Length && i < voicing.Length; i++ )
-			if ( voicing[i] != Harmony.Third ) keep.Add( tones[i] );
+		for ( int i = 0; i < tones.Length && i < offsets.Length; i++ )
+			if ( offsets[i] != Harmony.Third ) keep.Add( tones[i] );
 		return keep.Count > 0 ? keep.ToArray() : tones;
 	}
 
@@ -90,7 +95,7 @@ public sealed partial class MusicGen
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / Math.Max( 1, voices )
-				* NoteGain( tick, vel ),
+				* NoteGain( tick, vel ) * _compTrim,
 			Attack = 0.002f, Decay = dec, Sustain = ring ? 0.45f : 0f, Sustained = ring,
 			Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso,
 			Drive = drive, Pan = 0f,
@@ -138,11 +143,20 @@ public sealed partial class MusicGen
 			// A strum is not a block chord: the strings sound in sequence. ~4 ms per string is a
 			// pick crossing them — enough for the ear to hear the gesture, short enough that the
 			// chord still lands on the beat.
+			//
+			// THE ORDER IS BY PITCH, not by array position. A pick crosses the strings low to high,
+			// and the array is in voice order — which the chord plan rotates and octave-shifts, so
+			// its ith entry is not its ith lowest note. Nudging by index would spread the strum in
+			// whatever order the inversion happened to come out in, which is a hand that reorders
+			// the strings between chords.
 			foreach ( var (t, d) in ChordSegments( h.Tick, len ) )
 			{
 				var tones = GuitarMidis( triBase, chord, t );
-				for ( int i = 0; i < tones.Length; i++ )
-					EmitGuitar( t, d, tones[i], h.Vel, true, tones.Length, nudgeMs: i * 4f );
+				var order = new int[tones.Length];
+				for ( int i = 0; i < order.Length; i++ ) order[i] = i;
+				Array.Sort( order, ( a, b ) => tones[a].CompareTo( tones[b] ) );
+				for ( int i = 0; i < order.Length; i++ )
+					EmitGuitar( t, d, tones[order[i]], h.Vel, true, tones.Length, nudgeMs: i * 4f );
 			}
 		}
 	}

@@ -124,6 +124,31 @@ public sealed partial class MusicGen
 			}
 			if ( p.ScoopSemis != 0f && i < scoopWin )
 				bendSemis += p.ScoopSemis * MathF.Sin( (float)(i / (float)Math.Min( dur, scoopWin ) * Math.PI) );
+			// The BEND. The two gestures above start off-pitch and resolve onto it inside a short
+			// window at the note's front; this one starts ON pitch and leaves it, part way in, and
+			// either stays up or comes back — which is why it reads as a bend rather than as an
+			// attack. Windows are absolute seconds for the same reason BendTime is: a bend is a
+			// hand moving a string, so it must not scale with tempo or with note length.
+			if ( p.BendUpSemis != 0f && p.BendUpTime > 0f )
+			{
+				int b0 = (int)(p.BendUpStart * _sr);
+				int rise = Math.Max( 1, (int)(p.BendUpTime * _sr) );
+				if ( i >= b0 )
+				{
+					float u = Math.Min( 1f, (i - b0) / (float)rise );
+					float amt = u * u * (3f - 2f * u);
+					if ( p.BendUpHold > 0f )
+					{
+						int r0 = b0 + rise + (int)(p.BendUpHold * _sr);
+						if ( i >= r0 )
+						{
+							float w = Math.Min( 1f, (i - r0) / (float)rise );
+							amt = 1f - w * w * (3f - 2f * w);
+						}
+					}
+					bendSemis += p.BendUpSemis * amt;
+				}
+			}
 			float bendMul = bendSemis != 0f ? (float)Math.Pow( 2.0, bendSemis / 12.0 ) : 1f;
 			for ( int v = 0; v < voices; v++ )
 			{

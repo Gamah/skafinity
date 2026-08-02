@@ -450,18 +450,46 @@ byte-identical across this change and only the two suspended ones move.
 chord's register is wherever that degree falls, so the same shape slides: a progression that steps
 a third moved every voice most of an octave, with no common tone, every time the change came round
 — which is the "it jumped" that reads loudest when a chord change lands on a section boundary.
-`Harmony.PlanVoiceLeading` octave-shifts each voice to the inversion nearest the chord before it,
-once per song, and `ChordMidis`/`ChordToneMidi` apply it — so **every chordal voice inverts the
-same way** and the guitar and the keys agree on the inversion as much as on the chord. Three things
-it deliberately does not do: the **bass is not voice-led** (it plays roots, and an inverted root is
-a different chord); the ending's `VoicedMidis` is root position on purpose (a song lands where the
-genre voices it, not where the last change left the register); and no voice is reassigned between
-chord tones, so a stepwise root move still moves the shape a step — that is a guitarist barring the
-same shape, not the defect. A progression is a **cycle**, so the last chord back to the first is a
-change like any other: walking the cycle greedily either parks every leap on that seam or
-oscillates and never settles, so each voice is solved exactly over the three octaves it may take
-(cheap — three options, four chords, voices independent). Ties go to the octave nearer root
-position, or the comp walks itself out of register over a few laps.
+`Harmony.PlanVoiceLeading` decides it once per song and `ChordMidis`/`ChordToneMidi` apply it — so
+**every chordal voice inverts the same way** and the guitar and the keys agree on the inversion as
+much as on the chord.
+
+**It is two decisions and they compose: a ROTATION and an octave.** Octave-shifting alone kills the
+octave-sized leap but leaves voice *i* permanently on the *i*th offset of the voicing, so a root
+move of a fourth still moves every voice by that fourth — a smaller parallel slide with no common
+tone in it, which is the other half of "the comp sounds like a chord calculator". Letting the chord
+rotate is what produces a common tone: voice *i* plays offset `(i + Rot[c]) mod n`, so the voice
+that was on the fifth can take the next chord's root and simply not move. The two are solved in
+sequence rather than jointly — jointly, the state is a rotation plus an octave per voice and it
+stops being cheap; split, the rotation pass costs a voice's move as the interval folded into a
+tritone (i.e. "could this voice hold, if it may invert?"), and the octave pass then answers that
+concretely and is per-voice independent again. It took the changes that still throw a voice more
+than a tritone from 211 to **8**, over every genre × scale × voicing × progression.
+
+**The array index is therefore a VOICE, not a voicing slot.** Anything that needs to know what a
+pitch *is* — the driven guitar dropping the third — asks `ChordOffsets` for the offsets in the same
+order rather than indexing `_voicing` alongside the pitches, or it drops whatever landed in the
+third's position. For the same reason the country strum spreads its pick **by pitch, not by array
+order**: the order the pick crosses the strings is low to high, and the plan reorders and
+octave-shifts freely.
+
+Two things it deliberately does not do: the **bass is not voice-led** (it plays roots, and an
+inverted root is a different chord), and no voice is reassigned *within* a rotation, so a stepwise
+root move still moves the shape a step — that is a guitarist barring the same shape, not the defect.
+A progression is a **cycle**, so the last chord back to the first is a change like any other, and
+both passes close the loop: walking it greedily either parks every leap on that seam or oscillates
+and never settles. Ties go toward root position — the octave nearer it, and rotation 0 — so a plan
+that gains nothing from moving simply doesn't, and the comp cannot walk itself out of register over
+a few laps.
+
+**The ending is led too, and used not to be.** `EndingChord` built its chord in root position on the
+argument that a song should land where its genre voices the chord rather than where the last change
+left the register. That made the ending the one unled change in the song and put it on the most
+exposed moment there is, so the final chord could leap a seventh out of the one before it.
+`Harmony.LeadToward` picks its inversion against what was actually sounding (`_endingPrev`, read at
+the last tick of the previous bar so it is past any suspension's landing), inside the same one
+octave every other change gets. The genre's own voicing and register still choose the chord; a
+cadence is a change, and the ritard is not cover for a jump.
 
 When adding per-genre behaviour, ask which side it falls on: a listener's taste (a knob, in a
 genre grid) or the genre's identity (`GenreProfile`). Getting it wrong is only obvious once
@@ -494,6 +522,25 @@ bands were wrong the first time. Published per-genre bpm tables corroborate an a
 set a band on their own, because they average in every era and every subgenre under the umbrella.
 A genre whose anchors are ambiguous **keeps the band it has** and says so, rather than trading a
 guess for a guess with a citation on it.
+
+**All six bands are anchored now, and the method that got there is the part worth keeping.** It has
+two halves. First, *where this engine's beat is* is settled from the source rather than assumed:
+read `DrumGroove`, and every groove in genres 1–5 puts the snare on beats 2 and 4, so for those five
+the engine's bpm is the ordinary backbeat count and an anchor converts by identity — genre 0 is the
+documented exception, and pop's half-time groove halves the pulse without touching the tempo, which
+is a groove within the band rather than a second convention. Second, **prefer a source that states
+its own count over one that reports a number.** Aggregators return "Angel of Death" at 106; its
+published backing tracks are labelled 50% = 104, 90% = 187, 100% = 208 and 105% = 218, four figures
+whose arithmetic only closes at ~208 — and a backing track has to be at the pulse a player counts.
+That is what moved metal's uptempo band to 170–210 after years of the ambiguity being treated as
+unresolvable. **The obstacle was never that tempo data is scarce; it was that a bpm field does not
+say what it counted, and some sources do.** Where no such source exists the band still does not
+move: "Raining Blood" is still not an anchor, and *NSYNC's "Bye Bye Bye" (173 or 86, nothing
+deciding) is deliberately not one either.
+
+**What the method does not reach is the grooves and the accent weights.** There is no equivalent of
+a bpm field for where the kick falls in a train beat or how much louder country's offbeat "chick"
+is than its downbeat, so those are still unchecked against anything — see `PLAN.md`.
 
 **When something reads as too dense, suspect the tempo before you thin a part.** The knob is the
 usual culprit, and a genre's own band is the next one. Adding a gate somewhere is almost always the

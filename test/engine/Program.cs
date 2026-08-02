@@ -266,20 +266,32 @@ static class Program
 				foreach ( var voicing in prof.Voicings )
 					foreach ( var prog in prof.Progressions )
 					{
-						var shift = Harmony.PlanVoiceLeading( scale, prog, voicing );
+						var plan = Harmony.PlanVoiceLeading( scale, prog, voicing );
+						var shift = plan.Shift; var rot = plan.Rot;
+						int nv = voicing.Length;
 						for ( int c = 0; c < prog.Length; c++ )
 						{
 							int p = (c + prog.Length - 1) % prog.Length;
 							for ( int i = 0; i < voicing.Length; i++ )
 							{
-								int raw = Harmony.VoicedTone( 0, scale, prog[c], voicing[i] );
-								int rawPrev = Harmony.VoicedTone( 0, scale, prog[p], voicing[i] );
+								// The plan ROTATES, so voice i is not on voicing slot i — it plays
+								// (i + rot[c]) mod n, and that is the whole point: it is what lets a
+								// voice hold a common tone across a change instead of sliding with
+								// the shape. Reading voicing[i] here would measure a part nobody
+								// plays.
+								int raw = Harmony.VoicedTone( 0, scale, prog[c], voicing[(i + rot[c]) % nv] );
+								int rawPrev = Harmony.VoicedTone( 0, scale, prog[p], voicing[(i + rot[p]) % nv] );
+								// The CONTROL is the unplanned spelling — no rotation and no octave
+								// shift — because that is what the plan is being measured against.
+								// Rotating it too would compare the plan with half of itself.
+								int flat = Harmony.VoicedTone( 0, scale, prog[c], voicing[i] );
+								int flatPrev = Harmony.VoicedTone( 0, scale, prog[p], voicing[i] );
 								int now = raw + shift[c][i], before = rawPrev + shift[p][i];
 								// The chord is re-voiced, never re-spelled: same note, other octave.
 								spelled &= (now - raw) % 12 == 0;
 								floored &= now >= Harmony.VoiceLeadFloor;
 								anchored &= Math.Abs( shift[c][i] ) <= Harmony.MaxVoiceLead;
-								int move = Math.Abs( now - before ), rootMove = Math.Abs( raw - rawPrev );
+								int move = Math.Abs( now - before ), rootMove = Math.Abs( flat - flatPrev );
 								movedLed += move;
 								movedRoot += rootMove;
 								if ( move > 6 ) bigLed++;
@@ -315,8 +327,14 @@ static class Program
 		Check( "voice leading moves the comp less than root position", movedLed * 5 < movedRoot * 4,
 			$"led {movedLed} vs root-position {movedRoot} semitones over all changes" );
 		// The ones that survive are the price of closing the cycle: a single wider move that buys
-		// smaller ones on the other three changes is the solution, not a failure of it.
-		Check( "voice leading removes most of the big leaps", bigLed * 3 < bigRoot,
+		// smaller ones on the other three changes is the solution, not a failure of it. There are
+		// few enough of them now to be worth an absolute cap and not only a ratio — octave-shifting
+		// alone left 211 of these, and letting the chord ROTATE (a voice takes whichever note of the
+		// voicing keeps it still, rather than being stuck on its own slot) is what took them into
+		// single figures. A cap catches a table edit that quietly puts them back; the ratio alone
+		// would not, because it scales with the tables.
+		Check( "voice leading removes all but a handful of the big leaps",
+			bigLed * 3 < bigRoot && bigLed <= 16,
 			$"{bigLed} led vs {bigRoot} root-position moves over a tritone; worst {leapAt}" );
 
 		// ScaleMidi wraps octaves rather than clamping, so a progression may run off either
@@ -565,6 +583,43 @@ static class Program
 
 	static void GenreProfileTests()
 	{
+		// ── the comp figure's density spread ──
+		// A section draws its comp figure from the genre's table and the figures are not equally
+		// dense, so how loud the backing sits was decided by a draw — rock measured 4 dB apart
+		// between the seed the suite balances on and the genre's own average. Neither tool could
+		// see it: --levels averages the spread away and the balance check below is a single seed.
+		// This is the one that watches it, and it is free because it is a property of the TABLES —
+		// no render is needed to know how far apart two figures are.
+		//
+		// The measure is the incoherent-sum level a figure implies (√onsets per tick) times its
+		// trim, in dB, worst pair per genre. Untrimmed it has to FAIL the same bound, or the check
+		// passes on a genre whose figures were already even and proves nothing.
+		float worstTrimmed = 0f, worstRaw = 0f;
+		string spreadAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			foreach ( var table in new[] { prof.CompFigures, prof.LoudCompFigures } )
+			{
+				if ( table == null || table.Length < 2 ) continue;
+				float loT = float.MaxValue, hiT = 0f, loR = float.MaxValue, hiR = 0f;
+				foreach ( var fig in table )
+				{
+					float d = MathF.Sqrt( fig.Count / (float)fig.LengthTicks );
+					float t = d * MusicGen.DensityTrim( fig, table );
+					loT = MathF.Min( loT, t ); hiT = MathF.Max( hiT, t );
+					loR = MathF.Min( loR, d ); hiR = MathF.Max( hiR, d );
+				}
+				float dbT = 20f * MathF.Log10( hiT / loT ), dbR = 20f * MathF.Log10( hiR / loR );
+				if ( dbT > worstTrimmed ) { worstTrimmed = dbT; spreadAt = $"genre {g}"; }
+				worstRaw = MathF.Max( worstRaw, dbR );
+			}
+		}
+		Check( "the comp figures a genre draws from sit within 2 dB of each other",
+			worstTrimmed <= 2f, $"worst {worstTrimmed:0.0} dB at {spreadAt}" );
+		Check( "…and untrimmed they do not, so the trim is not measuring nothing",
+			worstRaw > 2f, $"worst untrimmed {worstRaw:0.0} dB" );
+
 		// Swing is genre character rather than a knob, and it is a YES/NO before it is a depth: a
 		// genre that never swings declares SwingChance 0 and needs no band at all. So a draw is one
 		// of exactly three things — straight, somewhere in the genre's swing band, or somewhere in

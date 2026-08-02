@@ -104,9 +104,22 @@ static class SongForm
 	// The bridge is the breakdown, and it is where this genre spends its FEEL: the band drops to
 	// half time behind a vocal that does not (Part.Feel), which is the third-wave breakdown and
 	// the one place the style genuinely changes gear rather than changing technique. The
-	// verse→chorus pivot is NOT done here — the skank/power-chord drop already carries it through
-	// GenreProfile.LoudComp, and doubling the band on top of a band already counted double (see
-	// the tempo comment in GenreProfile) would put the chorus at sixteenth downstrokes.
+	//
+	// THE CHORUS TAKES NO FEEL, AND THAT IS SETTLED RATHER THAN UNEXAMINED. The verse→chorus pivot
+	// is already carried by GenreProfile.LoudComp swapping the skank for driven power chords, and
+	// Feel = 2 on top of it is not a second helping of the same idea — it is a different and worse
+	// one, because genre 0's band is counted DOUBLE already (the skank fires once per beat; see the
+	// tempo comment in GenreProfile). Doubling the rhythm section's pattern rate over that band puts
+	// the loud figures on the sixteenth: the densest of them (CompFigure.SkaPunkLoud's offbeat
+	// answer, six onsets to the bar) lands twelve onsets a bar, which at the band's own 172 is 8.6
+	// attacks a second and at the genre's tempo ceiling of 210 is over ten — downpicked, sustained,
+	// for eight bars. That is past what a guitarist does and past what the style asks for: a
+	// third-wave chorus is a HEAVIER part, not a faster one.
+	//
+	// The escape hatch would be bringing the band down until the doubling fits, and it is closed —
+	// the band is anchored on a record ("Sell Out", converted into this engine's units), so moving
+	// it to make a feel work would trade a measurement for a preference. The technique change IS the
+	// gear change, and the feel stays where it is unambiguous: the half-time bridge.
 	public static readonly Part[] SkaPunk =
 	{
 		new( Section.Intro,     4, energy: Low, tempoMul: 0.98f ),
