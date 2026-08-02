@@ -86,14 +86,14 @@ static class Audition
 		var L = new List<float>();
 		var R = new List<float>();
 		var script = new StringBuilder();
-		script.AppendLine( "AUDITION — skafinity drum kit, round 6: THE RIDE" );
+		script.AppendLine( "AUDITION — skafinity drum kit, round 7: THE RIDE AS PURE WAVEFORMS" );
 		script.AppendLine( "One kit part per line. Each line is a figure played by that voice alone." );
 		script.AppendLine( "Dry: no tone lean, no genre mix, no reverb, no master. Centred except where noted." );
-		script.AppendLine( "Round 6 is generation 4 of the bell: it starts from the round-3 ring (PingLowTwo" );
-		script.AppendLine( "allowed to ring) and adds, one at a time, the three things struck metal has that a" );
-		script.AppendLine( "static filter bank does not — per-mode decay, close-mode beating, a strike glide." );
-		script.AppendLine( "Lines 1-7 are a LADDER: each adds one element, so a step that makes it worse names" );
-		script.AppendLine( "the element to blame. Then the assembled bells against a bow, then bow candidates." );
+		script.AppendLine( "Round 7 abandons filtered noise entirely: the cymbal is a bank of ~80 inharmonic" );
+		script.AppendLine( "sine partials, each with its own ring time, many twinned a few Hz apart so they" );
+		script.AppendLine( "beat. Every hit draws fresh phases and level jitter, and soft strokes darken." );
+		script.AppendLine( "The only noise left is the 4 ms stick contact. Bows first, then bells alone," );
+		script.AppendLine( "then bell-and-bow together, then the patterns." );
 		script.AppendLine( "--audition kick|snare|toms|hats|crash still plays the settled voices." );
 		script.AppendLine();
 
@@ -439,111 +439,96 @@ static class Audition
 	}
 
 	// ── RIDE ──
-	// Generation 4. The three bell generations before this one all failed, and the round-3
-	// finding points the other way: the first bell-adjacent sound on the branch was PingLowTwo
-	// simply ALLOWED TO RING — a struck piece of metal, no bell machinery at all. So the ladder
-	// below starts there and adds the three properties of struck metal that no generation has
-	// had, ONE AT A TIME, so a step that makes it worse names the element to blame:
-	//   per-mode decay (a mode's Q is its ring time — lows ring on, stick modes vanish),
-	//   close-mode beating (the low modes as near-pairs a few Hz apart),
-	//   a strike glide (the stack starts sharp and settles as the strike energy dissipates).
+	// Generation 5: pure waveforms (see RideModal in Kit.cs). Every noise-based generation —
+	// four of them — came back "hats in weird states", and the listener's instruction was
+	// explicit: a novel tone, synthesised as waveforms, not existing sounds with tweaked knobs.
+	// So the cymbal is now a dense bank of inharmonic sine partials with per-partial ring times,
+	// beating twins and per-hit phase/level variation; the only noise is the stick contact.
 
 	static void Ride( List<Line> into )
 	{
-		void Straight( Take t, RideTone k )
+		void Straight( Take t, in RideModal m )
 		{
 			t.G.AuditionPan = 0.25f;
 			for ( int i = 0; i < 8; i++ )
-				t.G.RenderRide( t.At( i * 0.5 ), (i & 1) == 0 ? 1f : 0.62f, t.N, k );
-			t.G.RenderRide( t.At( 4 ), 1f, t.N, k );
+				t.G.RenderRideModal( t.At( i * 0.5 ), (i & 1) == 0 ? 1f : 0.62f, m );
+			t.G.RenderRideModal( t.At( 4 ), 1f, m );
 		}
-		// A bell is judged alternating with the bow, because that is how it is played and how
-		// the ear places it: bell on beats 1 and 3, bow eighths between, landing on the bell.
-		void BellBow( Take t, RideTone bell, RideTone bow )
+		// A bell alone first — the attack and the ring are the whole question — then judged the
+		// way it is played: bell on beats 1 and 3, bow eighths between, landing on the bell.
+		void Quarters( Take t, in RideModal m )
+		{
+			t.G.AuditionPan = 0.25f;
+			for ( int b = 0; b < 4; b++ ) t.G.RenderRideModal( t.At( b ), 1f, m );
+			t.G.RenderRideModal( t.At( 4 ), 1f, m );
+		}
+		void BellBow( Take t, in RideModal bell, in RideModal bow )
 		{
 			t.G.AuditionPan = 0.25f;
 			for ( int i = 0; i < 8; i++ )
 			{
-				if ( i == 0 || i == 4 ) t.G.RenderRide( t.At( i * 0.5 ), 1f, t.N, bell );
-				else t.G.RenderRide( t.At( i * 0.5 ), 0.62f, t.N, bow );
+				if ( i == 0 || i == 4 ) t.G.RenderRideModal( t.At( i * 0.5 ), 1f, bell );
+				else t.G.RenderRideModal( t.At( i * 0.5 ), 0.62f, bow );
 			}
-			t.G.RenderRide( t.At( 4 ), 1f, t.N, bell );
+			t.G.RenderRideModal( t.At( 4 ), 1f, bell );
 		}
 
-		// The round-3 line that earned this round, verbatim: the reference the ladder is heard
-		// against. (Its wash is a touch higher than the gen-4 bed — 0.28 vs 0.18 — because it
-		// predates it; that is part of what line 2 onward changes.)
-		var anchor = RideTone.PingLowTwo.With( dur: 0.85f, bandDecayFrac: 1.1 );
+		var bow = RideModal.Bow();
+		var bell = RideModal.Bell();
 
-		// The gen-4 bed with the glide off: pairs + per-mode decay only.
-		var bellNoGlide = RideTone.BellRing.With( glideCents: 0f );
+		// The bow, and its three axes: shimmer density, shimmer level, ring length.
+		Add( into, "ride", "BOW — the cymbal (~80 partials), straight eighths", 128, 5,
+			t => Straight( t, bow ), 1.6 );
+		Add( into, "ride", "BOW — sparser shimmer (half the high partials)", 128, 5,
+			t => Straight( t, RideModal.Bow( density: 0.5f ) ), 1.6 );
+		Add( into, "ride", "BOW — denser shimmer (1.6×)", 128, 5,
+			t => Straight( t, RideModal.Bow( density: 1.6f ) ), 1.6 );
+		Add( into, "ride", "BOW — shimmer forward (highs 1.6× louder)", 128, 5,
+			t => Straight( t, RideModal.Bow( shimmer: 1.6f ) ), 1.6 );
+		Add( into, "ride", "BOW — dark and dry (ring 0.6×, shimmer 0.7×)", 128, 5,
+			t => Straight( t, RideModal.Bow( shimmer: 0.7f, ring: 0.6f ) ), 1.2 );
+		Add( into, "ride", "BOW — washy (ring 1.7×)", 128, 5,
+			t => Straight( t, RideModal.Bow( ring: 1.7f ) ), 2.2 );
 
-		// PingLowTwo's own four modes given per-mode decay — the first ladder step. `lo…top` are
-		// ring times in seconds; ModeLevel keeps each mode's strike amplitude as its ring changes,
-		// so these lines sweep DECAY and not level.
-		RideTone Modal4( float lo, float mid, float hi, float top ) => bellNoGlide.With(
-			bandHz: new[] { 370f, 615f, 3150f, 5400f },
-			bandLevel: new[] { RideTone.ModeLevel( 15f, lo ), RideTone.ModeLevel( 10f, mid ),
-				RideTone.ModeLevel( 55f, hi ), RideTone.ModeLevel( 35f, top ) },
-			bandQs: new[] { RideTone.ModeQ( 370f, lo ), RideTone.ModeQ( 615f, mid ),
-				RideTone.ModeQ( 3150f, hi ), RideTone.ModeQ( 5400f, top ) } );
+		// The bell alone: f0 and stretch are its two characters.
+		Add( into, "ride", "BELL — f0 840 Hz, quarter notes", 116, 5,
+			t => Quarters( t, bell ), 2.8 );
+		Add( into, "ride", "BELL — f0 700, stretched clangier (1.08)", 116, 5,
+			t => Quarters( t, RideModal.Bell( f0: 700f, stretch: 1.08f ) ), 2.8 );
+		Add( into, "ride", "BELL — f0 1000, squeezed purer (0.94)", 116, 5,
+			t => Quarters( t, RideModal.Bell( f0: 1000f, stretch: 0.94f ) ), 2.8 );
+		Add( into, "ride", "BELL — f0 840, short (ring 0.5×) — a stab, not a toll", 116, 5,
+			t => Quarters( t, RideModal.Bell( ring: 0.5f ) ), 1.6 );
 
-		// The low modes split into near-pairs `beat` Hz apart — the warble is the point.
-		RideTone Pairs( float beat )
-		{
-			float h = beat * 0.5f;
-			return bellNoGlide.With( bandHz: new[]
-				{ 370f - h, 370f + h, 615f - h, 615f + h, 3150f, 5400f } );
-		}
+		// Together, as played.
+		Add( into, "ride", "BELL+BOW — 840 bell over the bow", 116, 5,
+			t => BellBow( t, bell, bow ), 2.8 );
+		Add( into, "ride", "BELL+BOW — 700 clangy bell over the shimmer-forward bow", 116, 5,
+			t => BellBow( t, RideModal.Bell( f0: 700f, stretch: 1.08f ),
+				RideModal.Bow( shimmer: 1.6f ) ), 2.8 );
+		Add( into, "ride", "BELL+BOW — 1000 purer bell over the dark bow", 116, 5,
+			t => BellBow( t, RideModal.Bell( f0: 1000f, stretch: 0.94f ),
+				RideModal.Bow( shimmer: 0.7f, ring: 0.6f ) ), 2.8 );
 
-		Add( into, "ride", "LADDER 1 — the anchor: round 3's ring (PingLowTwo rung long)", 128, 5,
-			t => Straight( t, anchor ), 1.1 );
-		Add( into, "ride", "LADDER 2 — + per-mode decay, mild (lows 0.45 s, stick modes 120 ms)",
-			128, 5, t => Straight( t, Modal4( 0.45f, 0.35f, 0.12f, 0.06f ) ), 1.3 );
-		Add( into, "ride", "LADDER 3 — + per-mode decay, strong (lows 0.9 s, stick modes 60 ms)",
-			128, 5, t => Straight( t, Modal4( 0.90f, 0.70f, 0.06f, 0.03f ) ), 1.3 );
-		Add( into, "ride", "LADDER 4 — + beating: low modes as pairs 3 Hz apart", 128, 5,
-			t => Straight( t, Pairs( 3f ) ), 1.3 );
-		Add( into, "ride", "LADDER 5 — + beating: pairs 7 Hz apart", 128, 5,
-			t => Straight( t, Pairs( 7f ) ), 1.3 );
-		Add( into, "ride", "LADDER 6 — + strike glide 20 cents (this is BellRing whole)", 128, 5,
-			t => Straight( t, RideTone.BellRing ), 1.3 );
-		Add( into, "ride", "LADDER 7 — glide bracketed high: 40 cents", 128, 5,
-			t => Straight( t, RideTone.BellRing.With( glideCents: 40f ) ), 1.3 );
-
-		// The assembled bells, judged the way a bell is played: alternating with a bow. The bow
-		// here is the modal ping (see the BOW lines below) — the corollary in RIDE.md: if the
-		// bell is the ping's own modes rung differently, bell and bow are one piece of metal.
-		var bowModal = RideTone.PingLowTwo.With(
-			bandLevel: new[] { RideTone.ModeLevel( 15f, 0.25f ), RideTone.ModeLevel( 10f, 0.20f ),
-				RideTone.ModeLevel( 55f, 0.04f ), RideTone.ModeLevel( 35f, 0.025f ) },
-			bandQs: new[] { RideTone.ModeQ( 370f, 0.25f ), RideTone.ModeQ( 615f, 0.20f ),
-				RideTone.ModeQ( 3150f, 0.04f ), RideTone.ModeQ( 5400f, 0.025f ) } );
-
-		Add( into, "ride", "BELL+BOW — BellRing over the modal bow", 116, 5,
-			t => BellBow( t, RideTone.BellRing, bowModal ), 1.3 );
-		Add( into, "ride", "BELL+BOW — BellRingLow (same bell scaled 0.78, lows ring longer)", 116, 5,
-			t => BellBow( t, RideTone.BellRingLow, bowModal ), 1.4 );
-		Add( into, "ride", "BELL+BOW — BellRingHigh (scaled 1.3, shorter lows)", 116, 5,
-			t => BellBow( t, RideTone.BellRingHigh, bowModal ), 1.2 );
-		Add( into, "ride", "BELL+BOW — the incumbent BellDurationOnly, same figure", 116, 5,
-			t => BellBow( t, RideTone.BellDurationOnly, bowModal ), 1.0 );
-
-		// The bow is not settled either, and the same finding applies: the ping only started
-		// reading as a ride once it had a bottom. Three candidates, same straight-eighth pattern.
-		Add( into, "ride", "BOW — today's Bow (what ships), straight eighths", 128, 5,
-			t => Straight( t, RideTone.Bow ), 0.9 );
-		Add( into, "ride", "BOW — PingLowTwo (round 3's ping), straight eighths", 128, 5,
-			t => Straight( t, RideTone.PingLowTwo ), 0.9 );
-		Add( into, "ride", "BOW — the modal ping: same modes, per-mode decay at bow scale", 128, 5,
-			t => Straight( t, bowModal ), 0.9 );
-		Add( into, "ride", "BOW — the modal ping, swung ride pattern", 112, 5, t =>
+		// And in motion.
+		Add( into, "ride", "PATTERN — swung ride on the bow", 112, 5, t =>
 		{
 			t.G.AuditionPan = 0.25f;
 			double[] at = { 0, 1, 5.0 / 3.0, 2, 3, 11.0 / 3.0 };
 			foreach ( var a in at )
-				t.G.RenderRide( t.At( a ), a == Math.Floor( a ) ? 1f : 0.62f, t.N, bowModal );
-			t.G.RenderRide( t.At( 4 ), 1f, t.N, bowModal );
-		}, 0.9 );
+				t.G.RenderRideModal( t.At( a ), a == Math.Floor( a ) ? 1f : 0.62f, bow );
+			t.G.RenderRideModal( t.At( 4 ), 1f, bow );
+		}, 1.6 );
+		Add( into, "ride", "PATTERN — riding eighths, bell replacing the accent on each downbeat",
+			120, 5, t =>
+		{
+			t.G.AuditionPan = 0.25f;
+			for ( int i = 0; i < 8; i++ )
+			{
+				if ( i % 4 == 0 ) t.G.RenderRideModal( t.At( i * 0.5 ), 1f, bell );
+				else t.G.RenderRideModal( t.At( i * 0.5 ), 0.62f, bow );
+			}
+			t.G.RenderRideModal( t.At( 4 ), 1f, bell );
+		}, 2.8 );
 	}
 }
