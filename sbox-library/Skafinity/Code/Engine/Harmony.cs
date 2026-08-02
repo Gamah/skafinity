@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Skafinity;
 
@@ -46,6 +47,36 @@ static class Harmony
 	/// driven guitar leaves out; the FOURTH and the FIFTH are the ones that must stay PERFECT (see
 	/// MusicGen.VoicedTone), because they are what "sus4" and "power chord" mean.</summary>
 	public const int Third = 2, Fourth = 3, Fifth = 4;
+
+	/// <summary>The SECOND — the other degree a suspension puts where the third belongs.</summary>
+	public const int Second = 1;
+
+	/// <summary>Index of the voice a suspension occupies in <paramref name="voicing"/>, or -1 if it
+	/// is not suspended.
+	///
+	/// A SUSPENSION IS A DELAYED THIRD, NOT A CHORD QUALITY. sus4 and sus2 put the fourth or the
+	/// second in the third's place, so a chord voiced that way states no quality — and the song's
+	/// voicing is drawn once, for every chordal voice and every chord. Held that way for a whole
+	/// song nothing is out of key and every voice agrees; the song simply has no major and no
+	/// minor, and an ear with nothing to resolve to hears the ambiguity as dissonance. The
+	/// suspended note has to arrive somewhere, so <see cref="MusicGen.VoicingAt"/> hands the
+	/// chordal voices the resolved spelling over the back half of every chord's span: the chord
+	/// hangs, then it lands.
+	///
+	/// A voicing that already contains the third is not suspended — the sixth's added 6th and the
+	/// add9's 9th are colour over a stated triad, not a substitution. Neither is the power chord:
+	/// it OMITS the third rather than replacing it, which is a sound in its own right (it is what
+	/// a driven guitar plays) and there is nothing owed.</summary>
+	public static int SuspendedVoice( int[] voicing )
+	{
+		int sus = -1;
+		for ( int i = 0; i < voicing.Length; i++ )
+		{
+			if ( voicing[i] == Third ) return -1;
+			if ( voicing[i] == Second || voicing[i] == Fourth ) sus = i;
+		}
+		return sus;
+	}
 
 	public static readonly int[] Triad = { 0, 2, 4 };
 	public static readonly int[] Seventh = { 0, 2, 4, 6 };
@@ -474,6 +505,26 @@ public sealed partial class MusicGen
 	// calls these rather than reaching for _scale directly. The section's KeyShift rides on the
 	// root here, so a modulation moves the whole band at once (see Part.KeyShift).
 	int ScaleMidi( int baseMidi, int degree ) => Harmony.ScaleMidi( baseMidi, _scale, degree );
+
+	/// <summary>A voice's register: the pitch it spells its scale over, <paramref name="octaves"/>
+	/// octaves above the song's root.
+	///
+	/// A REGISTER IS A NUMBER OF OCTAVES, AND ONLY EVER THAT. <see cref="Harmony.ScaleMidi"/> and
+	/// <see cref="Harmony.VoicedTone"/> treat their base as THE TONIC and add the scale offset on
+	/// top, so a base of root + 31 does not raise a part by a fifth — it spells that part in the
+	/// key a fifth up. The part then disagrees with the band about one note of the scale (about two
+	/// of them, a whole tone up), and a melody in a different key from its backing is exactly what
+	/// it sounds like. Every voice takes its register through here so a base that is not a whole
+	/// octave cannot be written in the first place, which is worth more than a test for it: the
+	/// wrong version stays in tune roughly six notes in seven, so it does not announce itself.
+	///
+	/// The cost is that register is QUANTISED — a part sits an octave up or it doesn't, and there
+	/// is no landing between. If a part ends up too high, narrow what it plays (a melody's degree
+	/// range) rather than reaching for a base between two octaves.
+	///
+	/// Transposing an actual PITCH by an octave (<c>ChordRoot(c) + 12</c>) is a different thing and
+	/// is fine — the scale has already been spelled by then.</summary>
+	int Register( int octaves ) => _rootMidi + _keyShift + 12 * octaves;
 	int ChordRoot( int c ) => Harmony.ChordRoot( _rootMidi + _keyShift, _scale, _prog[c] );
 
 	/// <summary>Degree of the <paramref name="i"/>th voice of the chord, in the song's own
@@ -505,34 +556,71 @@ public sealed partial class MusicGen
 	/// so the chord arrives in the inversion nearest the one before it instead of sliding a tenth.
 	/// Voice i keeps its index — the array stays aligned with <c>_voicing</c>, which is what lets
 	/// the driven guitar drop the third by position.</summary>
-	int[] ChordMidis( int baseMidi, int chord )
+	int[] ChordMidis( int baseMidi, int chord, int tick )
 	{
-		var m = VoicedMidis( baseMidi, _prog[chord] );
+		var m = VoicedMidis( baseMidi, _prog[chord], VoicingAt( tick ) );
 		var s = _vlShift[chord];
 		for ( int i = 0; i < m.Length; i++ ) m[i] += s[i];
 		return m;
 	}
 
+	/// <summary>The spelling the chordal voices sound at <paramref name="tick"/>: the song's
+	/// voicing, or — over the back half of the current chord's span — the one its suspension
+	/// resolves to (<see cref="Harmony.SuspendedVoice"/>). The two arrays are the same object
+	/// unless the voicing is suspended, so this costs nothing for the other five voicings.
+	///
+	/// EVERY chordal voice reads it, at the tick of the note it is about to sound, so the band
+	/// resolves together the way it agrees on the chord and the inversion. The voice-leading table
+	/// is deliberately NOT recomputed: a suspension resolving moves one voice a step inside the
+	/// inversion the song already chose, which is what a player's finger does — re-inverting the
+	/// chord underneath it would make the landing a jump.</summary>
+	int[] VoicingAt( int tick ) => tick >= _susResolveTick ? _voicingRes : _voicing;
+
+	/// <summary>A chordal note of <paramref name="durTicks"/> from <paramref name="tick"/>, split
+	/// into the part before its suspension resolves and the part after — one segment for every
+	/// note that does not straddle the resolution, which is all of them for a voicing that is not
+	/// suspended.
+	///
+	/// The chord is RE-ARTICULATED where the third lands rather than changing under a ringing
+	/// note, because a suspension that resolves silently is not heard to resolve: the landing is
+	/// the gesture, and a player re-picks or hammers the note that moves. It matters most where a
+	/// voice holds a whole chord at a time — pop's pad sounds one chord per bar, so without this
+	/// its suspension has nowhere to land at all.
+	///
+	/// The chordal voices whose genres can draw a suspension (the guitar and the keys) read this;
+	/// ska's skank and horns do not, because every ska voicing states its third.</summary>
+	IEnumerable<(int Tick, int Ticks)> ChordSegments( int tick, int durTicks )
+	{
+		if ( _susVoice >= 0 && tick < _susResolveTick && tick + durTicks > _susResolveTick )
+		{
+			yield return (tick, _susResolveTick - tick);
+			yield return (_susResolveTick, tick + durTicks - _susResolveTick);
+			yield break;
+		}
+		yield return (tick, durTicks);
+	}
+
 	/// <summary>As <see cref="ChordMidis"/> but in ROOT POSITION, for a chord whose root degree is
 	/// given directly — the ending's cadence builds its V that way, and a final chord lands where
 	/// the genre voices it rather than where the last change left the register.</summary>
-	int[] VoicedMidis( int baseMidi, int rootDegree )
+	int[] VoicedMidis( int baseMidi, int rootDegree, int[] voicing )
 	{
-		var m = new int[_voicing.Length];
+		var m = new int[voicing.Length];
 		for ( int i = 0; i < m.Length; i++ )
-			m[i] = Harmony.VoicedTone( baseMidi, _scale, rootDegree, _voicing[i] );
+			m[i] = Harmony.VoicedTone( baseMidi, _scale, rootDegree, voicing[i] );
 		return m;
 	}
 
 	/// <summary>Pitch of the <paramref name="i"/>th voice of the chord (wrapping up an octave past
 	/// the top, so an arpeggio can keep counting) — the sounding counterpart of
 	/// <see cref="ChordDegree"/>.</summary>
-	int ChordToneMidi( int baseMidi, int chord, int i )
+	int ChordToneMidi( int baseMidi, int chord, int i, int tick )
 	{
-		int n = _voicing.Length;
+		var voicing = VoicingAt( tick );
+		int n = voicing.Length;
 		int oct = (int)Math.Floor( i / (double)n );
 		int v = i - oct * n;
-		return Harmony.VoicedTone( baseMidi, _scale, _prog[chord], _voicing[v] )
+		return Harmony.VoicedTone( baseMidi, _scale, _prog[chord], voicing[v] )
 			+ _vlShift[chord][v] + 12 * oct;
 	}
 }

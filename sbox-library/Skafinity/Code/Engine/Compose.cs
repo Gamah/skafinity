@@ -52,6 +52,16 @@ public sealed partial class MusicGen
 		// voice reads this one voicing, so the guitar and the keys agree about what the chord IS
 		// while still playing different rhythms.
 		_voicing = rng.PickWeighted( prof.Voicings, prof.VoicingWeights );
+		// A sus is the one voicing that is not a chord quality but a delayed third, so the song
+		// also carries the spelling it resolves to (see Harmony.SuspendedVoice). Not a draw and
+		// not a second voicing: it is the same chord with its suspension landing.
+		_susVoice = Harmony.SuspendedVoice( _voicing );
+		_voicingRes = _voicing;
+		if ( _susVoice >= 0 )
+		{
+			_voicingRes = (int[])_voicing.Clone();
+			_voicingRes[_susVoice] = Harmony.Third;
+		}
 		// How each chord inverts to stay near the one before it. A property of the changes and
 		// the voicing, so it is decided once and every chordal voice reads the same table — the
 		// guitar and the keys must agree on the inversion as much as on the chord. Costs no draw.
@@ -320,6 +330,16 @@ public sealed partial class MusicGen
 			int chord = ChordIndexAt( part, bar );
 			int nextChord = ChordIndexAt( part, bar + 1 );
 
+			// Where a suspension lands: half way through THIS CHORD's span, whatever the genre's
+			// harmonic rhythm is. At 2 bars/chord that is the second bar; at pop's 1 it is the
+			// second half of the bar, which is why this is a tick and not a bar index — a sus that
+			// only ever resolved on a bar line could never resolve at all where the chord IS a bar.
+			int chordBar0 = bar / _chordBars * _chordBars;
+			int chordTicks = 0;
+			for ( int b = chordBar0; b < part.Bars && b < chordBar0 + _chordBars; b++ )
+				chordTicks += barLen[b];
+			_susResolveTick = barStart[chordBar0] + chordTicks / 2;
+
 			// The ending lands on a held tonic chord that rings out — the band stops on the
 			// "one", it doesn't roll forward as if looping. The bar before it fills to lead in.
 			if ( isEnding && bar == part.Bars - 1 )
@@ -466,14 +486,17 @@ public sealed partial class MusicGen
 		int root = rootDegree < 0 ? _prog[0] : rootDegree;
 		// The register is the genre's own chordal voice; a driven guitar drops its third here too
 		// (see GuitarMidis) — a song must not land on the one chord it spent three minutes avoiding.
-		int chordBase = _rootMidi + _keyShift + _prof.Comp switch
+		int chordBase = Register( _prof.Comp switch
 		{
-			CompStyle.Skank => 19,   // ska: the horn section
-			CompStyle.Pad => 24,     // pop: the synth
-			_ => 12,                 // the guitar genres
-		};
-		var tones = VoicedMidis( chordBase, root );
-		if ( _prof.Comp is not (CompStyle.Skank or CompStyle.Pad) ) tones = DrivenVoicing( tones );
+			CompStyle.Skank => 2,    // ska: the horn section
+			CompStyle.Pad => 2,      // pop: the synth
+			_ => 1,                  // the guitar genres
+		} );
+		// A song lands on a chord that STATES its quality, so the final chord is always the resolved
+		// spelling — a suspension is a thing owed, and the ending is where it is paid.
+		var tones = VoicedMidis( chordBase, root, _voicingRes );
+		if ( _prof.Comp is not (CompStyle.Skank or CompStyle.Pad) )
+			tones = DrivenVoicing( tones, _voicingRes );
 
 		foreach ( var midi in tones )
 		{

@@ -47,12 +47,18 @@ public sealed partial class MusicGen
 	/// +26 and ranges far wider than a tune does, and punk's unison IS the riff an octave up, so
 	/// its base has to stay one octave over the guitar's <c>_rootMidi + 12</c> or it stops being
 	/// a double.</summary>
-	int LeadBase() => _rootMidi + _keyShift + (_prof.Lead switch
+	// Three octaves for the sung line: the comp registers are fixed and known — the rhythm guitar
+	// voices its chord one octave up, the skank and the keys two, a full voicing reaching about
+	// two and a half — so a melody at two octaves sings inside that bed and no amount of gain
+	// brings it out. Metal's shred ranges far wider than a tune and its own comp sits at the root,
+	// so two clears it; punk's unison IS the riff an octave over the guitar's one, so it is two by
+	// definition. See Register: these are octaves because a register cannot be anything else.
+	int LeadBase() => Register( _prof.Lead switch
 	{
-		LeadStyle.Shred => 26,
-		LeadStyle.Unison => 24,
-		_ => 31,
-	});
+		LeadStyle.Shred => 2,
+		LeadStyle.Unison => 2,
+		_ => 3,
+	} );
 
 	// ── Ska (and rock, sparser): a sung line ──
 	// Chord-tone locked on the strong beats so it stays consonant, stepping or leaping between
@@ -90,8 +96,15 @@ public sealed partial class MusicGen
 			bool strong = ((t - barTick) / Timing.TicksPerEighth) % 2 == 0;
 
 			// The answer half of a horn line lands a step lower than the call did — same shape,
-			// resolved — rather than re-rolling as if it were a new phrase.
-			if ( strong ) degree = NearestChordTone( tones, degree ) - (t >= half && !sparse ? 1 : 0);
+			// resolved — rather than re-rolling as if it were a new phrase. That step is meant to
+			// leave the chord tone, so it is the one strong beat the sounding snap must not undo.
+			bool onChordTone = false;
+			if ( strong )
+			{
+				int answer = t >= half && !sparse ? 1 : 0;
+				degree = NearestChordTone( tones, degree ) - answer;
+				onChordTone = answer == 0;
+			}
 			else
 			{
 				int step = rng.Chance( _c.MelodyLeapChance ) ? (rng.Chance( 0.5f ) ? 3 : -3)
@@ -100,6 +113,7 @@ public sealed partial class MusicGen
 			}
 
 			int midi = ScaleMidi( melBase, degree );
+			if ( onChordTone ) midi = NearestSoundingTone( midi, chord, t );
 			var vc = Roll( ex, midi, prevMidi, exprRng );
 			RenderLeadNote( _time.TickToSample( t ), _time.SpanSamples( t, len * 0.9 ), midi,
 				amp * NoteGain( t, 1f ), _time.SpanSeconds( t, len ) * 0.7, drive, vc );
@@ -259,6 +273,35 @@ public sealed partial class MusicGen
 	}
 
 	/// <summary>The chord tone nearest <paramref name="degree"/>, in degree space.</summary>
+	/// <summary>Snap a melody PITCH to the nearest pitch the chord actually sounds.
+	///
+	/// The melodic view of a chord is diatonic (<see cref="ChordDegrees"/> — the root degree plus
+	/// the voicing's offsets) and the SOUNDING one is not: <see cref="Harmony.VoicedTone"/> forces
+	/// the fourth and the fifth perfect, because a perfect fourth is what a sus4 IS. Every scale
+	/// has one degree whose diatonic fourth is augmented, and on that degree the two views sit a
+	/// semitone apart — so a note the composer deliberately resolved to a chord tone arrives a
+	/// semitone off the chord, which is the one place a "consonant on the strong beats" melody can
+	/// still grind. Snapping in degree space gets the note close; this puts it on the chord.
+	///
+	/// Pitch is the only view that cannot disagree with what is playing, and because
+	/// <see cref="ChordMidis"/> is tick-aware the melody follows a suspension to its resolution
+	/// too. Octave is preserved — this moves a note by a semitone or two, never registers.</summary>
+	int NearestSoundingTone( int midi, int chord, int tick )
+	{
+		static int Pc( int x ) => ((x % 12) + 12) % 12;
+		int best = midi, bestD = int.MaxValue;
+		foreach ( var t in ChordMidis( Register( 0 ), chord, tick ) )
+		{
+			int up = midi + Pc( Pc( t ) - Pc( midi ) );
+			foreach ( var cand in new[] { up, up - 12 } )
+			{
+				int d = Math.Abs( cand - midi );
+				if ( d < bestD ) { bestD = d; best = cand; }
+			}
+		}
+		return best;
+	}
+
 	int NearestChordTone( int[] tones, int degree )
 	{
 		int best = tones[0], bestD = int.MaxValue;

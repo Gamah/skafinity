@@ -341,7 +341,7 @@ with no third present to explain either. That is what "way off key" sounds like,
 makes it far worse. A guitarist frets the same power-chord shape on every degree; the shape does
 not go diminished because of the key. `Harmony.VoicedTone` forces the fourth and the fifth perfect
 and leaves everything else diatonic, and **every voice that SOUNDS a chord goes through it** —
-`ChordMidis(baseMidi, chord)` / `ChordToneMidi` / `VoicedMidis(baseMidi, rootDegree)`.
+`ChordMidis(baseMidi, chord, tick)` / `ChordToneMidi` / `VoicedMidis(baseMidi, rootDegree, voicing)`.
 `ChordDegrees` survives as the MELODIC view (what tones a line may land on); if you find a chordal
 voice calling `ScaleMidi` over it, that voice is spelling its chords wrong. The engine test asserts
 the invariant over every genre × scale × voicing × progression degree, and separately asserts that
@@ -352,12 +352,44 @@ difference tones between everything fed into it; a root and a fifth are a simple
 survive that and a third is not. That is why guitarists play power chords through a driven amp and
 full triads through a clean one — and `RockVoicings` includes `Triad`, so a rock song at
 `DISTORTION 4` was a full triad through gain 5.5 and read exactly the way it reads on a real amp:
-"something is out of tune". `GuitarDegrees()` in `Guitar.cs` drops the voicing's third
+"something is out of tune". `DrivenVoicing()` in `Guitar.cs` drops the voicing's third
 (`Harmony.Third`) once the effective drive passes `DirtyChord`; country's clean strum never
 reaches it, punk and metal always do. **The song's `_voicing` is untouched** — every chordal voice
 must still agree what the chord IS — this drops a note on the way out of ONE voice, so the keys
 keep the third and the band still states the quality. Guitar on the fifths, keyboard on the
 colour, which is how the parts divide in a real band.
+
+**A suspension is a delayed third, not a chord quality — so it has to land.** `Sus4` and `Sus2` put
+the fourth or the second where the third belongs, and the song's `_voicing` is drawn ONCE, so a
+suspended voicing means no chordal voice states a third on any chord for the whole song. Nothing is
+out of key and every voice agrees; the song simply has no major and no minor, and an ear with
+nothing to resolve to hears that ambiguity as dissonance — "spooky", "off", "all wrong". Rock draws
+`Sus4` 2 times in 7 and pop `Sus2` 2 in 8, so it is not rare. `Harmony.SuspendedVoice(voicing)`
+names the voice that owes a third — **a voicing is suspended exactly when it REPLACES the third,
+never when it omits it (`Power`) or colours it (`Sixth`, `Add9`)** — and `MusicGen.VoicingAt(tick)`
+hands the chordal voices the resolved spelling over the back half of each chord's span. Four things
+this rests on:
+
+- **The resolve point is a TICK, not a bar.** `_susResolveTick` is half way through the current
+  chord, whatever `ChordBars` is: the second bar at 2 bars/chord, the second half of the bar at
+  pop's 1. A sus that only resolved on a bar line could never resolve at all in a genre where the
+  chord *is* a bar.
+- **The chord is re-articulated, not switched under a ringing note.** `ChordSegments(tick, ticks)`
+  splits a held note at the resolution, because a suspension that resolves silently is not *heard*
+  to resolve — the landing is the gesture. It matters most for pop's pad, which sounds one chord a
+  bar and would otherwise never move. The guitar and the keys read it; ska's skank and horns don't,
+  because every ska voicing states its third.
+- **The voice-leading table is not recomputed.** Resolving moves one voice a step inside the
+  inversion the song already chose — a finger, not a re-voicing. Rebuilding `_vlShift` for the
+  resolved spelling would make the landing a jump.
+- **The guitar and the keys divide the same way as ever.** Driven, the guitar plays the suspension
+  whole and then drops the note it resolves to, so a rock sus4 lands as a power chord while the keys
+  state the quality. The ending is always the resolved spelling — a song must land on a chord that
+  says what it is.
+
+The engine test asserts the classification (and that some genre actually draws a suspension, or the
+check is vacuous); the digests confirm the scope — the eight non-suspended matrix seeds are
+byte-identical across this change and only the two suspended ones move.
 
 **A chord change must not move the whole comp in parallel.** Built upward from its degree, a
 chord's register is wherever that degree falls, so the same shape slides: a progression that steps
@@ -603,15 +635,39 @@ pre-chorus over an eight-bar tune otherwise stated the call and was cut off by t
 the answer arrived — a phrase interrupted by the next phrase, which is what "two ideas at once"
 sounds like from the outside.
 
-**The melody needs an octave of its own** (`LeadBase()` in `Lead.cs`). The comp registers are
-fixed and known — the rhythm guitar voices its chord over `_rootMidi + 12`, the skank and the keys
-over `+24`, a full voicing reaching about `+31` — so a lead based at `+21`/`+24` sang its whole
-line inside the chordal bed and no amount of gain brought it out. `+31` clears that bed. Two
-exceptions are relational, not absolute: metal's shred already sat clear at `+26` and ranges far
-wider than a tune, and punk's unison IS the riff an octave up, so it stays one octave over the
-guitar's `+12`. Level is the second half of the same problem: the lead's target is **+2 dB over
-the genre's drums**, not level with them (see `LeadLevel`, and the ceiling in the suite is that
-target plus a seed's worth of variance).
+**A REGISTER IS A NUMBER OF OCTAVES, AND ONLY EVER THAT.** `ScaleMidi` and `VoicedTone` treat
+their base as **the tonic** and add the scale offset on top, so a base of `_rootMidi + 31` does not
+raise a part by a fifth — it spells that part **in the key a fifth up**. The part then disagrees
+with the band about one note of the scale (two of them, a whole tone up), which is a melody in the
+wrong key, because it is one. Every voice takes its base through **`Register(octaves)`** so a
+non-octave base cannot be written at all; that is worth more than a test, because the wrong version
+stays in tune roughly six notes in seven and never announces itself. Transposing an actual *pitch*
+by an octave (`ChordRoot(c) + 12`) is a different thing and is fine — the scale is already spelled
+by then.
+
+The registers: rhythm guitar `Register(1)` (metal `Register(0)`, low and chunky), skank and keys
+`Register(2)`, the sung lead `Register(3)`. Three octaves for the lead because the comp is a known
+bed — a full voicing over `Register(2)` reaches about `+31`, so a melody at two octaves sings
+inside it and no amount of gain brings it out. Two exceptions are relational: metal's shred ranges
+far wider than a tune and its own comp sits at the root, so `Register(2)` clears it; punk's unison
+IS the riff an octave over the guitar, so it is `Register(2)` by definition. **The cost is that
+register is quantised** — a part sits an octave up or it doesn't. If one ends up too high, narrow
+what it plays (a melody's degree range) rather than reaching for a base between two octaves.
+
+Level is the second half of the same problem: the lead's target is **+2 dB over the genre's
+drums**, not level with them (see `LeadLevel`, and the ceiling in the suite is that target plus a
+seed's worth of variance).
+
+**A melody resolves to what the chord SOUNDS, not to what its degrees say.** `ChordDegrees` is
+diatonic; the sounding chord is not, because `VoicedTone` forces the fourth and the fifth perfect.
+On the one degree of every scale whose diatonic fourth is augmented the two disagree by a semitone,
+so a note the composer deliberately snapped to a chord tone arrives a semitone off the chord — the
+one place a "consonant on the strong beats" melody can still grind. `NearestChordTone` chooses
+*which* chord tone in degree space; `NearestSoundingTone(midi, chord, tick)` then puts the note on
+the pitch that is actually playing, preserving the octave. Because `ChordMidis` is tick-aware, the
+melody follows a suspension to its resolution too. The one strong beat it must NOT touch is the
+horn answer's deliberate step off the chord tone (`RenderSungPhrase`) — that dissonance is the
+gesture.
 
 ---
 
