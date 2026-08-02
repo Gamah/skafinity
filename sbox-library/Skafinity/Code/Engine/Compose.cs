@@ -101,6 +101,27 @@ public sealed partial class MusicGen
 		_ridePref = prof.DrawRidePref( rng );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
 		_crashBrightLeft = rng.Chance( 0.5f );
+		// THE KIT IS SET UP ONCE, the way a drummer sets one up: three toms tuned in the genre's
+		// intervals from the song's own key, and the rack on one side or the other. Drawn from
+		// _rootMidi and never from a section's _keyShift — nothing re-reads it, so the toms cannot
+		// drift with a mid-song key change, and only the pitch CLASS is used so the set stays a
+		// drum-sized set whatever octave the song is written in.
+		_tomKit = TomKit.Tuned( prof.Toms, _rootMidi, rackLeft: rng.Chance( 0.5f ) );
+		// And the nuance the audition approved as BANDS rather than values (see KitNuance): the
+		// same drum does not make the identical sound twice, and which point of each band this
+		// kit sits at is as much a property of a song as its tempo is.
+		_kickTone = KickTone.Default.With(
+			clickCut: KitNuance.At( KitNuance.ClickCutMin, KitNuance.ClickCutMax, rng.Next() ),
+			jitter: 0.35f );
+		float hatU = rng.Next(), footU = rng.Next();
+		_hatTone = HatTone.Default.With(
+			openDur: KitNuance.At( KitNuance.OpenHatDurMin, KitNuance.OpenHatDurMax, hatU ),
+			openCut: KitNuance.OpenHatCut, decayFrac: 0.45 + 0.05 * hatU,
+			openCurve: KitNuance.HatOpenCurve );
+		_footTone = HatTone.Foot.With(
+			attackSec: KitNuance.At( KitNuance.FootAttackMin, KitNuance.FootAttackMax, footU ),
+			closedDur: KitNuance.At( KitNuance.FootDurMin, KitNuance.FootDurMax, footU ),
+			closedCut: KitNuance.At( KitNuance.FootCutMin, KitNuance.FootCutMax, 1f - footU ) );
 		// How the song lands. Every song used to end on the same fixed pad, whatever the genre.
 		_ending = rng.PickWeighted( prof.Endings, prof.EndingWeights );
 
@@ -287,6 +308,19 @@ public sealed partial class MusicGen
 		_feel = part.Feel;
 		_keyShift = part.KeyShift;
 		_sectionType = part.Type;
+		// A CRASH-RIDE IS A TECHNIQUE, not a third cymbal: at the top of a genre's dynamic the
+		// cymbal hand moves off the ride and onto a crash, and the whole song lifts because the
+		// pulse is now being played on the loudest thing in the kit. It rides on top of the ride
+		// roll, so a section that was not riding at all does not suddenly acquire a cymbal, and
+		// it is a threshold on ENERGY rather than on section type, exactly like LoudComp.
+		_crashRide = _ride && _energy >= _prof.CrashRideFrom;
+		// And the foot's part under it (see FootOccupancy). Its own stream, so a section acquiring
+		// a pedal figure moves nothing else in the kit, and drawn per section because that is the
+		// scale a drummer holds a figure over.
+		var footRng = new Rng( $"{_tag}:foot:{bk}" );
+		_footCells = 0;
+		for ( int i = 0; i < 8; i++ )
+			if ( footRng.Chance( FootOccupancy[i] ) ) _footCells |= 1 << i;
 
 
 		bool isIntro = part.Type == Section.Intro;
@@ -462,7 +496,7 @@ public sealed partial class MusicGen
 			case EndingStyle.StopHit:
 				// Everything at once, short, then nothing. A punk song does not ring out.
 				RenderKick( at, noise );
-				RenderCrash( at, noise, false );
+				RenderCymbal( at, _c.CrashVol * KitGain( barTick, 1f, 0.5f ), CrashBright );
 				EndingChord( barTick, beat / 2, 0.35, 1f );
 				EmitBass( at, _time.SpanSamples( barTick, beat / 2 ), ChordRoot( 0 ), 0.3,
 					NoteGain( 1f ), default );
@@ -476,7 +510,8 @@ public sealed partial class MusicGen
 				RenderKick( at, noise );
 				int land = barTick + 2 * beat;
 				RenderKick( _time.TickToSample( land ), noise );
-				RenderCrash( _time.TickToSample( land ), noise, false );
+				RenderCymbal( _time.TickToSample( land ), _c.CrashVol * KitGain( land, 1f, 0.5f ),
+					CrashBright );
 				EndingChord( land, (int)(_sr * tail), tail, 1f, samples: true );
 				EmitBass( _time.TickToSample( land ), (int)(_sr * tail), ChordRoot( 0 ), tail,
 					NoteGain( 1f ), default );

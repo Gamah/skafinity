@@ -216,6 +216,19 @@ numbers and they go stale when the part they were tuned for is replaced. The sui
 outcome — comp under the kit, lead not dominating, bass present, and silence when every voice is
 muted.
 
+**But `--levels` is ONE SEED PER GENRE, and a single seed varies about 4 dB around its target**
+(the suite's own ceiling is written to allow for exactly that). So the tool answers "did this
+change move the mix", not "is this voice at 2.0 dB" — a sub-dB gap between two runs is a
+different song, not a level. Chasing one is fitting noise and calling it a measurement, and it
+reads as a measurement afterwards, which is worse than not having done it. Act on a
+*mechanism* — a voice that now rings four times longer, a part that plays twice as often — and
+size the fix by that mechanism.
+
+**Re-measuring is also not licence to edit the voice that came out wrong.** These are levels
+RELATIVE TO THE DRUMS, so rebuilding the kit restates every one of them without a melodic voice
+being touched. If the kit moved, fix the kit; a diff that reaches into `LeadLevel` on a drums
+branch has stopped being a drums branch. The exception is a voice whose own part changed.
+
 `make test` is the other half: it boots the *published wasm* runtime under node and checks the
 JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
 only runs where the bundle has been built — except `test/queue.mjs`, which touches no wasm and
@@ -554,6 +567,42 @@ Two standing caveats travel with any figure taken from there. **The sample sizes
 so a thin row says so rather than trading a guess for a guess with a citation on it. And **metal is
 simply not in the dataset**; its flat accents and its fill density are design calls and are labelled
 as such, not rock's numbers wearing rock's citation. E-GMD is the candidate that would answer it.
+
+**The dataset also answers questions nobody thought were questions, and that is what it is for.**
+The hi-hat pedal is the case: a riding section had no hi-hat at all, and "the foot goes down on 2
+and 4" is such standard received wisdom that it went in as a comment written in the same voice as
+the measured tables around it. It is a third of the truth. Over the 472 4/4 performances, splitting
+by whether the ride carries the pulse, the pedal (GM 44) plays **2.74 hits per bar while the hands
+are on the ride** against 1.92 while they are on the hat — the direction is right — but 2 and 4 are
+only the two PEAKS (16.2% and 17.9% of hits), the downbeat takes 13.1%, and every other eighth
+still carries 9.6–11.6%. `FootOccupancy` in `Groove.cs` is that distribution. **The lesson is about
+the prose, not the pedal:** this repo's comments state measurements, so a sentence in that register
+is read as one, and writing an assumption there launders it into a citation. If it was not
+measured, say which it is — the way metal's `FillHits` does.
+
+**A measured MODE FOREST cannot be synthesised per hit, and the fix is the one a sampler uses.**
+`CymbalModal` is several hundred decaying partials over a ring measured in seconds — ~250 ms of CPU
+per strike, against a riding section of a thousand strikes. So a cymbal is rendered ONCE per song
+into a `CymbalTable` and each hit stamps it, which is honest for the same reason the forest is: a
+cymbal is one physical object and every strike is the same object. What a table cannot vary is
+per-hit mode phase, so that comes back as round robins, a level/brightness tilt (a soft stroke is
+darker, not merely quieter — hence the two band tables) and a stick transient still synthesised
+live. Build them lazily: they are the most expensive objects the engine makes and a song that never
+rides must never pay for a ride.
+
+**A stroke's level and a voice's level in the mix are different numbers.** A ride stroke rings for
+seconds and is played eight times a bar, so a riding section has a dozen rings sounding at once,
+while the hi-hat it replaces is 35 ms and never overlaps itself. Given the same per-stroke level as
+a crash — which overlaps nothing, being one gesture a phrase — the ride put country's whole kit
+2.6 dB over its band. `StrokeLevelRide`/`StrokeLevelCrash` are that distinction, and they are mix
+numbers: re-measure them whenever a cymbal's ring time changes, not just its loudness.
+
+**`--cymbal [dir]` writes one dry hit per cymbal for `tools/spectool` to re-measure**, and a
+spectrum fitted to a measurement is not fitted until the RESULT has been measured the same way. It
+is the only check on these voices that does not need ears: it proved the ride came through the
+table rewrite exactly (τ·√f = 39 in every band), and it drove the bright crash's roar to the
+measured +8 dB energy centre over two passes. Where the re-analysis still disagrees with the
+reference, `DRUMS.md` records the gap rather than tuning it away.
 
 **When something reads as too dense, suspect the tempo before you thin a part.** The knob is the
 usual culprit, and a genre's own band is the next one. Adding a gate somewhere is almost always the

@@ -236,6 +236,19 @@ sealed class GenreProfile
 	/// lick out of the train beat, pop's is a programmed pickup, metal's is the roll.</summary>
 	public int[] FillShapes { get; init; } = { 4, 3, 2, 1 };
 
+	/// <summary>How this genre tunes its toms — the INTERVALS between the three drums. Which
+	/// pitch the set starts from is the song's key; this is the character (see
+	/// <see cref="TomTune"/>), and it is a genre's rather than a song's because it is how a
+	/// drummer in that genre sets a kit up.</summary>
+	public TomTune Toms { get; init; } = TomTune.Fourths;
+
+	/// <summary>The energy at which the cymbal hand moves off the ride and onto a crash — the
+	/// technique, not a second cymbal. Follows <see cref="LoudFrom"/>'s shape exactly: an energy
+	/// threshold rather than a section type, so a genre that wants a crash-ridden bridge gives
+	/// the bridge the energy. Over 1 means never, which is most genres: a crash-ride is a rock
+	/// and metal gesture and it makes a ska verse sound like a mistake.</summary>
+	public float CrashRideFrom { get; init; } = 1.01f;
+
 	/// <summary>How the lead phrases.</summary>
 	public LeadStyle Lead { get; init; }
 	/// <summary>Phrase length in bars, and the chance a phrase is a rest instead. A genre whose
@@ -386,6 +399,7 @@ sealed class GenreProfile
 			// A shade under rock: the horns answer the fill, so it does not have to fill the space
 			// on its own. Ramp-led, with the flick off the last chop that its comp figures carry.
 			FillHits = 12f, FillShapes = new[] { 4, 2, 2, 2 },
+			Toms = TomTune.Fourths,
 			Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
 			AccentDown = 0.95f, AccentBack = 1.05f, AccentOff = 1.1f, // the offbeat is still the loud one
 			// Dry and bright — a 90s record, not a 60s room. The high trim is a TIMBRE call and was
@@ -427,6 +441,7 @@ sealed class GenreProfile
 			KeysFigures = CompFigure.RockKeys, Keys = KeysStyle.Stabs,
 			Grooves = DrumGroove.Rock, GrooveWeights = new[] { 3, 2 },
 			FillHits = 13.2f, FillShapes = new[] { 4, 3, 2, 1 },   // measured, 204 bars of fill
+			Toms = TomTune.Fourths, CrashRideFrom = 0.90f,
 			Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			AccentDown = 0.99f, AccentBack = 1.16f, AccentOff = 0.82f,   // measured, 6521 bars
 			Mix = new MixProfile( 1f, 1f, 1f, 1.05f, 1f ),
@@ -466,6 +481,7 @@ sealed class GenreProfile
 			// The sparsest kit on the roster and the most gestural: country's fill vocabulary is a
 			// lick out of the train beat's ghosted snare, not a roll across the toms.
 			FillHits = 10f, FillShapes = new[] { 3, 2, 2, 4 },
+			Toms = TomTune.Thirds,
 			Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
 			// Boom AND chick carry weight — and the measurement says both carry MORE than this
 			// genre was giving them. Thin (120 bars), so it is an indication rather than settled.
@@ -512,6 +528,7 @@ sealed class GenreProfile
 			// density model up: past ~13.4/bar a flat scale had nothing left to give, so what metal
 			// asks for above rock arrives as sixteenth ornament (see FillChances).
 			FillHits = 14f, FillShapes = new[] { 2, 5, 2, 1 },
+			Toms = TomTune.Wide, CrashRideFrom = 0.80f,
 			Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
 			RiffBassChance = 0.75f,
 			AccentDown = 1f, AccentBack = 1f, AccentOff = 0.95f,    // deliberately flat: it's a wall
@@ -547,6 +564,7 @@ sealed class GenreProfile
 			// Busy, but at punk's tempo a bar of fill is over in a second: the pickup is the shape
 			// that reads there, because there is no room for anything longer to develop.
 			FillHits = 13f, FillShapes = new[] { 3, 4, 3, 1 },
+			Toms = TomTune.Fixed, CrashRideFrom = 0.85f,
 			Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
 			RiffBassChance = 0.35f,
 			// Punk's offbeat is as loud as its downbeat — the relentless eighth has no dynamic in
@@ -596,6 +614,7 @@ sealed class GenreProfile
 			// Programmed and sparse — a pop fill is a single reversed crash or a two-hit pickup far
 			// more often than it is a drummer going round the kit.
 			FillHits = 8.5f, FillShapes = new[] { 3, 1, 4, 3 },
+			Toms = TomTune.Fixed,
 			Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			// The widest gap between what was assumed and what was measured, and the one to
 			// revisit first: a programmed pop kit puts its off-beat hats far under the pulse.

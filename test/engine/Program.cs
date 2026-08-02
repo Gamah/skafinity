@@ -41,6 +41,15 @@ static class Program
 			Audition.Run( only, wav, Path.ChangeExtension( wav, ".txt" ) );
 			return 0;
 		}
+		// --cymbal [dir]: one dry hit of each cymbal, for tools/spectool to re-measure. See
+		// Audition.Cymbals — a fitted spectrum is not fitted until the RESULT is measured too.
+		int cy = Array.IndexOf( args, "--cymbal" );
+		if ( cy >= 0 )
+		{
+			Audition.Cymbals( cy + 1 < args.Length && !args[cy + 1].StartsWith( "-" ) ? args[cy + 1]
+				: Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ) );
+			return 0;
+		}
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }

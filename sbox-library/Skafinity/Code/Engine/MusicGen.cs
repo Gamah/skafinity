@@ -324,6 +324,19 @@ public sealed partial class MusicGen
 	bool _ride;              // per-SECTION: ride cymbal drives the eighth pulse instead of closed hats (set in RenderSection from _ridePref)
 	float _ridePref;         // per-song lean toward riding the ride vs the hats; each section rolls its own _ride against this
 	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
+	bool _crashRide;         // per-SECTION: the cymbal hand is on a crash rather than the ride (GenreProfile.CrashRideFrom)
+	int _footCells;          // per-SECTION: the hi-hat pedal's own figure as an 8-bit eighth mask (measured — see FootOccupancy)
+	TomKit _tomKit;          // per-song: the three tom pitches, tuned from the song's root by the genre's TomTune
+	// The song's cymbals, each rendered once and stamped per hit (see CymbalTable). Built lazily,
+	// because a song that never rides pays for no ride: they are the most expensive objects the
+	// engine makes, and which of them a song needs is not known until its sections are rendered.
+	CymbalTable _rideBow0, _rideBow1, _rideBell, _crashBright, _crashDark;
+	// The kit's per-song nuance: a drum is a physical object and a band of values that all read
+	// as the right drum is what nuance IS (see KitNuance), so the song draws from those bands
+	// rather than the engine picking a point out of each one.
+	KickTone _kickTone = KickTone.Default;
+	HatTone _hatTone = HatTone.Default;
+	HatTone _footTone = HatTone.Foot;
 	bool _organBubble;
 	bool _fast;
 	int _bpm;                // the song's drawn tempo, after the TEMPO knob and the genre's own saturation

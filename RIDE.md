@@ -10,6 +10,14 @@ great"*, every line. `DRUMS.md`'s "measured-cymbal method" section is the living
 crashes are next); what follows below is kept as the record of four failed noise generations and
 why they failed. A fifth is not needed.
 
+**Wired into the grooves, 2026-08-02, with one change to how it is PLAYED.** A modal hit costs
+~250 ms of CPU and a riding section is a thousand hits, so the cymbal is rendered once per song and
+stamped per hit (`CymbalTable`); round robins, a brightness tilt and a live stick transient replace
+the per-hit mode phases. The spectrum is untouched — `--cymbal` + `tools/spectool` confirm τ·√f = 39
+in every band after the rewrite — but "the same sound, played a different way" is still a thing to
+hear, which is why the ride is in round 9's audition alongside the crashes. The bell is a groove
+CELL now rather than every quarter note.
+
 Branch `drums/kit-rework`. The original handoff:
 
 The bell is the blocker and most of this document. The bow articulations are NOT settled either,

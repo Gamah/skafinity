@@ -159,7 +159,7 @@ public sealed partial class MusicGen
 		public float SnareBalance = 0.900f;
 		public float TomBalance = 0.780f;     // tuned by ear
 		public float HatBalance = 0.407f;     // equal-peak baseline (0.582) backed off 30% by ear
-		public float CrashBalance = 0.515f;
+		public float CrashBalance = 0.380f;
 		// Melodic-voice peak balance — the instrument analog of the kit balances above (same
 		// equal-peak-then-tune workflow). Bass measured the same peak across genres, so one value.
 		public float BassBalance = 0.733f;

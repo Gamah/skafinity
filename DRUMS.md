@@ -35,7 +35,73 @@ approved before any of it is wired into the grooves.**
 
 ---
 
-## STATUS — Phase 1 is done except the crashes, which round 8 reopened
+## STATUS — Phase 2 has LANDED; the crashes are wired but not yet heard
+
+The kit is in the grooves. `dotnet run --project test/engine -c Release` is **483/483 with the ten
+digests re-blessed**, the mix has been re-measured with `--levels`, and the wasm bundle is rebuilt
+and re-staged. What is left is the part nobody on this host can do: **listen**.
+
+**The one thing wired without approval is the crash.** `~/audition.wav` (round 9) is the crash
+audition; Phase 1's rule was that nothing is wired until a round is approved, and that rule was
+set aside deliberately to make the branch testable end to end rather than leaving the kit half
+in. If a crash line comes back wrong, the fix is a constant in `CymbalModal.CrashBright`/
+`CrashDark` — no wiring moves. The ride lines are in the same file for a different reason: the
+approved ride is now PLAYED differently (see below), and that has to be heard.
+
+Three things a listener should be asked about specifically:
+
+1. **The crashes** — bright and dark, their roar, and whether they are two cymbals.
+2. **The ride's round robins.** RIDE block line 3 is the same figure on ONE round robin. If it is
+   indistinguishable from line 2, `CymbalTable.Variants` drops to 1 and every song gets ~0.25 s
+   cheaper to render.
+3. **The foot chick under a riding section**, which is new and is a measurement rather than a
+   taste (see below).
+
+### What Phase 2 actually changed, and what it cost
+
+- **A modal cymbal cannot be synthesised per hit.** Measured: ~250 ms of CPU per hit, and a riding
+  section is ~1000 hits, so the approved ride was not wirable as written. It is rendered ONCE per
+  song into `CymbalTable` and stamped per hit — a sampler's trick over a spectrum that was measured
+  off a real cymbal. Per-hit variation is what that costs: round robins, a level/brightness tilt,
+  and a live stick transient replace per-hit mode phases. A song now costs ~0.7 s more to plan.
+- **The ride's stroke level is not the crash's.** A ride stroke rings for seconds and is played
+  eight times a bar, so a riding section has a dozen rings sounding at once where the hi-hat it
+  replaces never overlaps itself. At the crash's stroke level, `--levels` put country's kit 2.6 dB
+  over the rest of its band on its riding sections alone. Hence `StrokeLevelRide` — and it is a
+  MIX number, so it is the first thing to re-measure if the ride's ring changes.
+- **`CrashBalance` 0.515 → 0.38**, because the crash voice itself is longer and louder than the
+  filtered noise it replaces. The kit now sits within ~1 dB of where it was in every genre; the
+  remaining deviations are the intended changes (pop's open hats are choked instead of smearing,
+  metal's wall of kicks reads its velocity).
+- **The foot chick is measured, not assumed.** The first version put two chicks a bar on 2 and 4;
+  the Groove MIDI Dataset says a riding drummer's foot plays **2.74 hits per bar** (12220 bars)
+  against 1.92 when the hands are on the hat, and that 2 and 4 are the two peaks but only a third
+  of the hits. `FootOccupancy` in `Groove.cs` carries the distribution and the method.
+- **`--cymbal [dir]`** is a new permanent diagnostic: one dry hit per cymbal, for `tools/spectool`
+  to re-measure. That is step 5 of the method below, and it is the only check on this voice that
+  does not need ears. It confirmed the ride survives the rewrite exactly (τ·√f = 39 across every
+  band) and drove two retune passes on the bright crash's roar.
+
+### Where the re-analysis still disagrees with the reference
+
+Recorded honestly rather than tuned away, because the next person will re-run `--cymbal` and
+should know which gaps are known:
+
+- **Bright crash**: energy centre 2.2–4.7 kHz now +6…+8 dB over the mids (reference +8) ✓; lows
+  τ 0.76 s at 375 Hz (reference 0.9) ✓; but τ at 1–1.5 kHz is 0.92 s where the fitted law says
+  1.29. It rings shorter than its own law in the low-mids.
+- **Dark crash**: low-mids τ 0.62–0.72 s (reference 0.5–0.7) ✓; top τ 1.43 s at 6.8–10 kHz
+  (reference 1.5) ✓; but 10–14 kHz comes back 1.41 s against a reference 2.0. The table's own
+  length (2.5 s) is a candidate explanation and is not proven.
+
+### Still not wired, and deliberately
+
+The snare's approved articulations — **rimshot, cross-stick, flam, buzz roll, snares-off** — are
+reachable only from `--audition`. Phase 2's plan never covered them, and giving a groove a
+cross-stick verse is a composition decision (which genre, which section) rather than a kit one.
+That is the obvious next row.
+
+## The original status — Phase 1 was done except the crashes, which round 8 reopened
 
 Five audition rounds settled the kick, the snare, the toms and the hats. **The ride, after four
 failed noise-based generations (`RIDE.md` has that history), was solved in round 8 by measuring a
