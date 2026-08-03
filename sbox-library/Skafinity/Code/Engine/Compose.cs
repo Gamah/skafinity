@@ -14,10 +14,16 @@ namespace Skafinity;
 public sealed partial class MusicGen
 {
 	// A copy of an int[], spelled out. NOT `(int[])a.Clone()`: s&box compiles this same source
-	// against an API whitelist that does not include Array.Clone, and it is a compile error there
-	// — which is a build we cannot run here, so the fix has to be a habit rather than a test. The
-	// whitelist accepts Array.Sort and Array.Empty (both used elsewhere in the engine), so this is
-	// about that one member, not about System.Array.
+	// against an API whitelist that DENIES Array.Clone specifically, so it is a compile error
+	// there (SB1000) while compiling fine here and in the wasm build — a build we cannot run, so
+	// the fix has to be a habit rather than a test.
+	//
+	// It is a deliberate carve-out rather than an omission [SOURCE, read 2026-08-03]:
+	// Sandbox.Access/Rules/Types.cs allows "System.Array*" and then denies
+	// "!System.Private.CoreLib/System.Array.Clone*" on the next line — one of only seven deny
+	// entries in the whole ruleset, sitting directly under the same treatment of
+	// Object.MemberwiseClone. So the rule is about that ONE MEMBER, not about System.Array:
+	// Array.Sort, Array.Empty and Array.Copy are all allowed and all used in this engine.
 	static int[] CopyOf( int[] src )
 	{
 		var d = new int[src.Length];

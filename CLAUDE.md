@@ -316,14 +316,22 @@ That is why hover feedback is a border rather than a fill, and why the accent mu
 `BuildHash` — inline styles only re-render when the panel rebuilds.
 
 **s&box compiles `Engine/` against an API WHITELIST, and that is a second way the shared source
-can fail on a build we cannot run.** `Array.Clone()` is not on it (`SB1000: … is not allowed when
-whitelist is enabled`) — so `(int[])a.Clone()`, the obvious way to copy an array, is a compile
-error in the game and compiles perfectly here and in the wasm build. `MusicGen.CopyOf` is the
-spelled-out replacement. Two things this says beyond the one member: **"it compiles here" is not
-evidence about the s&box target at all** — not for the whitelist, not for `GlobalGameNamespace`
-ambiguity (below) — and **the whitelist is per-member, not per-type**: `Array.Sort` and
-`Array.Empty` are both used in `Engine/` and both pass, so the rule is not "avoid `System.Array`".
-When a convenience method on a BCL type is the whole reason to reach for it, prefer the loop; the
+can fail on a build we cannot run.** `(int[])a.Clone()` — the obvious way to copy an array — is
+`SB1000: … is not allowed when whitelist is enabled` in the game and compiles perfectly here and
+in the wasm build. `MusicGen.CopyOf` is the spelled-out replacement.
+
+**The list is a public source file, and it is per-MEMBER** [SOURCE, read 2026-08-03]:
+`sbox-public/engine/Sandbox.Access/Rules/Types.cs` allows `"System.Array*"` and then denies
+`"!System.Private.CoreLib/System.Array.Clone*"` on the very next line — a leading `!` is a
+blacklist entry that `AccessRules.IsInWhitelist` checks *before* the whitelist, so it wins. There
+are only seven such entries in the whole ruleset. So `Array.Sort`, `Array.Empty` and `Array.Copy`
+are all allowed and all fine to use; the rule is not "avoid `System.Array`", and guessing which
+member is blocked from the shape of the error is how you'd get that wrong. The list changes
+without notice — re-read the file, don't trust this paragraph, after an engine update.
+
+Two things generalise past the one member. **"It compiles here" is not evidence about the s&box
+target at all** — not for the whitelist, not for the `GlobalGameNamespace` ambiguity below. And
+when a convenience method on a BCL type is the only reason to reach for it, prefer the loop; the
 engine is small, hot, and already written that way.
 
 **Be sparing with `using static` in `Engine/`.** The s&box build adds a project-wide
