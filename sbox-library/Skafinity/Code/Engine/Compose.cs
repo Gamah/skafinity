@@ -13,6 +13,18 @@ namespace Skafinity;
 
 public sealed partial class MusicGen
 {
+	// A copy of an int[], spelled out. NOT `(int[])a.Clone()`: s&box compiles this same source
+	// against an API whitelist that does not include Array.Clone, and it is a compile error there
+	// — which is a build we cannot run here, so the fix has to be a habit rather than a test. The
+	// whitelist accepts Array.Sort and Array.Empty (both used elsewhere in the engine), so this is
+	// about that one member, not about System.Array.
+	static int[] CopyOf( int[] src )
+	{
+		var d = new int[src.Length];
+		for ( int i = 0; i < src.Length; i++ ) d[i] = src[i];
+		return d;
+	}
+
 	// Single-threaded generation (used by Generate / GenerateSamples). The controller
 	// uses the chunked path instead (BeginPlan → parallel RenderPitchedRange → FinishStereo).
 	float Compose( string tag )
@@ -59,7 +71,7 @@ public sealed partial class MusicGen
 		_voicingRes = _voicing;
 		if ( _susVoice >= 0 )
 		{
-			_voicingRes = (int[])_voicing.Clone();
+			_voicingRes = CopyOf( _voicing );
 			_voicingRes[_susVoice] = Harmony.Third;
 		}
 		// How each chord inverts to stay near the one before it. A property of the changes and
@@ -596,7 +608,7 @@ public sealed partial class MusicGen
 		var tones = VoicedMidis( chordBase, root, _voicingRes );
 		var lead = Harmony.LeadToward( _scale, _endingPrev, chordBase, root, _voicingRes );
 		for ( int i = 0; i < tones.Length; i++ ) tones[i] += lead[i];
-		_endingPrev = (int[])tones.Clone();
+		_endingPrev = CopyOf( tones );
 		if ( _prof.Comp is not (CompStyle.Skank or CompStyle.Pad) )
 			tones = DrivenVoicing( tones, _voicingRes );
 
