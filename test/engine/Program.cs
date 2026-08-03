@@ -29,7 +29,42 @@ static class Program
 	static int Main( string[] args )
 	{
 		bool bless = Array.IndexOf( args, "--bless" ) >= 0;
+		// --audition [kick|snare|toms|hats|crash|ride] [wavPath]. The voice filter is what makes a
+		// second round cheap: re-render the one voice the notes are about. See DRUMS.md.
+		int ai = Array.IndexOf( args, "--audition" );
+		if ( ai >= 0 )
+		{
+			string only = ai + 1 < args.Length && !args[ai + 1].StartsWith( "-" ) ? args[ai + 1] : null;
+			string wav = ai + 2 < args.Length && !args[ai + 2].StartsWith( "-" ) ? args[ai + 2]
+				: Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ),
+					"audition.wav" );
+			Audition.Run( only, wav, Path.ChangeExtension( wav, ".txt" ) );
+			return 0;
+		}
+		// --cymbal [dir]: one dry hit of each cymbal, for tools/spectool to re-measure. See
+		// Audition.Cymbals — a fitted spectrum is not fitted until the RESULT is measured too.
+		int cy = Array.IndexOf( args, "--cymbal" );
+		if ( cy >= 0 )
+		{
+			Audition.Cymbals( cy + 1 < args.Length && !args[cy + 1].StartsWith( "-" ) ? args[cy + 1]
+				: Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ) );
+			return 0;
+		}
+		// --render vibe:tag:n [path]: the song, as a WAV. The diagnostics either side of this one
+		// answer "what did the composer decide" and "how loud is this voice"; sometimes the
+		// question is just "what does it sound like", and this host has no browser to answer it in.
+		int rn = Array.IndexOf( args, "--render" );
+		if ( rn >= 0 && rn + 1 < args.Length )
+		{
+			Render( args[rn + 1], rn + 2 < args.Length && !args[rn + 2].StartsWith( "-" )
+				? args[rn + 2]
+				: Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ),
+					"song.wav" ) );
+			return 0;
+		}
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
+		// --hand: the cymbal hand measured against the hi-hat it stands in for. See CymbalHand.
+		if ( Array.IndexOf( args, "--hand" ) >= 0 ) { CymbalHand(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }
 		int si = Array.IndexOf( args, "--seed" );
@@ -1705,6 +1740,22 @@ static class Program
 	/// <summary>Explain one seed: what the vibe decodes to and what the composer did with it.
 	/// The tool for "this seed sounds wrong" — it is far easier to read the decisions than to
 	/// infer them from the audio. Usage: <c>-- --seed vibe:tag:n</c>.</summary>
+	/// <summary>The song, rendered to a WAV at full rate — the mix as it actually ships, master
+	/// bus and all, which is the one thing the audition deliberately is not.</summary>
+	static void Render( string seed, string path )
+	{
+		var bits = seed.Split( ':' );
+		string vibe = bits.Length >= 3 ? bits[0] : "";
+		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
+		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
+		var cfg = new MusicGen.Config { SampleRate = 44100 };
+		VibeCodec.Apply( vibe, cfg );
+		var wav = MusicGen.Generate( $"{tag}:{n}", cfg );
+		File.WriteAllBytes( path, wav );
+		Console.WriteLine( $"{seed}  genre {cfg.Genre} ({VibeCodec.Genres[cfg.Genre]})  "
+			+ $"-> {path}  ({wav.Length / (1024 * 1024)} MiB)" );
+	}
+
 	static void Explain( string seed )
 	{
 		var bits = seed.Split( ':' );
@@ -1880,6 +1931,61 @@ static class Program
 			if ( bars[mid] <= sample ) lo = mid; else hi = mid - 1;
 		}
 		return lo;
+	}
+
+	/// <summary>
+	/// THE CYMBAL HAND, measured against itself. A ride does not replace a crash or a tom — it
+	/// replaces the HI-HAT, because both are the same hand playing the same pulse, and that makes
+	/// the hats the one honest reference for how loud a ride should be. Nothing else in --levels
+	/// can see this: the kit is a single row there, so a ride that has quietly fallen 6 dB behind
+	/// the hats it stands in for moves the whole kit by a fraction of a dB and reads as noise.
+	///
+	/// Four bars of the genre's own groove, three ways, off the same stream: hats, ride, and the
+	/// crash-ride. Everything but the cymbal hand is identical between them, so the difference IS
+	/// the hand.
+	/// </summary>
+	static void CymbalHand()
+	{
+		Console.WriteLine( "the cymbal hand ALONE, dB relative to the hats it replaces (pre-master)" );
+		Console.WriteLine();
+		Console.WriteLine( "  genre                  hats      ride   crash-ride" );
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			// Energy of four bars of the genre's groove, with the cymbal hand on or off. The hand's
+			// own energy is the DIFFERENCE: everything else about the take is identical, so
+			// subtracting the take with no hand at all leaves exactly the voice being measured.
+			// Without that subtraction the kick and snare drown it — doubling the ride's level
+			// moved the whole-kit number by 0.4 dB, which reads as "the level does nothing" when
+			// what it really means is "you are measuring the wrong thing".
+			double Energy( bool ride, bool crashRide, bool hand )
+			{
+				var cfg = new MusicGen.Config { SampleRate = 44100, Genre = g };
+				if ( !hand ) { cfg.HatVol = 0f; cfg.CrashVol = 0f; }
+				var m = MusicGen.ForAudition( cfg, 9.0, 116 );
+				m.AuditionKit( g );
+				m.AuditionCymbalHand( ride, crashRide );
+				var noise = new Rng( "levels:hand" );
+				for ( int b = 0; b < 4; b++ ) m.AuditionBar( b * 4 * Timing.TicksPerBeat, noise );
+				var (l, r) = m.AuditionBuffers();
+				double sum = 0;
+				for ( int i = 0; i < l.Length; i++ ) sum += (double)l[i] * l[i] + (double)r[i] * r[i];
+				return sum;
+			}
+			// Each case is paired with its OWN silent take, not one shared baseline: the hats
+			// consume the drum noise stream per sample and the cymbals do not, so a take with the
+			// ride on has different ghost notes and kick pushes from a take with the hats on. The
+			// subtraction is only valid inside a pair where everything but the hand's volume is
+			// identical.
+			double Hand( bool ride, bool crashRide )
+				=> Energy( ride, crashRide, true ) - Energy( ride, crashRide, false );
+			double hats = Hand( false, false );
+			double ride = Hand( true, false );
+			double cr = Hand( false, true );
+			string D( double x ) => hats <= 0 || x <= 0 ? "    —"
+				: $"{10 * Math.Log10( x / hats ),6:0.0}";
+			Console.WriteLine( $"  {g} {VibeCodec.Genres[g],-12}  {Math.Sqrt( hats ),8:0.000}  "
+				+ $"{D( ride )}  {D( cr )}" );
+		}
 	}
 
 	static void Levels()

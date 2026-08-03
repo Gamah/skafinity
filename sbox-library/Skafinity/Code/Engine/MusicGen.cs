@@ -218,6 +218,141 @@ public sealed partial class MusicGen
 		return grid.ToArray();
 	}
 
+	/// <summary>A generator with a buffer and a time base but NO SONG — the kit voices can be
+	/// driven straight into it. This is what the <c>--audition</c> diagnostic renders each of its
+	/// lines in: composition is skipped entirely, so what comes out is one drum voice and nothing
+	/// else. Harness-only, like <see cref="RawLevels"/>, <see cref="AudibleNotes"/>,
+	/// <see cref="GridSamples"/> and <see cref="Explain"/>.
+	///
+	/// DRY IS THE POINT, so everything the composer would normally lean on the kit with is set
+	/// neutral here: no tone lean, no genre mix trim, no swing, no kit push, centred. Position is
+	/// the one axis a line can ask for back, and it asks by setting <see cref="AuditionPan"/> —
+	/// which is the same field the STEREO WIDTH slider drives, so a pan line is auditioning the
+	/// real mechanism rather than a stand-in.
+	///
+	/// The caller reads <see cref="AuditionBuffers"/> and does NOT call <c>Master()</c>: the
+	/// master bus peak-normalizes, and a per-line normalize would return every candidate at the
+	/// same level and quietly delete the whole velocity half of the script.</summary>
+	internal static MusicGen ForAudition( Config c, double seconds, int bpm )
+	{
+		var g = new MusicGen( c );
+		g._genre = 1;
+		g._prof = GenreProfile.For( g._genre );
+		int n = Math.Max( 1, (int)(g._sr * seconds) );
+		double samplesPerTick = 60.0 / Math.Max( 1, bpm ) * g._sr / Timing.TicksPerBeat;
+		int totalTicks = (int)(n / samplesPerTick) + Timing.TicksPerBeat * 4;
+		g._time = new Timing( 4, totalTicks, samplesPerTick, swing: 0f, drumPush: 0, sampleRate: g._sr );
+		g._bufL = new float[n];
+		g._bufR = new float[n];
+		g._drumLowMul = g._drumHighMul = g._midMul = 1f;
+		g._drumPan = 0f;
+		g._drumTone = 0.5f;
+		g._energy = 1f;
+		g._feel = 1f;
+		g._barTick = 0;
+		g._sectionTick = 0;
+		g._crashBrightLeft = true;
+		return g;
+	}
+
+	/// <summary>The audition's raw, pre-master buffers.</summary>
+	internal (float[] L, float[] R) AuditionBuffers() => (_bufL, _bufR);
+
+	/// <summary>The audition's time base — a line asks it for the sample position of a tick, the
+	/// same way a voice does.</summary>
+	internal Timing AuditionTiming => _time;
+
+	/// <summary>The kit's stereo spread, for the lines that are about position. 0 is centred.
+	/// </summary>
+	internal float AuditionPan { get => _drumPan; set => _drumPan = value; }
+
+	/// <summary>Which side the bright crash sits on — the two crashes land opposite each other,
+	/// so this is how a line hears them as two cymbals rather than one.</summary>
+	internal bool AuditionCrashBrightLeft { get => _crashBrightLeft; set => _crashBrightLeft = value; }
+
+	/// <summary>
+	/// Set the instance up as a PLAYABLE KIT: a genre's groove, its tom tuning, its four cymbals
+	/// and a pedal figure. The audition's own rule is one voice per line, and this is what a line
+	/// needs when the question is the opposite one — how a fill moves across the kit, or how the
+	/// cymbal hand sits under a groove. Everything drawn here comes off fixed local streams, so a
+	/// line is repeatable and nothing touches a song's composition.
+	/// </summary>
+	internal void AuditionKit( int genre )
+	{
+		_genre = Math.Clamp( genre, 0, GenreProfile.Count - 1 );
+		_prof = GenreProfile.For( _genre );
+		_groove = _prof.DrawGroove( new Rng( "audition:groove" ) );
+		_tomKit = TomKit.Tuned( _prof.Toms, 48 );
+		var cy = CymbalDraw.Default;
+		_rideBow = BuildCymbal( CymbalBands.Bow( cy.RideSplash, cy.RideWash, cy.RideRing ), 0 );
+		_rideBell = BuildCymbal( CymbalBands.Bell( ring: cy.BellRing, clang: cy.BellClang ), 1 );
+		_crashBright = BuildCymbal( CymbalBands.CrashBright( cy.BrightSplash, cy.BrightRing ), 2 );
+		_crashDark = BuildCymbal( CymbalBands.CrashDark( cy.DarkSplash, cy.DarkRing, cy.DarkWash ), 3 );
+		var footRng = new Rng( "audition:foot" );
+		_footCells = 0;
+		for ( int i = 0; i < 8; i++ )
+			if ( footRng.Chance( FootOccupancy[i] ) ) _footCells |= 1 << i;
+	}
+
+	/// <summary>Which instrument the cymbal hand is on, for the lines that are about exactly that.
+	/// </summary>
+	internal void AuditionCymbalHand( bool ride, bool crashRide )
+	{
+		_ride = ride || crashRide;
+		_crashRide = crashRide;
+	}
+
+	internal string AuditionGrooveName => _groove?.Name ?? "—";
+
+	/// <summary>What each section of the planned song turned out to be — where it sits in samples,
+	/// and which instrument its cymbal hand took. A line that wants "a section where the drummer
+	/// rides" cannot ask for one directly: riding is a per-section roll against a per-song
+	/// preference, so the only way to find one is to plan songs and look.</summary>
+	internal readonly struct SectionInfo
+	{
+		public readonly int Start, End;
+		public readonly bool Ride, CrashRide;
+		public readonly string Type;
+		public SectionInfo( int start, int end, bool ride, bool crashRide, string type )
+		{ Start = start; End = end; Ride = ride; CrashRide = crashRide; Type = type; }
+	}
+
+	readonly List<SectionInfo> _sections = new();
+	internal IReadOnlyList<SectionInfo> AuditionSections => _sections;
+
+	/// <summary>Whether this song's groove ever opens the hats. A line about open-and-closed hats
+	/// needs a groove that HAS an open cell — metal's have none at all, so a metal verse is a
+	/// perfectly good section and a useless demonstration.</summary>
+	internal bool AuditionGrooveOpens
+	{
+		get
+		{
+			foreach ( var h in _groove.Cymbal.Slice( 0, _groove.Cymbal.LengthTicks ) )
+				if ( h.Value == DrumGroove.Open ) return true;
+			return false;
+		}
+	}
+
+	/// <summary>One bar of the genre's groove, and one fill — the engine's own passes, so a line
+	/// hears what a song hears rather than a hand-written imitation of it.</summary>
+	internal void AuditionBar( int barTick, Rng noise )
+		=> RenderDrumBar( barTick, _time.BarTicks, barTick + _time.BarTicks, noise );
+
+	internal void AuditionFill( int fromTick, int toTick, Rng noise, Rng rng )
+		=> RenderFill( fromTick, toTick, noise, rng );
+
+	/// <summary>The kit's cymbals, for the lines that play one directly — through the SAME bus the
+	/// groove uses. An audition line that invents its own balance is not auditioning the thing the
+	/// song plays: the ride and the hats sit on different buses, so comparing them at a made-up
+	/// gain answers nothing.</summary>
+	internal void AuditionCymbalHit( int which, int at, float amp, int chokeAt = int.MaxValue,
+		float chokeTau = HandChoke )
+	{
+		var t = which switch { 0 => _rideBow, 1 => _rideBell, 2 => _crashBright, _ => _crashDark };
+		if ( which <= 1 ) RenderRideCym( at, amp, t, chokeAt, chokeTau );
+		else RenderCrashCym( at, amp, t, dark: which == 3, chokeAt, chokeTau );
+	}
+
 	internal (float Peak, double Rms) RawLevels()
 	{
 		float peak = 0; double sum = 0; int n = 0;
@@ -272,6 +407,21 @@ public sealed partial class MusicGen
 	bool _ride;              // per-SECTION: ride cymbal drives the eighth pulse instead of closed hats (set in RenderSection from _ridePref)
 	float _ridePref;         // per-song lean toward riding the ride vs the hats; each section rolls its own _ride against this
 	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
+	bool _crashRide;         // per-SECTION: the cymbal hand is on a crash rather than the ride (GenreProfile.CrashRideFrom)
+	int _footCells;          // per-SECTION: the hi-hat pedal's own figure as an 8-bit eighth mask (measured — see FootOccupancy)
+	TomKit _tomKit;          // per-song: the three tom pitches, tuned from the song's root by the genre's TomTune
+	// The song's cymbals, each rendered once and stamped per hit (see CymbalTable). Built lazily,
+	// because a song that never rides pays for no ride: they are the most expensive objects the
+	// engine makes, and which of them a song needs is not known until its sections are rendered.
+	// The song's four cymbals. Cheap structs now — seven bands and a low pair each — so they are
+	// built with the rest of the plan rather than lazily behind a null check.
+	float[][] _rideBow, _rideBell, _crashBright, _crashDark;
+	// The kit's per-song nuance: a drum is a physical object and a band of values that all read
+	// as the right drum is what nuance IS (see KitNuance), so the song draws from those bands
+	// rather than the engine picking a point out of each one.
+	KickTone _kickTone = KickTone.Default;
+	HatTone _hatTone = HatTone.Default;
+	HatTone _footTone = HatTone.Foot;
 	bool _organBubble;
 	bool _fast;
 	int _bpm;                // the song's drawn tempo, after the TEMPO knob and the genre's own saturation

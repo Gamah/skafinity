@@ -44,7 +44,20 @@ namespace Skafinity;
 sealed class DrumGroove
 {
 	public const int Ghost = 1;
+
+	// ── The cymbal hand's vocabulary ──
+	// Open KEEPS THE VALUE 1, so every table above means exactly what it meant when 0-or-open was
+	// the whole language. A hi-hat is a pedal and a pedal is a distance, so what a cell says is
+	// how far open — except for the two articulations that are not a distance at all: the foot
+	// closing the cymbals with no stick on them, and the foot opening and shutting them again.
 	public const int Open = 1;
+	/// <summary>Half open: the "sloshy" hat. It is not the midpoint of a switch — see RenderHat's
+	/// geometric map, which is what makes this a position a foot can actually hold.</summary>
+	public const int Half = 2;
+	/// <summary>The foot chick: the hat speaking on its own, with no stick involved.</summary>
+	public const int Foot = 3;
+	/// <summary>Foot splash: opened and shut in one motion.</summary>
+	public const int Splash = 4;
 
 	public string Name { get; init; }
 	public Pattern Kick { get; init; }
@@ -310,32 +323,88 @@ public sealed partial class MusicGen
 		// deletes the hi-hat from every verse in the genre. Alternate onsets thin any pattern by
 		// half wherever it sits, and for a plain eighth-note cymbal it is exactly what the old rule
 		// did.
+		// A CRASH ON THE SECTION'S FIRST DOWNBEAT. Every groove has carried a CrashOnOne since the
+		// tables were written and nothing ever read it, so no crash landed on any downbeat in the
+		// engine — only at the end of a fill and the end of a song. It is one draw, on the one bar
+		// it can apply to, so it costs the same from every section's stream.
+		if ( barTick == _sectionTick && noise.Chance( _groove.CrashOnOne ) )
+			RenderCrashCym( _time.TickToSample( barTick ),
+				_c.CrashVol * KitGain( barTick, 1f, 0.5f ), _crashBright, dark: false );
+
 		bool sparse = _energy < 0.4f;
-		int cymIdx = 0;
-		foreach ( var h in _groove.Cymbal.Slice( barTick, to, _sectionTick, _feel ) )
+		// THINNED FIRST, THEN PLAYED, and the slice runs ONE BEAT PAST the bar. An open hat is
+		// choked by the next hit the drummer actually plays: half the onsets means half the
+		// chokes too, so the thinning cannot happen inside the playing loop — and the hit that
+		// chokes an "and of 4" is in the next bar, which is what the lookahead is for. Only the
+		// hits inside the bar are played; the rest are read.
+		var cym = _groove.Cymbal.Slice( barTick, to + Timing.TicksPerBeat, _sectionTick, _feel );
+		var play = new List<Hit>();
+		for ( int i = 0, kept = 0; i < cym.Count; i++ )
+			if ( !(sparse && (kept++ & 1) == 1) ) play.Add( cym[i] );
+
+		for ( int i = 0; i < play.Count; i++ )
 		{
-			bool onBeat = (h.Tick - barTick) % Timing.TicksPerBeat == 0;
-			if ( sparse && (cymIdx++ & 1) == 1 ) continue;
+			var h = play[i];
+			if ( h.Tick >= to ) break;
 			int at = _time.TickToSample( h.Tick );
-			bool open = h.Value == DrumGroove.Open;
+			int next = i + 1 < play.Count ? _time.TickToSample( play[i + 1].Tick ) : int.MaxValue;
+			int cell = h.Value;
 			// The genre's own accent weight decides how a hat off the beat sits against one on it.
 			// A flat 0.75 was a house rule where the measurement is per genre and disagrees in both
 			// directions — country and ska lean ON the offbeat, pop's programmed kit buries it.
-			float amp = _c.HatVol * KitGain( h.Tick, h.Vel, 0.55f );
-			if ( _ride && !open ) RenderRide( at, onBeat, amp, noise );
-			else RenderHat( at, open, amp, noise );
+			float kit = KitGain( h.Tick, h.Vel, 0.55f );
+			float amp = _c.HatVol * kit;
+			if ( _crashRide )
+				// The technique rather than a second cymbal: the hand moves onto a crash and rides
+				// it, so the open cell is the accent it leans on rather than an open hat.
+				// Crash-riding is a LIFT — the hand moves onto the loudest thing in the kit and the
+				// whole section rises. Measured, it was landing within 0.2 dB of an ordinary ride,
+				// which is the technique costing a cymbal and buying nothing.
+				RenderCrashCym( at, _c.CrashVol * kit * (cell == DrumGroove.Open ? 0.67f : 0.44f),
+					_crashDark, dark: true, next, CymbalBands.RestrikeTau );
+			else if ( _ride )
+				// The bell is a CELL now. It used to be positional — every quarter note was a
+				// bell, whatever the groove said — while the open cell a riding section was handed
+				// fell through to a hi-hat, so the one thing the pattern said about the cymbal
+				// hand was the one thing the ride ignored.
+				// EVERY STROKE DAMPS THE ONE BEFORE IT (see RenderCymbal's chokeFloor). A cymbal
+				// struck eight times a bar is not eight cymbals summed: the stick is on the metal.
+				RenderRideCym( at, amp * RideStroke( h.Tick - barTick ),
+					cell == DrumGroove.Open ? _rideBell : _rideBow, next, CymbalBands.RestrikeTau );
+			else
+				RenderHat( at, HatOpenness( cell ), amp, noise, HatFor( cell ),
+					Rings( cell ) ? next : int.MaxValue );
 
 			// Busy fills the gaps with quieter sixteenth chatter.
-			if ( !open && !sparse && noise.Chance( busy ) )
+			if ( cell == 0 && !sparse && noise.Chance( busy ) )
 			{
 				int sixAt = _time.TickToSample( h.Tick + Timing.TicksPerEighth / 2 );
-				if ( _ride ) RenderRide( sixAt, false, amp * 0.4f, noise );
-				else RenderHat( sixAt, false, amp * 0.4f, noise );
+				if ( _crashRide ) RenderCrashCym( sixAt, _c.CrashVol * kit * 0.22f, _crashDark, true );
+				else if ( _ride ) RenderRideCym( sixAt, amp * 0.4f * RideStroke( h.Tick + Timing.TicksPerEighth / 2 - barTick ), _rideBow );
+				else RenderHat( sixAt, 0f, amp * 0.4f, noise, _hatTone );
 			}
 		}
 
+		// The pedal's own part, under a section whose hands are on the ride (see FootOccupancy).
+		// The pattern was drawn once for the section; a foot keeps a figure the way a hand does.
+		if ( (_ride || _crashRide) && _footCells != 0 )
+			for ( int i = 0; i < 8; i++ )
+			{
+				if ( (_footCells & (1 << i)) == 0 ) continue;
+				int t = barTick + i * Timing.TicksPerEighth;
+				if ( t >= to ) break;
+				RenderHat( _time.TickToSample( t ), 0f, _c.HatVol * KitGain( t, 0.7f, 0.45f ),
+					noise, _footTone );
+			}
+
+		// THE KICK READS ITS VELOCITY. It used to discard the cell's Vel and take no metric accent
+		// and no energy scaling at all, so metal's sixteenth double-kick was the identical
+		// waveform at the identical level sixteen times a bar — which is what machine-gunning is.
+		// Its depth is under the cymbal hand's and near the fill's: the kick is the floor of the
+		// groove and should breathe least.
 		foreach ( var h in _groove.Kick.Slice( barTick, to, _sectionTick, _feel ) )
-			RenderKick( _time.TickToSample( h.Tick ), noise );
+			RenderKick( _time.TickToSample( h.Tick ), noise, KitGain( h.Tick, h.Vel, 0.30f ),
+				_kickTone, 0f );
 
 		// The kick's own humanising. A groove pattern is exact, and a drummer is not: KICK SYNC is
 		// the chance of a stray extra kick pushing into the following beat, rolled per bar so the
@@ -343,7 +412,8 @@ public sealed partial class MusicGen
 		if ( _c.KickSyncChance > 0f )
 			for ( int t = barTick + Timing.TicksPerEighth; t < to; t += Timing.TicksPerBeat )
 				if ( noise.Chance( _c.KickSyncChance * (0.4f + busy) * _energy ) )
-					RenderKick( _time.TickToSample( t ), noise );
+					RenderKick( _time.TickToSample( t ), noise, KitGain( t, 0.85f, 0.30f ),
+						_kickTone, 0f );
 
 		foreach ( var h in _groove.Snare.Slice( barTick, to, _sectionTick, _feel ) )
 		{
@@ -362,10 +432,74 @@ public sealed partial class MusicGen
 			{
 				if ( !noise.Chance( _c.GhostSnareChance * busy * 0.5f ) ) continue;
 				int at = _time.TickToSample( t );
-				if ( noise.Chance( (1f - _drumTone) * 0.5f ) ) RenderTom( at, 150f + 40f * ((t / 24) & 1), noise );
+				// The busy layer's toms are the two RACK toms answering each other — the drums a
+				// hand can reach without leaving the groove. Which two they are is the kit's, not
+				// a pair of frequencies picked here (see TomKit).
+				if ( noise.Chance( (1f - _drumTone) * 0.5f ) )
+					RenderTom( at, _tomKit, (t / (Timing.TicksPerEighth / 2)) & 1, noise,
+						KitGain( t, 0.7f, 0.4f ), TomTone.Default );
 				else RenderSnare( at, noise, true );
 			}
 	}
+
+	/// <summary>
+	/// THE FOOT'S OWN PART: how often the pedal closes the hi-hat, per eighth of the bar, while
+	/// the hands are on the ride. A riding section used to silence the hi-hat completely, and the
+	/// hat is the one voice in the kit that does not need a hand.
+	///
+	/// MEASURED, off the same source as the grooves and the accent weights (Google Magenta's
+	/// Groove MIDI Dataset — see DrumGroove's header). Method: over the 472 4/4 performances,
+	/// split by whether the ride carries the pulse (a ride hit at least every four beats), count
+	/// note-ons of the PEDAL hi-hat (GM 44) and fold their positions onto one bar at the eighth.
+	/// Two things came out of it and only one was expected:
+	///
+	///   * the foot IS busier when the hands are away — 2.74 pedal hits per bar over 12220 riding
+	///     bars, against 1.92 over 8519 bars where the hands are on the hat;
+	///   * but it is NOT "2 and 4". Those are the two peaks (16.2% and 17.9% of hits) and the
+	///     downbeat is a third (13.1%), while every remaining eighth still carries 9.6–11.6%.
+	///     Two chicks a bar on the backbeat is a third of what a drummer's foot actually does,
+	///     and it is the part that is easiest to assume you already know.
+	///
+	/// These are the per-eighth probabilities that reproduce both numbers: each share of the hits
+	/// times the 2.74 they are shared out of. The pattern is drawn ONCE PER SECTION from them
+	/// rather than rolled per bar, because a drummer's foot keeps a figure the same way a hand
+	/// does — the marginals are what a performance averages to, not what it decides every bar.
+	/// </summary>
+	static readonly float[] FootOccupancy =
+		{ 0.36f, 0.26f, 0.44f, 0.32f, 0.31f, 0.28f, 0.49f, 0.28f };
+
+	/// <summary>How hard a ride stroke is, by where it lands. A drummer's "and" is a much lighter
+	/// stroke than the beat; the genre's accent weight alone (rock's offbeat is 1.7 dB down) leaves
+	/// eight near-equal strokes a bar, and eight near-equal strokes is a WALL however good each one
+	/// sounds. Pulling the offbeats back was the single most effective change in the whole cymbal
+	/// exercise — more than any edit to the voice itself. Suspect the pattern before the timbre.
+	/// </summary>
+	static float RideStroke( int tickInBar )
+		=> tickInBar % Timing.TicksPerBeat == 0 ? 1f : 0.5f;
+
+	// ── The cymbal hand's cells ──
+	// What a cymbal cell means, once it can mean more than "open or not". Openness is a distance
+	// and the two foot articulations are not distances at all, which is why the tone and the
+	// position are two lookups rather than one.
+
+	static float HatOpenness( int cell ) => cell switch
+	{
+		DrumGroove.Open => 1f,
+		DrumGroove.Half => 0.5f,
+		DrumGroove.Splash => 1f,
+		_ => 0f,
+	};
+
+	HatTone HatFor( int cell ) => cell switch
+	{
+		DrumGroove.Foot => _footTone,
+		DrumGroove.Splash => HatTone.Splash,
+		_ => _hatTone,
+	};
+
+	/// <summary>Whether this cell leaves the hat RINGING — i.e. whether there is anything for the
+	/// next hit's foot to choke. A chick and a splash have already closed the cymbals.</summary>
+	static bool Rings( int cell ) => cell == DrumGroove.Open || cell == DrumGroove.Half;
 
 	// ── Fills ──
 	// A fill is a span, not "the last beat of the bar". Length is a weighted draw — a beat most
@@ -482,7 +616,6 @@ public sealed partial class MusicGen
 		float[] cells = FillChances( _prof.FillHits, grid );
 		float flurryK = FillCellK( _prof.FillHits, grid );
 
-		float[] toms = { 260f, 215f, 175f, 145f, 120f, 100f };
 		for ( int b = 0; b < beats; b++ )
 		{
 			int beatTick = fromTick + b * Timing.TicksPerBeat;
@@ -513,19 +646,30 @@ public sealed partial class MusicGen
 				float u = (b + i / (float)n) / beats;
 				float gain = KitGain( cellTick, 0.72f + 0.33f * u, 0.35f );
 
-				// A fill goes round the kit high to low, which is what the toms are laid out for
-				// (RenderTom pans by pitch). Snare-led unless the fill is a tom figure; the ride
-				// comes in where DrumTone leans high, and the kick is under it either way —
-				// "13.2 hits per bar" is the whole kit, and a drummer's foot is part of the kit.
+				// A fill goes round the kit high to low, which is what a three-piece tom set is
+				// laid out for — and it goes there BY INDEX, so a fill cannot reach past the
+				// bottom of the kit. It used to sweep six frequencies through a pan map that
+				// bottomed out at 145 Hz, so the two lowest drums of every fill shared a position.
+				// Snare-led unless the fill is a tom figure; the ride comes in where DrumTone leans
+				// high, and the kick is under it either way — "13.2 hits per bar" is the whole kit,
+				// and a drummer's foot is part of the kit.
 				float tomShare = shape == FillShape.Gesture || tomLed ? 0.55f : 0.26f;
 				float rideShare = 0.14f * _drumTone;
 				if ( d < tomShare )
-					RenderTom( t, toms[Math.Min( toms.Length - 1, (int)(u * toms.Length) )], noise, gain );
-				else if ( d < tomShare + rideShare ) RenderRide( t, false, _c.HatVol * gain, noise );
-				else if ( d < tomShare + rideShare + 0.08f ) RenderKick( t, noise, gain );
+					RenderTom( t, _tomKit, Math.Min( TomKit.Count - 1, (int)(u * TomKit.Count) ),
+						noise, gain, TomTone.Default );
+				else if ( d < tomShare + rideShare )
+					RenderRideCym( t, _c.HatVol * gain, _rideBow );
+				else if ( d < tomShare + rideShare + 0.08f )
+					RenderKick( t, noise, gain, _kickTone, 0f );
 				else RenderSnare( t, noise, false, gain );
 			}
 		}
-		RenderCrash( _time.TickToSample( toTick ), noise, rng.Chance( 0.4f ) );
+		// The fill lands on the downbeat it was leading into, and it is a crash at a LEVEL now:
+		// the voice had no gain parameter at all, so the loudest thing in a song arrived at full
+		// scale whatever the section's energy, the velocity or the genre's accent said.
+		bool darkCrash = rng.Chance( 0.4f );
+		RenderCrashCym( _time.TickToSample( toTick ), _c.CrashVol * KitGain( toTick, 1f, 0.35f ),
+			darkCrash ? _crashDark : _crashBright, darkCrash );
 	}
 }

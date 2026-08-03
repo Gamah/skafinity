@@ -216,6 +216,20 @@ numbers and they go stale when the part they were tuned for is replaced. The sui
 outcome — comp under the kit, lead not dominating, bass present, and silence when every voice is
 muted.
 
+**But `--levels` is ONE SEED PER GENRE, and a single seed varies about 4 dB around its target** (the
+suite's own ceiling is written to allow for exactly that). So the tool answers "did this change move
+the mix", not "is this voice at 2.0 dB" — a sub-dB gap between two runs is a different song, not a
+level. Chasing one is fitting noise and calling it a measurement, and it reads as a measurement
+afterwards, which is worse than not having done it. Act on a *mechanism* — a voice that now rings
+four times longer, a part that plays twice as often — and size the fix by that mechanism.
+
+**Re-measuring is also not licence to edit the voice that came out wrong.** These are levels
+RELATIVE TO THE DRUMS, so rebuilding the kit restates every one of them without a melodic voice
+being touched. If the kit moved, fix the kit; a diff that reaches into `LeadLevel` on a drums branch
+has stopped being a drums branch. The whole-kit lever for that is `KitPresence`, not the per-voice
+balances — and a kit that gets quieter because it started reading velocity and choking its hats has
+not regressed, it has started breathing.
+
 `make test` is the other half: it boots the *published wasm* runtime under node and checks the
 JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
 only runs where the bundle has been built — except `test/queue.mjs`, which touches no wasm and
@@ -554,6 +568,74 @@ Two standing caveats travel with any figure taken from there. **The sample sizes
 so a thin row says so rather than trading a guess for a guess with a citation on it. And **metal is
 simply not in the dataset**; its flat accents and its fill density are design calls and are labelled
 as such, not rock's numbers wearing rock's citation. E-GMD is the candidate that would answer it.
+
+**The dataset also answers questions nobody thought were questions, and that is what it is for.**
+The hi-hat pedal is the case: a riding section had no hi-hat at all, and "the foot goes down on 2
+and 4" is standard enough received wisdom that it went in as a comment written in the same voice as
+the measured tables around it. It is a third of the truth. Over the 472 4/4 performances, split by
+whether the ride carries the pulse, the pedal (GM 44) plays **2.74 hits per bar while the hands are
+on the ride** against 1.92 while they are on the hat — the direction is right — but 2 and 4 are only
+the two PEAKS (16.2% and 17.9% of hits), the downbeat takes 13.1%, and every other eighth still
+carries 9.6–11.6%. `FootOccupancy` in `Groove.cs` is that distribution. **The lesson is about the
+prose, not the pedal:** this repo's comments state measurements, so a sentence in that register is
+read as one, and writing an assumption there launders it into a citation. If it was not measured,
+say which it is — the way metal's `FillHits` does.
+
+**A MEASUREMENT IS NOT A SPELLING, and the cymbals are the case that proves it.** Real cymbals were
+analysed and the analysis reduced to three laws (see `CymbalBands`). The first attempt spent those
+laws on a mode forest — ~390 partials, each with its own ring time — and it was accurate and
+unusable: ~250 ms of CPU a hit, and it **out-detailed every other voice in the engine by two orders
+of magnitude**. The rest of the kit is two or three sines and some filtered noise, and a voice built
+to a different standard does not sit in that mix at any level. That is the part worth carrying: a
+fidelity mismatch is not a level problem, and it will not respond to one — a thing that is too loud
+gets quieter, a thing that is too *real* just becomes a quiet hyperreal object in a synthetic mix.
+Level, stereo width and pattern density were all tried against it first. The same laws now cost
+thirteen components: seven filtered-noise bands whose ring times fall as 1/√f, one low beating pair,
+splash and wash. **Both failure modes are worth keeping in mind because they bracket the target —
+uniform-decay noise reads as a hi-hat, resolvable partials read as a church bell**, and per-band
+decay is the property that sits between them.
+
+**"A beat is not a pitch" is wrong, and it is the exact form the church bell comes back in.** The
+measurement resolves the cymbal's lowest partials as near-pairs a few Hz apart, and keeping one such
+pair as two real sines looks like a faithful reading of it — the argument being that what is heard is
+the BEAT rather than a note. It is a note. A 232 Hz sine ringing two and a half seconds under noise
+bands that decay far faster is the most exposed thing in the voice, and it reads as a tone sitting
+inside every cymbal. **No tonal component survives in a cymbal at any level**; where the bottom is
+wanted, the band set reaches down and carries it as noise like everything else. `--cymbal` +
+`tools/spectool` is how to check rather than argue: a healthy cymbal here resolves NO sustained
+partials, which is also what the reference recordings measure.
+
+**Two things about a ride are the PATTERN, not the voice**, and both survived every timbre change:
+the engine played eight even strokes a bar separated only by the genre's accent weight, which is a
+wall however good each stroke is (a drummer's "and" is a much lighter stroke — `RideStroke`); and a
+stroke train ACCUMULATES unevenly, because ring time falls with frequency. At riding eighths the
+250 Hz band stacks +7.6 dB over a single stroke against +2.4 dB at 5 kHz, so the low ring runs away
+and reads as a drone. A flat level cut cannot fix that — it takes the attack down with the drone.
+The fix is physical: a stroke landing on a ringing cymbal excites it AND damps it, because the stick
+is on the metal, so it is a shorter decay for as long as the cymbal is being played
+(`CymbalBands.RestrikeTau`) and it compounds over a train the way the physics does. **Suspect the
+pattern before the timbre.**
+
+**A long-ringing voice is synthesised once and stamped, not rendered per hit.** A 2.5-second ring
+struck eight times a bar overlaps itself twenty deep, so per-hit rendering pays for all of it — that
+is a property of the pattern and no amount of making the voice cheaper removes it. Synthesise the
+object once per song into a lo/hi pair (split at 2.5 kHz, so a soft stroke can be DARKER and not
+merely quieter) and add it per hit. Round robins cost about three milliseconds each at this
+complexity, so the repeat-tell is cheap to break.
+
+**A measured ring length is a cymbal in a ROOM, not a cymbal in this mix.** A crash lands at every
+phrase end and every section start here, and at that density the measured three-to-four-second ring
+never clears before the next one — the arrangement swims. `CrashRingScale` keeps that departure as
+one explicit number rather than a quietly re-fitted constant, so the law stays legible and the mix
+decision stays a mix decision. The ride needs no equivalent: it is struck far more often but its own
+strokes damp each other, which is the physical version of the same problem.
+
+**`--cymbal [dir]` writes one dry hit per cymbal for `tools/spectool` to re-measure**, and a
+spectrum fitted to a measurement is not fitted until the RESULT has been measured the same way. It
+is the only check on these voices that does not need ears. **`--render vibe:tag:n [path]`** writes a
+whole song as a WAV — the mix as it ships, master bus and all, which is the one thing the audition
+deliberately is not, and the only way to answer "is this voice too strong" on a host with no
+browser.
 
 **When something reads as too dense, suspect the tempo before you thin a part.** The knob is the
 usual culprit, and a genre's own band is the next one. Adding a gate somewhere is almost always the
@@ -1060,9 +1142,18 @@ the site keeps serving the old engine while `master` claims the new one. Page-on
 that forgets to re-stage `web/_framework` breaks nothing visibly — no 404, no failing test, just
 the old engine playing under a `master` that claims otherwise. `make stage` therefore writes
 `web/.bundle-stamp` (`<kind> <sha256>` over every `.cs` the wasm build compiles, plus the csproj
-and `runtimeconfig.template.json`), and `make check-bundle` recomputes it. Both the CI workflow
-and the Pages deploy run that check first, so a stale bundle fails the merge and never reaches
-the site. `kind` exists because `make dev` stages an interpreted runtime — fresh but slow in a
+and `runtimeconfig.template.json`), and `make check-bundle` recomputes it. The CI workflow and
+the Pages deploy both run that check first, so a stale bundle fails the merge and never reaches
+the site.
+
+**CI runs on PULL REQUESTS and `preview/*`, deliberately not on every branch push.** Re-staging
+the bundle is a ~2-minute AOT publish that belongs at the end of a piece of work, so a feature
+branch's intermediate commits are EXPECTED to carry a stale one — running the gate on them mails
+the repo owner about a state that is not a defect, and a gate that cries wolf stops being read.
+Nothing reaches master except through a PR and nothing reaches the live site except master or a
+`preview/*` branch, so the gate still covers everything it was written to cover. If you want the
+answer earlier on a WIP branch, run `sh tools/bundle-stamp.sh check` locally — it is the same
+script CI calls. `kind` exists because `make dev` stages an interpreted runtime — fresh but slow in a
 browser — so the check demands `aot` and a `dev` stamp fails too. **Both `stage` and
 `check-bundle` call the same `tools/bundle-stamp.sh`**, which is the point: two implementations
 of "what counts as a source" would drift and the gate would quietly stop gating. Add a compiled
