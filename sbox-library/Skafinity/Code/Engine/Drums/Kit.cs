@@ -574,7 +574,16 @@ readonly struct CymbalBands
 			=> LogBump( f, Centre, Width ) + (Level2 > 0f ? Level2 * LogBump( f, Centre2, Width2 ) : 0f);
 	}
 
-	static readonly Strike BowStrike = new( 1200f, 1.1f );
+	// THE BOW'S BUMP IS A MIX DECISION AND NOT THE MEASUREMENT. The reference puts a real ride's
+	// sustain at ~1.2 kHz, and that is where this sat — which is both darker than the hi-hat it
+	// stands in for and, worse, exactly where the guitars are. Measured against an open hat as
+	// spectral centroid: the hat is 12.5 kHz at the attack and STILL 12.4 kHz half a second later,
+	// because it is one high-passed noise with one decay; the ride was 10.4 kHz falling to 8.8 kHz,
+	// because tau=k/sqrt(f) means the low bands outlive the high ones and a cymbal built on that law
+	// ALWAYS darkens as it rings. So a ride reads as the dark voice against a hat that never moves,
+	// which is backwards for the one carrying the pulse. At 4200 Hz with the noise floor lifted the
+	// tail comes to 10.9 kHz — still under the hat, and 2.1 kHz brighter than it was.
+	static readonly Strike BowStrike = new( 4200f, 0.95f );
 	static Strike BellStrike( float clang ) => new( clang, 0.45f, 290f, 0.25f, 0.30f );
 	static readonly Strike BrightCrashStrike = new( 3200f, 0.80f, 400f, 0.55f, 0.25f );
 	static readonly Strike DarkCrashStrike = new( 520f, 0.75f, 9000f, 0.60f, 0.45f );
@@ -597,7 +606,7 @@ readonly struct CymbalBands
 	// balance ("can I hear the ride?") has no way to notice the other one ("is the ride now the
 	// loudest thing in its band?"), and a +10 dB single step is where that goes wrong. The
 	// duty-cycle-in-band reading answers both and is what the next change to this should use.
-	const float StrokeLevelRide = 0.55f, StrokeLevelCrash = 0.60f;
+	const float StrokeLevelRide = 0.45f, StrokeLevelCrash = 0.60f;
 
 	/// <summary>The extra decay a cymbal takes on WHILE IT IS BEING PLAYED — see RenderCymbal's
 	/// chokeTau. A stroke landing on a ringing cymbal excites it and damps it, because the stick is
@@ -639,16 +648,16 @@ readonly struct CymbalBands
 	/// no longer the same object. The stick attack is untouched (peak still inside the first 20 ms),
 	/// which is the point: this shortens the wash behind the ping, not the ping.</remarks>
 	public static CymbalBands Bow( float splash = 1f, float wash = 1f, float ring = 1f )
-		=> Build( BowStrike, tauK: 39f, knee: 2000f, sizzle: 0f, ring: ring,
+		=> Build( BowStrike, tauK: 39f, knee: 3500f, sizzle: 0f, ring: ring,
 			splash: 1.25f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
-			washTau: 0.70f * ring, stick: 0.55f, stickCut: 7000f, noiseHp: 240f, washLp: 6500f,
+			washTau: 0.70f * ring, stick: 0.55f, stickCut: 9000f, noiseHp: 900f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 3200f );
 
 	/// <summary>The bell. A ride bell is not a church bell: no harmonic stack and no low
 	/// fundamental — the measurement puts its energy in a clang cluster around 2.3 kHz over the
 	/// same metal as the bow.</summary>
 	public static CymbalBands Bell( float splash = 1f, float ring = 1f, float clang = 2300f )
-		=> Build( BellStrike( clang ), tauK: 39f, knee: 2000f, sizzle: 0f, ring: ring,
+		=> Build( BellStrike( clang ), tauK: 39f, knee: 3500f, sizzle: 0f, ring: ring,
 			splash: 0.40f * splash, splashTau: 0.05f, washLvl: 0.030f,
 			washTau: 0.55f * ring, stick: 0.40f, stickCut: 6500f, noiseHp: 240f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 2600f );

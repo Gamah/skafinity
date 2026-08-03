@@ -705,6 +705,19 @@ never clears before the next one — the arrangement swims. `CrashRingScale` kee
 one explicit number rather than a quietly re-fitted constant, so the law stays legible and the mix
 decision stays a mix decision. The ride has no equivalent and did not need one.
 
+**A CYMBAL BUILT ON τ=k/√f ALWAYS DARKENS AS IT RINGS; A HI-HAT NEVER DOES.** The hat is one
+high-passed noise with one decay, so it measures 12.5 kHz at the attack and still 12.4 kHz half a
+second later. The ride's low bands outlive its high ones by construction, so it measured 10.4 kHz
+falling to 8.8 kHz — the voice carrying the pulse was the DARK one against a hat that never moves,
+and it got darker the longer it rang. Two levers, and they do different jobs: `RingTau`'s `knee`
+stops the low tail dominating (it is what keeps the tail from darkening), and the strike bump is
+where the energy sits in the first place. **The bow's bump is a mix decision, not the
+measurement** — the reference puts a real ride at ~1.2 kHz, which is both darker than the hat and
+exactly where the guitars are, so it sits at 4200 Hz instead. Measured on a song rather than a dry
+hit, that took the ride from +4.74 dB to +1.98 dB over the rest of the mix in the 1–3 kHz band while
+keeping it present at 6–14 kHz: **moving a voice OUT of a crowded band beats turning it down**, and
+the two are easy to confuse because both make it less annoying.
+
 **A RIDE AND A CRASH DIFFER BY THEIR TAIL, NOT BY THEIR SPECTRUM — and that is a trap, because
 the band weights are nearly identical and look correct.** Measured per band as the time to fall
 20 dB, the ride against the bright crash was low 2.80 s vs 1.00, mid 2.53 vs 0.89, upper-mid 2.03 vs
