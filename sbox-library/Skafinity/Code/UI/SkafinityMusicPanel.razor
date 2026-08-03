@@ -30,15 +30,16 @@
 	strip of tick cells (one per base-36 level the seed encodes); each change re-encodes the
 	vibe and restarts the player on a short debounce.
 
-	Re-theming: the palette lives as SCSS variables at the top of SkafinityMusicPanel.razor.scss.
-	Override those (or supply your own panel against the same SkafinityPlayer API) to restyle.
+	Re-theming: the board derives its whole palette from one colour. Set SkafinityTheme.Accent
+	from your game (e.g. to your own UI accent) and the board follows; leave it unset and it is
+	neutral gray-on-black. SkafinityMusicPanel.razor.scss holds only the layout/type tokens.
 *@
 
 <root class="@( IsOpen ? "open" : "" )">
 	@if ( IsOpen )
 	{
 	@{ var cfg = Player?.EffectiveConfig(); int genre = cfg?.Genre ?? 0; }
-	<div class="music">
+	<div class="music" style="background-color:@SkafinityTheme.Bg;">
 		<div class="header">
 			<div class="title">MUSIC</div>
 			<div class="close" onclick="@Toggle">✕</div>
@@ -47,45 +48,48 @@
 
 		<div class="top">
 			<div class="row">
-				<div class="label">NOW PLAYING</div>
+				<div class="label" style="@LabelStyle">NOW PLAYING</div>
 				<div class="play-row">
 					<div class="seed-box">@Seed()</div>
-					<div class="btn" onclick="@CopySeed">@_copyLabel</div>
+					<div class="btn" style="@BtnStyle" onclick="@CopySeed">@_copyLabel</div>
 				</div>
 			</div>
 
 			<div class="row">
-				<div class="label">SONG</div>
+				<div class="label" style="@LabelStyle">SONG</div>
 				<div class="play-row">
-					<div class="btn wide" onclick="@( () => Step( -1 ) )">◀ Prev</div>
+					<div class="btn wide" style="@BtnStyle" onclick="@( () => Step( -1 ) )">◀ Prev</div>
 					<div class="num">@( Player?.N ?? 0 )</div>
-					<div class="btn wide" onclick="@( () => Step( 1 ) )">Next ▶</div>
+					<div class="btn wide" style="@BtnStyle" onclick="@( () => Step( 1 ) )">Next ▶</div>
 				</div>
 			</div>
 
 			<div class="row">
-				<div class="label">PLAY A SEED</div>
+				<div class="label" style="@LabelStyle">PLAY A SEED</div>
 				<div class="play-row">
 					<TextEntry @ref="_tagEntry" placeholder="Paste vibe:tag:n (or a tag — blank = default)" class="tag-input" />
-					<div class="btn" onclick="@Play">Play</div>
-					<div class="btn" onclick="@UseDefault">Use default</div>
+					<div class="btn" style="@BtnStyle" onclick="@Play">Play</div>
+					<div class="btn" style="@BtnStyle" onclick="@UseDefault">Use default</div>
 				</div>
 			</div>
 
 			<div class="row">
-				<div class="label">MUTE</div>
+				<div class="label" style="@LabelStyle">MUTE</div>
 				<div class="play-row">
-					<div class="btn toggle @( Player?.Enabled == false ? "on" : "" )" onclick="@ToggleMute">@( Player?.Enabled == false ? "MUTED" : "PLAYING" )</div>
+					<div class="btn toggle @( Player?.Enabled == false ? "on" : "" )"
+						 style="@( Player?.Enabled == false ? BtnOnStyle : BtnStyle )"
+						 onclick="@ToggleMute">@( Player?.Enabled == false ? "MUTED" : "PLAYING" )</div>
 				</div>
 			</div>
 
 			<div class="row">
-				<div class="label">VOLUME</div>
+				<div class="label" style="@LabelStyle">VOLUME</div>
 				<div class="cells">
 					@foreach ( var v in VolumeSteps )
 					{
 						var vv = v;
-						<div class="cell @( ( Player?.Volume ?? 1f ) >= vv - 0.001f ? "filled" : "" )"
+						var on = ( Player?.Volume ?? 1f ) >= vv - 0.001f;
+						<div class="cell" style="@( on ? CellFilledStyle : CellStyle )"
 							 onclick="@( () => SetVolume( vv ) )">@VolLabel( vv )</div>
 					}
 				</div>
@@ -97,28 +101,29 @@
 		@if ( Player?.IsBuffering == true )
 		{
 			<div class="row">
-				<div class="label">STATUS — waiting on the song you skipped to</div>
+				<div class="label" style="@LabelStyle">STATUS — waiting on the song you skipped to</div>
 				<div class="buffering">
-					<div class="buffering-label">Generating…</div>
-					<div class="bar"><div class="bar-fill" style="width:@( Pct( BufferingProgress ) )"></div></div>
+					<div class="buffering-label" style="@AccentTextStyle">Generating…</div>
+					<div class="bar"><div class="bar-fill" style="@BarFillStyle( BufferingProgress )"></div></div>
 				</div>
 			</div>
 		}
 
 		<div class="row">
-			<div class="label">QUEUE — past · now · up next (click to jump)</div>
+			<div class="label" style="@LabelStyle">QUEUE — past · now · up next (click to jump)</div>
 			<div class="queue">
 				@foreach ( var e in Queue() )
 				{
 					var ee = e;
-					<div class="qitem @( e.Current ? "current" : "" ) @( e.Cached ? "cached" : "" ) @( e.Progress >= 0 ? "gen" : "" )"
+					<div class="qitem @( e.Current ? "current" : "" ) @( e.Progress >= 0 ? "gen" : "" )"
+						 style="@QueueStyle( e )"
 						 onclick="@( () => Player?.SetN( ee.N ) )">
 						<div class="qn">@e.N</div>
-						<div class="qgenre">@GenreName( e.Genre )</div>
+						<div class="qgenre" style="@LabelStyle">@GenreName( e.Genre )</div>
 						<div class="qstate">
 							@if ( e.Progress >= 0 )
 							{
-								<div class="bar"><div class="bar-fill" style="width:@( Pct( e.Progress ) )"></div></div>
+								<div class="bar"><div class="bar-fill" style="@BarFillStyle( e.Progress )"></div></div>
 							}
 							else
 							{
@@ -133,22 +138,24 @@
 		<div class="divider"></div>
 
 		<div class="row genre-row">
-			<div class="label">GENRE</div>
+			<div class="label" style="@LabelStyle">GENRE</div>
 			<div class="cells">
 				@for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 				{
 					var gg = g;
 					<div class="cell choice @( g == genre ? "selected" : "" )"
+						 style="@( g == genre ? CellFilledStyle : CellStyle )"
 						 onclick="@( () => SetGenre( gg ) )">@VibeCodec.Genres[g]</div>
 				}
-				<div class="btn reroll" onclick="@Reroll">🎲 Reroll</div>
+				<div class="btn reroll" style="@BtnStyle" onclick="@Reroll">🎲 Reroll</div>
 				<div class="btn reroll toggle @( Player?.RandomEverySong == true ? "on" : "" )"
+					 style="@( Player?.RandomEverySong == true ? BtnOnStyle : BtnStyle )"
 					 onclick="@ToggleRandomEverySong">🎲 Random every song: @( Player?.RandomEverySong == true ? "ON" : "OFF" )</div>
-				<div class="btn" onclick="@Save">Save .wav</div>
+				<div class="btn" style="@BtnStyle" onclick="@Save">Save .wav</div>
 			</div>
 		</div>
 
-		<div class="label">VIBE — per-instrument mixer (tweak, then share the seed)</div>
+		<div class="label" style="@LabelStyle">VIBE — per-instrument mixer (tweak, then share the seed)</div>
 		<div class="matrix">
 			<div class="mrow mhead">
 				<div class="mvoice"></div>
@@ -176,7 +183,7 @@
 		</div>
 
 		<div class="divider"></div>
-		<div class="label">GLOBAL</div>
+		<div class="label" style="@LabelStyle">GLOBAL</div>
 		<div class="vibe-grid">
 			@foreach ( var f in GlobalRows( genre ) )
 			{
@@ -186,7 +193,7 @@
 
 		@if ( _msg != null )
 		{
-			<div class="hint ok">@_msg</div>
+			<div class="hint" style="@AccentTextStyle">@_msg</div>
 		}
 	</div>
 	}
@@ -234,6 +241,25 @@
 		if ( !IsOpen ) { _tagInit = false; return; }
 		if ( !_tagInit && _tagEntry != null ) { _tagEntry.Text = Player?.Tag ?? ""; _tagInit = true; }
 	}
+
+	// ── Theme bindings ──
+	// The palette is runtime (SkafinityTheme), so every fill and themed text colour is bound
+	// here as an inline style rather than named in the .scss. The stylesheet owns every border
+	// in return — see the header comment there for why the two must not overlap.
+	static string LabelStyle => $"color:{SkafinityTheme.TextDim};";
+	static string AccentTextStyle => $"color:{SkafinityTheme.AccentCss};";
+	static string BtnStyle => $"background-color:{SkafinityTheme.Cell}; color:{SkafinityTheme.Text};";
+	static string BtnOnStyle => $"background-color:{SkafinityTheme.AccentBg}; color:{SkafinityTheme.Text};";
+	static string CellStyle => $"background-color:{SkafinityTheme.Cell};";
+	static string CellFilledStyle => $"background-color:{SkafinityTheme.CellFill};";
+	static string BarFillStyle( float p ) => $"width:{Pct( p )}; background-color:{SkafinityTheme.AccentCss};";
+
+	// A queue entry reads as one of three states, brightest first: the song playing now, a song
+	// already rendered and waiting, anything else.
+	static string QueueStyle( SkafinityPlayer.QueueEntry e ) =>
+		e.Current ? $"background-color:{SkafinityTheme.AccentBg};"
+		: e.Cached ? $"background-color:{SkafinityTheme.CellFillSoft};"
+		: CellStyle;
 
 	string Seed() => Player?.CurrentSeed ?? "—";
 
@@ -299,6 +325,7 @@
 				{
 					var kk = k; var n = f.Choices.Length;
 					<div class="cell choice @( k == sel ? "selected" : "" )"
+						 style="@( k == sel ? CellFilledStyle : CellStyle )"
 						 onclick="@( () => SetVibe( idx, kk / (float)(n - 1) ) )">@f.Choices[k]</div>
 				}
 			}
@@ -308,7 +335,8 @@
 				@for ( int k = 0; k < UiTicks; k++ )
 				{
 					var kk = k;
-					<div class="cell tick @( k <= sel ? "filled" : "" ) @( k == sel ? "selected" : "" )"
+					<div class="cell tick @( k == sel ? "selected" : "" )"
+						 style="@( k <= sel ? CellFilledStyle : CellStyle )"
 						 onclick="@( () => SetVibe( idx, kk / (float)(UiTicks - 1) ) )"></div>
 				}
 			}
@@ -356,7 +384,9 @@
 		_msg = string.IsNullOrEmpty( name ) ? "Couldn't save song" : $"Saved {name} to your s&box data folder";
 	}
 
-	void Reroll() { Player?.RerollVibe(); _msg = "Rerolled every knob but the volumes"; }
+	// RerollVibe()'s defaults: the genre goes, the per-instrument volumes stay — a reroll should
+	// hand you a different song, not upend the mix you set.
+	void Reroll() { Player?.RerollVibe(); _msg = "Rerolled the genre and every knob but the volumes"; }
 
 	void ToggleRandomEverySong()
 	{
@@ -397,6 +427,9 @@
 		q.Add( Player?.Enabled ?? true ); q.Add( Player?.Volume ?? 1f );
 		q.Add( Player?.RandomEverySong ?? false ); q.Add( Player?.IsBuffering ?? false );
 		q.Add( _msg ); q.Add( _copyLabel );
+		// The palette rides in inline style= values, so the board has to rebuild when the host
+		// retints it — nothing else in this hash moves when only SkafinityTheme.Accent changes.
+		q.Add( SkafinityTheme.Accent );
 		if ( IsOpen )
 			foreach ( var e in Queue() )
 			{

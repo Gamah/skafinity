@@ -22,7 +22,8 @@ the single source of truth for both the game and this web toy**. The web build c
 | `test/engine/` | Engine-only test harness (`make test-engine`) — compiles `Engine/**` alone into the same assembly as the tests, so it runs on a plain dev host where s&box cannot. The safety net for engine work. |
 | `sbox-library/Skafinity/skafinity.config.json` | The single shared **house-mix config** (peak balances / kit presence). Canonical here; the s&box plugin reads it at runtime and `make` copies it to `web/config.json`. Edit it to retune the baseline mix without a rebuild. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
-| `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. Re-themeable via the `.scss` variable block. |
+| `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. |
+| `sbox-library/Skafinity/Code/UI/SkafinityTheme.cs` | The panel's palette, derived at RUNTIME from one `Accent` colour so a consuming game can retint a *vendored* copy without editing it. Unset = neutral gray/black. |
 | `reference/*.cs` | The original Rotaliate-client copies, kept for context. **Read-only.** The `sbox-library` copies are what actually compile. |
 
 Everything under `Code/Engine/` is framework-free (only `System` / `System.Collections.Generic`
@@ -92,7 +93,7 @@ skafinity/
         Drums/            #   Groove (DrumGroove tables + the kit/fill pass) + Kit (voices)
         Synth/            #   Patch, Notes (queue), Render, Osc
       SkafinityPlayer.cs  # s&box-only playback driver — outside the glob
-      UI/                 # s&box-only Razor panel — outside the glob
+      UI/                 # s&box-only Razor panel + its runtime palette — outside the glob
   docker/                 # Dockerfile + compose (nginx on loopback 6970; external Caddy fronts it)
   wasm/
     Skafinity.Wasm.csproj # browser-wasm project; <Compile Include>s the shared .cs
@@ -279,6 +280,29 @@ so the targets work on a box with no system-wide .NET or node. Override with
 they actually reference — today that is just `MusicGen.{Config, Channels, GenerateSamples,
 BeginPlan, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
 uncompilable target stays safe.
+
+**What the s&box side CAN be checked for mechanically is drift against the engine's own
+defaults, and that is the failure this target actually has.** `SkafinityPlayer`'s `[Property]`
+knobs are a second copy of a `MusicGen.Config` default — the inspector value wins for every song
+that has no vibe — so a knob retuned in `Config` leaves the game playing the old number while the
+web plays the new one, silently and with nothing to notice it. It had happened to the whole kit
+(hats at 0.22 against a rebuilt, velocity-reading kit whose balance is measured in
+`skafinity.config.json`), to `LeadGtrDrive` (3.6 under a knob whose floor is 5), and to
+`PanAmount`. A `[Range]` drifts the same way and costs the inspector its reach — `Genre` was
+capped at 1 with six genres shipping. So: **a player property that isn't equal to its `Config`
+default is this host disagreeing with the shipped song, and it has to say why** — `SampleRate`
+is the one that legitimately does. Diff the two lists after any `Config` retune; it is a grep,
+and it is the only check this target gets.
+
+**The panel's palette is runtime, not SCSS.** A consuming game vendors this library and must not
+patch the vendored copy, so a compile-time `$accent` could never be its colour. `SkafinityTheme`
+derives the whole palette from one `Accent` (unset = neutral gray/black) and the `.razor` binds
+it as inline `style=` values — the pattern rotaliate/gambit's `WallTheme` already uses, and the
+same factors, so a game passing its wall accent in gets the board it has elsewhere. The split
+that keeps it working: **the razor sets fills and themed text, the stylesheet owns every border**,
+because a `:hover` rule in a stylesheet cannot be relied on to beat an inline `background-color`.
+That is why hover feedback is a border rather than a fill, and why the accent must be folded into
+`BuildHash` — inline styles only re-render when the panel rebuilds.
 
 **Be sparing with `using static` in `Engine/`.** The s&box build adds a project-wide
 `GlobalGameNamespace` static using, so importing a collision-prone bare name (`Rest`,
