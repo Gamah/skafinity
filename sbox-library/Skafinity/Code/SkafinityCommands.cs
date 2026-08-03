@@ -22,6 +22,10 @@ namespace Skafinity;
 /// </summary>
 public static class SkafinityCommands
 {
+	/// <summary>Name of the GameObject <see cref="Spawn"/> builds. Also how <see cref="Despawn"/>
+	/// finds it again, so it only ever destroys its own rig and never a scene-authored player.</summary>
+	const string RigName = "Skafinity (console)";
+
 	// Every command needs the player, and "there isn't one" is the single most likely reason a
 	// command does nothing — so say so rather than failing silently.
 	static SkafinityPlayer Player()
@@ -30,28 +34,122 @@ public static class SkafinityCommands
 		if ( scene == null ) { Log.Warning( "[Skafinity] no active scene." ); return null; }
 
 		var p = scene.GetAllComponents<SkafinityPlayer>().FirstOrDefault();
-		if ( p == null ) Log.Warning( "[Skafinity] no SkafinityPlayer in the scene — add the component to a GameObject." );
+		if ( p == null )
+			Log.Warning( "[Skafinity] no SkafinityPlayer in the scene — run skafinity_spawn for a "
+				+ "throwaway one, or add the component to a GameObject yourself." );
 		return p;
 	}
 
-	/// <summary>Open/close the settings board. The panel ships no launcher of its own, so in the
-	/// editor this is how you see it at all.</summary>
-	[ConCmd( "skafinity_panel" )]
-	public static void TogglePanel()
+	/// <summary>Build a throwaway board (and a player, if the scene hasn't got one) on a runtime
+	/// GameObject, so the library can be tried in ANY scene without one being authored for it.
+	/// <c>skafinity_despawn</c> removes it.</summary>
+	/// <remarks>It never makes a SECOND of anything: a board already in the scene — a previous rig
+	/// or the game's own UI — is the one it hands back, and a player already in the scene is the
+	/// one the board drives. So this is safe to run in a game that has Skafinity wired up properly,
+	/// where it does nothing but tell you so.</remarks>
+	/// <remarks>Client-local and never saved: <c>NetworkMode.Never</c> so it is not replicated,
+	/// <c>GameObjectFlags.NotSaved</c> so it cannot end up committed in someone's scene file. It
+	/// carries its OWN <c>ScreenPanel</c> rather than hunting for the scene's, which is what makes
+	/// it work in a scene that has no UI root at all. Shape copied from rotaliate-client's
+	/// <c>LocalMusicSystem</c>, which builds the same three components for real.</remarks>
+	[ConCmd( "skafinity_spawn" )]
+	public static void Spawn()
+	{
+		var panel = BuildRig( out bool created );
+		if ( panel == null ) return;
+
+		Log.Info( created
+			? $"[Skafinity] rig ready — '{RigName}'. skafinity_panel opens it, skafinity_despawn removes it."
+			: $"[Skafinity] nothing spawned — this scene already has a board, on '{panel.GameObject?.Name}'. "
+			  + "skafinity_panel opens it." );
+	}
+
+	/// <summary>Destroy the rig <c>skafinity_spawn</c> built. Leaves a scene-authored player alone —
+	/// it only removes the GameObject it made.</summary>
+	[ConCmd( "skafinity_despawn" )]
+	public static void Despawn()
 	{
 		var scene = Sandbox.Game.ActiveScene;
 		if ( scene == null ) { Log.Warning( "[Skafinity] no active scene." ); return; }
 
-		var panel = scene.GetAllComponents<SkafinityMusicPanel>().FirstOrDefault();
-		if ( panel == null )
-		{
-			Log.Warning( "[Skafinity] no SkafinityMusicPanel in the scene — add the component to a "
-				+ "GameObject under a ScreenPanel." );
-			return;
-		}
+		var rig = FindRig( scene );
+		if ( rig == null ) { Log.Info( "[Skafinity] no console rig to remove." ); return; }
+
+		rig.Destroy();
+		Log.Info( $"[Skafinity] removed '{RigName}'." );
+	}
+
+	/// <summary>Open/close the settings board — the panel ships no launcher of its own, so this is
+	/// how you see it at all. Builds a rig first if the scene has no board (see
+	/// <see cref="Spawn"/>), so this one command works in an empty scene.</summary>
+	[ConCmd( "skafinity_panel" )]
+	public static void TogglePanel()
+	{
+		// Nothing to toggle rather than nothing to do: the point of the command is to see the board,
+		// and needing a scene authored first is the whole problem it exists to solve. BuildRig
+		// returns the scene's own board where there is one, so this never makes a second.
+		var panel = BuildRig( out bool created );
+		if ( panel == null ) return;
+		if ( created )
+			Log.Info( $"[Skafinity] no board in the scene — built '{RigName}'. skafinity_despawn removes it." );
 
 		panel.Toggle();
 		Log.Info( $"[Skafinity] board {( panel.IsOpen ? "OPEN" : "closed" )}." );
+	}
+
+	// The rig itself. Returns the board to drive — an existing one wherever there is one — or null
+	// with a reason logged. `created` says whether anything was actually built.
+	static SkafinityMusicPanel BuildRig( out bool created )
+	{
+		created = false;
+		var scene = Sandbox.Game.ActiveScene;
+		if ( scene == null ) { Log.Warning( "[Skafinity] no active scene." ); return null; }
+
+		// A play-mode thing. In the editor's edit scene there is no audio to hear and no reason to
+		// be adding objects to what someone is authoring, even unsaveable ones.
+		if ( scene.IsEditor )
+		{
+			Log.Warning( "[Skafinity] press play first — the rig is built into the running scene, not the edit scene." );
+			return null;
+		}
+
+		// A headless server has no audio device and no screen; the player is DontExecuteOnServer
+		// for the same reason, so building it there would produce an inert object and a puzzle.
+		if ( Application.IsDedicatedServer )
+		{
+			Log.Warning( "[Skafinity] not on a dedicated server — Skafinity is client-side (audio + UI)." );
+			return null;
+		}
+
+		// NEVER a second board. Any panel already in the scene is the one to drive, whether it is a
+		// previous rig or one the game authored — two boards would be two sets of controls over one
+		// player, and the second would be the game's own UI duplicated by a debug command.
+		var existing = scene.GetAllComponents<SkafinityMusicPanel>().FirstOrDefault();
+		if ( existing != null ) return existing;
+
+		created = true;
+		var go = new GameObject( true, RigName ) { Flags = GameObjectFlags.NotSaved };
+		go.NetworkMode = NetworkMode.Never;   // strictly local: this is a test rig, not game state
+
+		// Its own UI root, so this works in a scene with no ScreenPanel of its own.
+		go.Components.Create<ScreenPanel>();
+
+		// Reuse a player the scene already has rather than starting a second soundtrack over it.
+		var player = scene.GetAllComponents<SkafinityPlayer>().FirstOrDefault()
+			?? go.Components.Create<SkafinityPlayer>();
+
+		var panel = go.Components.Create<SkafinityMusicPanel>();
+		panel.Player = player;
+		return panel;
+	}
+
+	// Only ever OUR GameObject: matched by name, so a scene-authored player is never a candidate.
+	static GameObject FindRig( Scene scene )
+	{
+		foreach ( var p in scene.GetAllComponents<SkafinityMusicPanel>() )
+			if ( p.GameObject != null && p.GameObject.Name == RigName )
+				return p.GameObject;
+		return null;
 	}
 
 	/// <summary>Retint the board from one colour: <c>skafinity_theme #ff8a3d</c>. Pass

@@ -286,6 +286,14 @@ uncompilable target stays safe.
 so the editor is the only place it runs, and the two things most worth trying there were the two
 that needed code written first: the board **ships no launcher** (`skafinity_panel`), and the
 accent is a static a game sets at startup (`skafinity_theme #hex`, `clear` to go neutral). The
+**`skafinity_spawn` is what makes any of that testable at all**: it builds a player + its own
+`ScreenPanel` + the board on a `NotSaved` / `NetworkMode.Never` GameObject, so the library can be
+tried in a scene that has nothing wired up — and `skafinity_panel` calls it when there is no board,
+so one command works from cold. It never makes a SECOND of anything: an existing board (a previous
+rig or the game's own UI) is what it hands back, and an existing player is what the board drives.
+That is the rule to keep — a debug command that quietly duplicates the game's own UI over the top
+of it is worse than one that does nothing. Shape copied from rotaliate-client's `LocalMusicSystem`,
+which builds the same three components for real. The
 rest drive the seed (`_seed _next _prev _genre _reroll _save`) and read it back — `skafinity_status`
 for the player's state, including whether `skafinity.config.json` actually mounted, which nothing
 else would ever say; `skafinity_explain` for the composer's decisions, i.e. the harness's `--seed`

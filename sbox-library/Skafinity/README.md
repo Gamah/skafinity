@@ -125,7 +125,9 @@ launcher and the accent is a static:
 
 | Command | |
 |---|---|
-| `skafinity_panel` | Open/close the board. **The only way to see it** before you've bound `IsOpen`. |
+| `skafinity_spawn` | Build a throwaway player + board on a runtime GameObject, so you can try the library **in any scene without authoring one**. Never makes a second of anything — an existing board or player is reused. |
+| `skafinity_despawn` | Remove that rig (and only that rig). |
+| `skafinity_panel` | Open/close the board. **The only way to see it** before you've bound `IsOpen` — and it spawns the rig for you if the scene has no board, so this one command works from cold. |
 | `skafinity_theme <hex\|clear>` | Retint live — exactly what setting `SkafinityTheme.Accent` does. |
 | `skafinity_seed <seed>` | Play `vibe:tag:n`, `tag:n`, a bare `tag`, or `default`. |
 | `skafinity_next` / `skafinity_prev` | Step the sequence. |
