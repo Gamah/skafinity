@@ -341,9 +341,17 @@ public sealed partial class MusicGen
 	internal void AuditionFill( int fromTick, int toTick, Rng noise, Rng rng )
 		=> RenderFill( fromTick, toTick, noise, rng );
 
-	/// <summary>The kit's cymbals, for the lines that play one directly.</summary>
-	internal float[][] AuditionCymbal( int which )
-		=> which switch { 0 => _rideBow, 1 => _rideBell, 2 => _crashBright, _ => _crashDark };
+	/// <summary>The kit's cymbals, for the lines that play one directly — through the SAME bus the
+	/// groove uses. An audition line that invents its own balance is not auditioning the thing the
+	/// song plays: the ride and the hats sit on different buses, so comparing them at a made-up
+	/// gain answers nothing.</summary>
+	internal void AuditionCymbalHit( int which, int at, float amp, int chokeAt = int.MaxValue,
+		float chokeTau = HandChoke )
+	{
+		var t = which switch { 0 => _rideBow, 1 => _rideBell, 2 => _crashBright, _ => _crashDark };
+		if ( which <= 1 ) RenderRideCym( at, amp, t, chokeAt, chokeTau );
+		else RenderCrashCym( at, amp, t, dark: which == 3, chokeAt, chokeTau );
+	}
 
 	internal (float Peak, double Rms) RawLevels()
 	{

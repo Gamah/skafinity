@@ -587,22 +587,21 @@ static class Audition
 		{
 			t.G.AuditionKit( 1 );
 			t.G.AuditionPan = 0.25f;
-			var k = t.G.AuditionCymbal( which );
-			float pan = which >= 2 ? (which == 3 ? 0.25f : -0.25f) : 0.25f;
 			int n = 8 * per;                                   // two bars
 			for ( int i = 0; i < n; i++ )
 			{
 				double at = i * (1.0 / per);
 				bool onBeat = i % per == 0;
 				int next = damp ? t.At( (i + 1) * (1.0 / per) ) : int.MaxValue;
-				t.G.RenderCymbal( t.At( at ), onBeat ? 1f : 0.5f, k, 1f, pan, next,
+				t.G.AuditionCymbalHit( which, t.At( at ), onBeat ? 1f : 0.5f, next,
 					CymbalBands.RestrikeTau );
 			}
-			t.G.RenderCymbal( t.At( 8 ), 1f, k, 1f, pan );
+			t.G.AuditionCymbalHit( which, t.At( 8 ), 1f );
 		}
 
 		void Hat( Take t, int per )
 		{
+			t.G.AuditionKit( 1 );
 			t.G.AuditionPan = 0.25f;
 			int n = 8 * per;
 			for ( int i = 0; i < n; i++ )

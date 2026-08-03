@@ -63,6 +63,8 @@ static class Program
 			return 0;
 		}
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
+		// --hand: the cymbal hand measured against the hi-hat it stands in for. See CymbalHand.
+		if ( Array.IndexOf( args, "--hand" ) >= 0 ) { CymbalHand(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );
 		if ( gi >= 0 ) { Grid( gi + 1 < args.Length && int.TryParse( args[gi + 1], out var gg ) ? gg : -1 ); return 0; }
 		int si = Array.IndexOf( args, "--seed" );
@@ -1929,6 +1931,61 @@ static class Program
 			if ( bars[mid] <= sample ) lo = mid; else hi = mid - 1;
 		}
 		return lo;
+	}
+
+	/// <summary>
+	/// THE CYMBAL HAND, measured against itself. A ride does not replace a crash or a tom — it
+	/// replaces the HI-HAT, because both are the same hand playing the same pulse, and that makes
+	/// the hats the one honest reference for how loud a ride should be. Nothing else in --levels
+	/// can see this: the kit is a single row there, so a ride that has quietly fallen 6 dB behind
+	/// the hats it stands in for moves the whole kit by a fraction of a dB and reads as noise.
+	///
+	/// Four bars of the genre's own groove, three ways, off the same stream: hats, ride, and the
+	/// crash-ride. Everything but the cymbal hand is identical between them, so the difference IS
+	/// the hand.
+	/// </summary>
+	static void CymbalHand()
+	{
+		Console.WriteLine( "the cymbal hand ALONE, dB relative to the hats it replaces (pre-master)" );
+		Console.WriteLine();
+		Console.WriteLine( "  genre                  hats      ride   crash-ride" );
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			// Energy of four bars of the genre's groove, with the cymbal hand on or off. The hand's
+			// own energy is the DIFFERENCE: everything else about the take is identical, so
+			// subtracting the take with no hand at all leaves exactly the voice being measured.
+			// Without that subtraction the kick and snare drown it — doubling the ride's level
+			// moved the whole-kit number by 0.4 dB, which reads as "the level does nothing" when
+			// what it really means is "you are measuring the wrong thing".
+			double Energy( bool ride, bool crashRide, bool hand )
+			{
+				var cfg = new MusicGen.Config { SampleRate = 44100, Genre = g };
+				if ( !hand ) { cfg.HatVol = 0f; cfg.CrashVol = 0f; }
+				var m = MusicGen.ForAudition( cfg, 9.0, 116 );
+				m.AuditionKit( g );
+				m.AuditionCymbalHand( ride, crashRide );
+				var noise = new Rng( "levels:hand" );
+				for ( int b = 0; b < 4; b++ ) m.AuditionBar( b * 4 * Timing.TicksPerBeat, noise );
+				var (l, r) = m.AuditionBuffers();
+				double sum = 0;
+				for ( int i = 0; i < l.Length; i++ ) sum += (double)l[i] * l[i] + (double)r[i] * r[i];
+				return sum;
+			}
+			// Each case is paired with its OWN silent take, not one shared baseline: the hats
+			// consume the drum noise stream per sample and the cymbals do not, so a take with the
+			// ride on has different ghost notes and kick pushes from a take with the hats on. The
+			// subtraction is only valid inside a pair where everything but the hand's volume is
+			// identical.
+			double Hand( bool ride, bool crashRide )
+				=> Energy( ride, crashRide, true ) - Energy( ride, crashRide, false );
+			double hats = Hand( false, false );
+			double ride = Hand( true, false );
+			double cr = Hand( false, true );
+			string D( double x ) => hats <= 0 || x <= 0 ? "    —"
+				: $"{10 * Math.Log10( x / hats ),6:0.0}";
+			Console.WriteLine( $"  {g} {VibeCodec.Genres[g],-12}  {Math.Sqrt( hats ),8:0.000}  "
+				+ $"{D( ride )}  {D( cr )}" );
+		}
 	}
 
 	static void Levels()

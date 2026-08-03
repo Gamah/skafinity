@@ -476,14 +476,20 @@ readonly struct CymbalBands
 	public readonly float[] Hz, Amp, Tau;
 	public readonly float Dur, Level, Stick, StickCut;
 	public readonly float SplashLvl, SplashTau, WashLvl, WashTau, NoiseHp, WashLp;
+	/// <summary>Where the SPLASH starts, separately from the wash. A crash's attack is measured
+	/// broadband and stays that way; a ride's is a stick touching metal, which is a high-frequency
+	/// event — and it is the only part of a ride that lands in a band the rest of the arrangement
+	/// leaves empty. One shared corner meant every attempt to make the stroke cut also added to
+	/// the mids, where it is masked and does nothing but thicken.</summary>
+	public readonly float SplashHp;
 
 	CymbalBands( float[] hz, float[] amp, float[] tau, float dur, float level, float stick,
 		float stickCut, float splashLvl, float splashTau, float washLvl, float washTau,
-		float noiseHp, float washLp )
+		float noiseHp, float washLp, float splashHp )
 	{
 		Hz = hz; Amp = amp; Tau = tau; Dur = dur; Level = level; Stick = stick; StickCut = stickCut;
 		SplashLvl = splashLvl; SplashTau = splashTau; WashLvl = washLvl; WashTau = washTau;
-		NoiseHp = noiseHp; WashLp = washLp;
+		NoiseHp = noiseHp; WashLp = washLp; SplashHp = splashHp;
 	}
 
 	// ── The laws ──
@@ -566,7 +572,7 @@ readonly struct CymbalBands
 	/// measured with --levels, a ride at the crash's stroke level put country's whole kit 2.6 dB
 	/// over the rest of its band on its riding sections alone. A crash overlaps nothing, being one
 	/// gesture a phrase, so it keeps the louder stroke.</summary>
-	const float StrokeLevelRide = 0.22f, StrokeLevelCrash = 0.60f;
+	const float StrokeLevelRide = 0.30f, StrokeLevelCrash = 0.60f;
 
 	/// <summary>The extra decay a cymbal takes on WHILE IT IS BEING PLAYED — see RenderCymbal's
 	/// chokeTau. A stroke landing on a ringing cymbal excites it and damps it, because the stick is
@@ -587,11 +593,21 @@ readonly struct CymbalBands
 	/// (RestrikeTau), which is the physical version of the same problem.</summary>
 	const float CrashRingScale = 0.45f;
 
+	/// <summary>THE STROKE HAS TO CUT, and level is the wrong lever for that. Measured against the
+	/// hi-hat it replaces, the ride carries MORE energy — and it still disappears in a band mix,
+	/// because of where that energy sits: a hat is high-passed noise with essentially everything
+	/// above 5 kHz, a band nothing else in the arrangement occupies, while the ride's measured
+	/// sustain is a bump at 1.2 kHz spreading flat from 180 Hz up, straight through the guitars.
+	/// Equal energy, very unequal audibility, and raising the level only adds to the part that is
+	/// masked. The splash is the answer and it is faithful to the measurement: the sustain is
+	/// mid-centred but the ATTACK is broadband, so a bigger splash is a per-stroke click in the
+	/// clear rather than more mud. That is what a ride's ping is, and it is inside the 0.5–1.8
+	/// band the audition approved.</summary>
 	public static CymbalBands Bow( float splash = 1f, float wash = 1f, float ring = 1f )
 		=> Build( BowStrike, tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
-			splash: 0.55f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
-			washTau: 0.70f * ring, stick: 0.30f, stickCut: 5500f, noiseHp: 240f, washLp: 6500f,
-			level: StrokeLevelRide );
+			splash: 1.25f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
+			washTau: 0.70f * ring, stick: 0.55f, stickCut: 7000f, noiseHp: 240f, washLp: 6500f,
+			level: StrokeLevelRide, splashHp: 3200f );
 
 	/// <summary>The bell. A ride bell is not a church bell: no harmonic stack and no low
 	/// fundamental — the measurement puts its energy in a clang cluster around 2.3 kHz over the
@@ -600,7 +616,7 @@ readonly struct CymbalBands
 		=> Build( BellStrike( clang ), tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
 			splash: 0.40f * splash, splashTau: 0.05f, washLvl: 0.030f,
 			washTau: 0.55f * ring, stick: 0.40f, stickCut: 6500f, noiseHp: 240f, washLp: 6500f,
-			level: StrokeLevelRide );
+			level: StrokeLevelRide, splashHp: 2600f );
 
 	/// <summary>The bright crash. THE ROAR IS THE INSTRUMENT: a third of a second in, the
 	/// measurement resolves essentially no partials at all. So the splash is not an attack
@@ -609,7 +625,7 @@ readonly struct CymbalBands
 		=> Build( BrightCrashStrike, tauK: 45f, knee: 1000f, sizzle: 0f, ring: ring * CrashRingScale,
 			splash: 2.30f * splash, splashTau: 0.30f, washLvl: 0.55f * wash,
 			washTau: 1.05f * ring, stick: 0.10f, stickCut: 6000f, noiseHp: 2400f, washLp: 6200f,
-			level: StrokeLevelCrash );
+			level: StrokeLevelCrash, splashHp: 900f );
 
 	/// <summary>The dark crash — a heavier, flatter cymbal crashed rather than ridden, and the
 	/// opposite shape at both ends: resolved lows that ring, a body gone in half a second, and a
@@ -618,11 +634,11 @@ readonly struct CymbalBands
 		=> Build( DarkCrashStrike, tauK: 13.5f, knee: 0f, sizzle: 1.5f, ring: ring * CrashRingScale,
 			splash: 1.50f * splash, splashTau: 0.22f, washLvl: 0.35f * wash,
 			washTau: 0.90f * ring, stick: 0.10f, stickCut: 4500f, noiseHp: 200f, washLp: 4200f,
-			level: StrokeLevelCrash );
+			level: StrokeLevelCrash, splashHp: 200f );
 
 	static CymbalBands Build( in Strike strike, float tauK, float knee, float sizzle, float ring,
 		float splash, float splashTau, float washLvl, float washTau, float stick, float stickCut,
-		float noiseHp, float washLp, float level )
+		float noiseHp, float washLp, float level, float splashHp )
 	{
 		var hz = new float[Bands]; var am = new float[Bands]; var ta = new float[Bands];
 		float step = MathF.Pow( BandHi / BandLo, 1f / (Bands - 1) );
@@ -645,7 +661,7 @@ readonly struct CymbalBands
 		// sample past the point it stops being audible is a multiply spent on silence.
 		float dur = Math.Clamp( maxTau * 3.6f, 0.6f, 3.0f );
 		return new CymbalBands( hz, am, ta, dur, lvl, stick, stickCut,
-			splash, splashTau, washLvl, washTau, noiseHp, washLp );
+			splash, splashTau, washLvl, washTau, noiseHp, washLp, splashHp );
 	}
 }
 
@@ -1062,7 +1078,8 @@ public sealed partial class MusicGen
 		float sa = c.StickCut > 0f ? LpCoeff( c.StickCut ) : 0f;
 		float lp = 0f;
 		float hpA = HpCoeff( c.NoiseHp ), washLpA = LpCoeff( c.WashLp );
-		float nInPrev = 0f, nHpPrev = 0f, washLp = 0f;
+		float splHpA = HpCoeff( c.SplashHp );
+		float nInPrev = 0f, nHpPrev = 0f, washLp = 0f, sInPrev = 0f, sHpPrev = 0f;
 		double splDecay = _sr * (double)Math.Max( 0.005f, c.SplashTau );
 		double washDecay = _sr * (double)Math.Max( 0.02f, c.WashTau );
 		// The fade keeps the truncation silent: the longest band still has tail left at the end.
@@ -1084,7 +1101,8 @@ public sealed partial class MusicGen
 			washLp += washLpA * (hp - washLp);
 			// The splash rides in the high table and the wash in the low, so each tilts with the
 			// layer it belongs to.
-			hi += hp * c.SplashLvl * (float)Math.Exp( -i / splDecay );
+			float shp = splHpA * (sHpPrev + n - sInPrev); sInPrev = n; sHpPrev = shp;
+			hi += shp * c.SplashLvl * (float)Math.Exp( -i / splDecay );
 			lo += washLp * c.WashLvl * (float)Math.Exp( -i / washDecay );
 			if ( c.Stick > 0f && i < stickLen )
 			{
