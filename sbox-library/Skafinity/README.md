@@ -1,8 +1,9 @@
-# Skafinity — procedural ska/reggae-rock for s&box
+# Skafinity — procedural music for s&box
 
 A self-contained **s&box code library** that streams an endless, deterministic procedural
-ska / reggae-rock track, generated entirely from a short shareable seed. No audio assets —
-the music is synthesised from scratch and scheduled over a `SoundStream`.
+song — **ska-punk, rock, country, metal, punk or pop** — generated entirely from a short
+shareable seed. No audio assets — the music is synthesised from scratch and scheduled over a
+`SoundStream`.
 
 This is the sound-generator core of [skafinity](../../) / the Rotaliate music engine, with
 every game-specific dependency (player data, networking) stripped out.
@@ -26,13 +27,16 @@ Copy the `Skafinity/` folder there:
   Skafinity.sbproj
   skafinity.config.json # baseline house-mix (peak balances) — edit to retune without recompiling
   Code/
-    MusicGen.cs        # composer + subtractive synth (portable, deterministic)
-    VibeCodec.cs       # base-36 "vibe" knob encoding (the shareable seed fragment)
+    Engine/            # the composer + subtractive synth, one file per concern. Framework-free
+                       #   and deterministic — MusicGen.cs is the entry point, VibeCodec.cs the
+                       #   base-36 "vibe" encoding behind the shareable seed.
     SkafinityPlayer.cs # the object: streaming, looping, crossfade, look-ahead, export
+    SkafinityCommands.cs # console commands for driving it in the editor (see below)
     Skafinity.csproj
     UI/
       SkafinityMusicPanel.razor       # optional drop-in settings panel (PanelComponent)
-      SkafinityMusicPanel.razor.scss  # its styling (re-themeable — see below)
+      SkafinityMusicPanel.razor.scss  # its layout/type tokens
+      SkafinityTheme.cs               # its palette — one accent colour (see below)
 ```
 
 Open the editor once and s&box references the library from your game code automatically. All
@@ -43,7 +47,7 @@ public types live in the `Skafinity` namespace.
 Add a **`SkafinityPlayer`** component to a GameObject in your scene. It auto-plays on start.
 To play on the mixer's Music channel, set **`MixerName = "Music"`** (any mixer name; empty =
 default mixer). Everything is tunable from the inspector (grouped: Music, Seed, Output,
-Crossfade, Tempo, Mix, Tone, Feel, Stereo, Instrument, Horns, Genre, Rock).
+Crossfade, Tempo, Mix, Tone, Feel, Stereo, Instrument, Horns, Genre, Guitars / Keys).
 
 ```csharp
 var music = gameObject.Components.Get<SkafinityPlayer>();
@@ -59,7 +63,7 @@ music.SetN( 100 );         // jump
 // Vibe knobs (the shareable subset of the config)
 music.RerollVibe();                    // randomise the vibe knobs, keep per-instrument volumes
 music.RerollVibe( includeVolumes: true, includeGenre: true ); // opt-in full shuffle (also rolls volumes + genre)
-music.SetVibe( 0, 0.5f );              // set field 0 (TEMPO MIN) from a 0..1 fraction
+music.SetVibe( 0, 0.5f );              // set field 0 of VibeCodec.Fields(genre) from a 0..1 fraction
 music.SetGenre( 1 );                   // switch genre (re-encodes the vibe so it sticks)
 music.RandomEverySong = true;          // re-roll the vibe each new song (keeps your volumes + genre)
 
@@ -73,11 +77,15 @@ string file = music.SaveCurrentToFile();
 You can also generate audio without the component, off any thread:
 
 ```csharp
+// The tag is the PRNG stream, "{station}:{n}". Build it with VibeCodec.SongSeed rather than by
+// hand — it decides the station an empty tag falls back to, and every target must agree.
+string seed = VibeCodec.SongSeed( "mytag", 0 );   // "mytag:0"
+
 // One-shot WAV bytes
-byte[] wav = MusicGen.Generate( "mytag:0", new MusicGen.Config { TargetSeconds = 60f } );
+byte[] wav = MusicGen.Generate( seed, new MusicGen.Config() );
 
 // Or raw interleaved-stereo 16-bit PCM
-short[] pcm = MusicGen.GenerateSamples( "mytag:0", new MusicGen.Config(), out int sampleRate );
+short[] pcm = MusicGen.GenerateSamples( seed, new MusicGen.Config(), out int sampleRate );
 ```
 
 ## Usage — the optional panel
@@ -95,10 +103,39 @@ offers: now-playing seed + copy, prev/next, paste-a-seed, mute, volume, genre, p
 vibe mixer, global knobs, reroll, "random every song", and save-to-`.wav`. Every control just
 calls the player's public API, so anything the panel does you can do from code too.
 
-**Re-theming.** The whole palette is a block of SCSS variables at the top of
-`UI/SkafinityMusicPanel.razor.scss` (`$bg`, `$btn`, `$accent`, …). Override those to restyle —
-nothing below that block hardcodes a colour. Or skip the panel entirely and build your own UI
-against the same `SkafinityPlayer` API.
+**Re-theming — one colour.** The board is **neutral gray/black out of the box**, because a
+drop-in library shouldn't impose a palette on your world. Give it your own accent and the whole
+palette derives from it:
+
+```csharp
+SkafinityTheme.Accent = Color.Parse( "#ff8a3d" );   // any hue; null = back to neutral
+```
+
+Set it once at startup, or whenever your own theme changes — the panel folds it into its build
+hash, so it re-renders. That is the entire API; there is nothing to override and nothing to edit,
+which matters because **a vendored copy of this library should never be patched** — re-syncing
+would blow the edit away. `UI/SkafinityMusicPanel.razor.scss` keeps only layout, type and radii.
+Or skip the panel entirely and build your own UI against the same `SkafinityPlayer` API.
+
+## Console commands
+
+`SkafinityCommands.cs` registers a handful of commands so you can try all of this from the editor
+without writing wiring code first — which you would otherwise have to, since the board has no
+launcher and the accent is a static:
+
+| Command | |
+|---|---|
+| `skafinity_panel` | Open/close the board. **The only way to see it** before you've bound `IsOpen`. |
+| `skafinity_theme <hex\|clear>` | Retint live — exactly what setting `SkafinityTheme.Accent` does. |
+| `skafinity_seed <seed>` | Play `vibe:tag:n`, `tag:n`, a bare `tag`, or `default`. |
+| `skafinity_next` / `skafinity_prev` | Step the sequence. |
+| `skafinity_genre <n>` | Switch genre; a junk index prints the roster. |
+| `skafinity_reroll` | New genre + knobs, keeping your volumes. |
+| `skafinity_save` | Write the playing song to a `.wav`. |
+| `skafinity_status` | Seed, transport, and whether `skafinity.config.json` actually mounted. |
+| `skafinity_explain` | What the composer decided — tempo, swing, key, changes, voicing, groove, form. |
+
+They're client-side, like the player itself. Delete the file if you don't want them shipped.
 
 ## Key settings
 
@@ -106,9 +143,16 @@ against the same `SkafinityPlayer` API.
 |---|---|
 | **Music** | Master `Enabled` / `Volume`, `LiveReload` (regenerate on knob change), `MixerName`, `AutoPlay`, `RandomEverySong` (shuffle) |
 | **Seed** | `Tag`, `StartN`, `Vibe` override, `PersistProgress` + `SaveSlot` (resume across sessions) |
-| **Output** | `SampleRate`, `TargetSeconds`, `RenderThreads` (synthesis is split across worker threads) |
-| **Crossfade** | `Crossfade` window, `CrossfadeOverlap`, `AheadCount` (look-ahead depth) |
-| Tempo / Mix / Tone / Feel / Stereo / Instrument / Horns | The full generator knob set — see `MusicGen.Config` |
+| **Output** | `SampleRate` (32 kHz — below the engine's own default, since a game renders while it draws), `RenderThreads` (synthesis is split across worker threads) |
+| **Crossfade** | `Crossfade` window, `CrossfadeOverlap`, `AheadCount` (look-ahead depth), `PcmCacheRadius` |
+| **Genre** | `Genre` — 0 Ska-Punk · 1 Rock · 2 Country · 3 Metal · 4 Punk · 5 Pop. Prefer `SetGenre()` at runtime; a `Vibe` carries its own genre and otherwise wins. |
+| Tempo / Mix / Tone / Feel / Stereo / Instrument / Horns / Guitars / Keys | The full generator knob set — see `MusicGen.Config` |
+
+Every knob here mirrors a `MusicGen.Config` default, and the inspector value wins for any song
+without a vibe — so **a value that differs from the engine's default is this component overriding
+the shipped mix**. `SampleRate` is the only one meant to. The per-instrument levels in **Mix** are
+`1.0` deliberately: the baseline balance between voices is set in `skafinity.config.json` below,
+and a trim here rides on top of it.
 
 ## House-mix config
 
@@ -145,12 +189,14 @@ above — tune them without a rebuild.
 
 Same seed → same song, on every machine. The generator uses a portable `xmur3` → `mulberry32`
 PRNG with a fixed call order (all 32-bit unsigned wrapping arithmetic). The PRNG seed string is
-`"{tag}:{n}"` (empty tag ⇒ `"skafinity"`). Composition is the must-match part; the `Vibe` string
+`"{station}:{n}"`, where the station is the tag trimmed and lower-cased, or `"rotaliate"` when
+it's empty — build it with `VibeCodec.SongSeed` rather than by hand, since that fallback is part
+of what song an untagged seed *is*. Composition is the must-match part; the `Vibe` string
 overrides the subset of knobs `VibeCodec` covers, the rest come from `MusicGen.Config` defaults.
 
 `VibeCodec` is **genre-aware and append-only**. The vibe string is `[genre char][globals]
 [instrument grid]`, the grid reserving up to 8 instruments × 4 columns at fixed positions
-(`1 + globals + i*4 + c`). Each genre (Ska, Rock, Country, Metal) has its own instrument grid; `Fields(genre)`
+(`1 + globals + i*4 + c`). Each of the six genres has its own instrument grid; `Fields(genre)`
 is the per-genre list the UI iterates. Never reorder or remove — only append globals,
 instrument slots, or columns — or existing shared seeds change meaning.
 

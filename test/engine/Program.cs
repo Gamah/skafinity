@@ -1392,6 +1392,23 @@ static class Program
 			}
 		}
 
+		// ── stream names ──
+		// The station a tag resolves to is part of WHAT SONG a seed is, so both stream names must
+		// spell it the same way and the empty-tag fallback is a fixed word rather than a host's
+		// choice. A host that picks its own makes an untagged seed a different song there than on
+		// every other target — which is the only parity guarantee this repo makes.
+		Check( "an untagged song seed falls back to the shared station",
+			VibeCodec.SongSeed( "", 7 ) == "rotaliate:7", VibeCodec.SongSeed( "", 7 ) );
+		Check( "the vibe stream uses the same station as the song stream",
+			VibeCodec.VibeSeed( "", 7 ).StartsWith( "rotaliate:" )
+			&& VibeCodec.VibeSeed( "Gamah", 7 ).StartsWith( "gamah:" ) );
+		Check( "a tag is trimmed and lower-cased into a station",
+			VibeCodec.SongSeed( "  Gamah  ", 7 ) == VibeCodec.SongSeed( "gamah", 7 ) );
+		// The two streams must not collide: the same tag and n feed the composer and the vibe
+		// roll, and one string for both would make a song's vibe its own PRNG line.
+		Check( "the song and vibe streams are distinct",
+			VibeCodec.SongSeed( "x", 7 ) != VibeCodec.VibeSeed( "x", 7 ) );
+
 		// ── reroll ──
 		// One definition of "reroll" shared by every player. A seeded roll is the shuffle line,
 		// so the same tag and index must give the same vibe anywhere.

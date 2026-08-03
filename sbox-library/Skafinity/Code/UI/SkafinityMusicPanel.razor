@@ -18,7 +18,8 @@
 	as UI — you don't have to wire anything. The board's visibility is host-driven: set IsOpen
 	(or call Toggle()) from your game — e.g. bind it to a hotkey or your own pause/menu UI.
 	This component intentionally ships no launcher of its own, so it imposes nothing on the
-	host's HUD.
+	host's HUD — which also means a freshly-dropped panel shows nothing until you bind IsOpen.
+	Run `skafinity_panel` in the console to see it before you have (SkafinityCommands.cs).
 
 	The engine needs nothing from this: SkafinityPlayer plays on its own. This panel is pure
 	convenience for players who want to tweak the vibe rather than tune it in the inspector.

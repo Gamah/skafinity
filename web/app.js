@@ -131,6 +131,10 @@ let restartTimer = null;
 // ── Helpers ──
 const $ = (id) => document.getElementById(id);
 const lower = (s) => (s || '').trim().toLowerCase();
+// The JS mirror of VibeCodec.SongSeed — trim + lower-case, with 'rotaliate' for an empty tag.
+// The fallback word is load-bearing rather than cosmetic: it decides what song an untagged seed
+// (`vibe::23`) resolves to, so a host that spells it differently plays a different song from the
+// same seed. Keep this in step with the C#; the engine test asserts that side.
 function seedFor(nn) { return `${tag ? lower(tag) : 'rotaliate'}:${nn}`; }
 function currentSeedString() { return `${vibe}:${tag}:${displayN}`; }
 

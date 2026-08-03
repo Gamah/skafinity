@@ -93,6 +93,7 @@ skafinity/
         Drums/            #   Groove (DrumGroove tables + the kit/fill pass) + Kit (voices)
         Synth/            #   Patch, Notes (queue), Render, Osc
       SkafinityPlayer.cs  # s&box-only playback driver — outside the glob
+      SkafinityCommands.cs# s&box-only console commands — the only way to try this target
       UI/                 # s&box-only Razor panel + its runtime palette — outside the glob
   docker/                 # Dockerfile + compose (nginx on loopback 6970; external Caddy fronts it)
   wasm/
@@ -278,8 +279,18 @@ so the targets work on a box with no system-wide .NET or node. Override with
 **The s&box side cannot.** There is no engine install here, so `Code/SkafinityPlayer.cs` and
 `Code/UI/` are verified by review and grep only. When changing engine internals, check what
 they actually reference — today that is just `MusicGen.{Config, Channels, GenerateSamples,
-BeginPlan, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
+BeginPlan, Explain, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
 uncompilable target stays safe.
+
+**`Code/SkafinityCommands.cs` is how the s&box side gets tried at all.** It cannot be built here,
+so the editor is the only place it runs, and the two things most worth trying there were the two
+that needed code written first: the board **ships no launcher** (`skafinity_panel`), and the
+accent is a static a game sets at startup (`skafinity_theme #hex`, `clear` to go neutral). The
+rest drive the seed (`_seed _next _prev _genre _reroll _save`) and read it back — `skafinity_status`
+for the player's state, including whether `skafinity.config.json` actually mounted, which nothing
+else would ever say; `skafinity_explain` for the composer's decisions, i.e. the harness's `--seed`
+read-out from inside the game. Adding a public entry point for a diagnostic is worth it: the
+alternative on this target is guessing by ear, and there is no other way in.
 
 **What the s&box side CAN be checked for mechanically is drift against the engine's own
 defaults, and that is the failure this target actually has.** `SkafinityPlayer`'s `[Property]`

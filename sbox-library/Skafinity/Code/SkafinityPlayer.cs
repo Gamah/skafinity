@@ -243,6 +243,21 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	/// <summary>True while playback is stalled waiting on the song you asked to seek to (vs. silent
 	/// background fill). Pair with <see cref="GenerationProgress"/> for a "Generating…" indicator.</summary>
 	public bool IsBuffering => _bufferingN >= 0;
+	/// <summary>How many house-mix values were read out of <c>skafinity.config.json</c>. Zero means
+	/// the file wasn't mounted, and the baseline mix is the engine's compiled defaults rather than
+	/// the shared one both targets are supposed to read — a silent failure worth being able to see
+	/// (see <c>skafinity_status</c>).</summary>
+	public int HouseConfigCount => _houseConfig?.Count ?? 0;
+
+	/// <summary>What the composer decided for the song playing right now — tempo, key, changes,
+	/// voicing, groove, figure and tune lengths, ending, and the form with each section's
+	/// energy/feel. The same read-out the engine test harness's <c>--seed</c> prints, which is the
+	/// tool for "this seed sounds wrong": reading the decisions beats inferring them from the
+	/// audio.</summary>
+	/// <remarks>Plans the song again to get it, which is a composition pass plus the drum
+	/// synthesis — expect a hitch of up to a second or so. It is a diagnostic, not something to
+	/// call per frame.</remarks>
+	public string ExplainCurrent() => MusicGen.BeginPlan( Seed( _curN ), ConfigForN( _curN ) ).Explain();
 
 	/// <summary>One entry in the navigable timeline (see <see cref="Timeline"/>).</summary>
 	public readonly struct QueueEntry
@@ -295,8 +310,10 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	}
 
 	string SeedTag => string.IsNullOrEmpty( Tag ) ? "" : Tag;
-	// Build the PRNG seed string from a resolved tag, so worker code never re-reads state.
-	static string SeedFor( string tag, int n ) => $"{(string.IsNullOrEmpty( tag ) ? "skafinity" : tag.ToLowerInvariant())}:{n}";
+	// Build the PRNG seed string from a resolved tag, so worker code never re-reads state. The
+	// spelling is the ENGINE's (VibeCodec.SongSeed) rather than this host's: it decides what song
+	// an untagged seed is, and the web resolves the same one.
+	static string SeedFor( string tag, int n ) => VibeCodec.SongSeed( tag, n );
 	string Seed( int n ) => SeedFor( SeedTag, n );
 
 	protected override void OnStart()
