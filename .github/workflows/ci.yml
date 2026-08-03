@@ -1,7 +1,15 @@
 # The checks that can run without a .NET SDK — which is all of them that matter for what
 # ships, because web/_framework is committed and the Pages deploy packages it rather than
-# building it. Runs on every PR and every branch push, so the answer arrives before a merge
-# rather than after a deploy.
+# building it. Runs on every PR, so the answer arrives before a merge rather than after a
+# deploy, and on preview/* because those branches can deploy to the live site.
+#
+# NOT on every branch push, and the reason is the bundle gate below. Re-staging
+# web/_framework is a ~2-minute AOT publish that belongs at the END of a piece of work, not
+# on every commit of it — so a feature branch's intermediate commits are EXPECTED to carry a
+# stale bundle. Failing them mailed the repo owner about a state that is not a defect, which
+# is how a gate stops being read. The gate itself is unchanged and still blocks what it was
+# written to block: nothing reaches master except through a PR, and nothing reaches the live
+# site except master or a preview/* branch, and both are checked.
 #
 # The engine's own C# tests (`make test-engine`) are deliberately NOT here: they need the SDK,
 # they take ~25 s of pure synthesis, and they assert on composition rather than on what the
@@ -12,7 +20,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches-ignore: [master]   # master is covered by the Pages workflow, which gates on the same check
+    branches: [preview/**]   # master is covered by the Pages workflow, which gates on the same check
 
 permissions:
   contents: read

@@ -1142,9 +1142,18 @@ the site keeps serving the old engine while `master` claims the new one. Page-on
 that forgets to re-stage `web/_framework` breaks nothing visibly — no 404, no failing test, just
 the old engine playing under a `master` that claims otherwise. `make stage` therefore writes
 `web/.bundle-stamp` (`<kind> <sha256>` over every `.cs` the wasm build compiles, plus the csproj
-and `runtimeconfig.template.json`), and `make check-bundle` recomputes it. Both the CI workflow
-and the Pages deploy run that check first, so a stale bundle fails the merge and never reaches
-the site. `kind` exists because `make dev` stages an interpreted runtime — fresh but slow in a
+and `runtimeconfig.template.json`), and `make check-bundle` recomputes it. The CI workflow and
+the Pages deploy both run that check first, so a stale bundle fails the merge and never reaches
+the site.
+
+**CI runs on PULL REQUESTS and `preview/*`, deliberately not on every branch push.** Re-staging
+the bundle is a ~2-minute AOT publish that belongs at the end of a piece of work, so a feature
+branch's intermediate commits are EXPECTED to carry a stale one — running the gate on them mails
+the repo owner about a state that is not a defect, and a gate that cries wolf stops being read.
+Nothing reaches master except through a PR and nothing reaches the live site except master or a
+`preview/*` branch, so the gate still covers everything it was written to cover. If you want the
+answer earlier on a WIP branch, run `sh tools/bundle-stamp.sh check` locally — it is the same
+script CI calls. `kind` exists because `make dev` stages an interpreted runtime — fresh but slow in a
 browser — so the check demands `aot` and a `dev` stamp fails too. **Both `stage` and
 `check-bundle` call the same `tools/bundle-stamp.sh`**, which is the point: two implementations
 of "what counts as a source" would drift and the gate would quietly stop gating. Add a compiled
