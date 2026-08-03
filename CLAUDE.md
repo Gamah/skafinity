@@ -705,6 +705,19 @@ never clears before the next one — the arrangement swims. `CrashRingScale` kee
 one explicit number rather than a quietly re-fitted constant, so the law stays legible and the mix
 decision stays a mix decision. The ride has no equivalent and did not need one.
 
+**A RIDE AND A CRASH DIFFER BY THEIR TAIL, NOT BY THEIR SPECTRUM — and that is a trap, because
+the band weights are nearly identical and look correct.** Measured per band as the time to fall
+20 dB, the ride against the bright crash was low 2.80 s vs 1.00, mid 2.53 vs 0.89, upper-mid 2.03 vs
+0.87, top 1.53 vs 0.81, while the two spectra's weights sit within a dB of each other (mid −8.4 dB
+vs −8.5). A voice whose balance is a crash's and whose tail is 2.8× longer IS a crash that will not
+stop, and it reads as one wherever the arrangement gets sparse enough to expose it. `RingTau`'s
+`knee` is the in-model lever — it shortens the tail below a corner without touching the stick attack
+— and the crash had always carried one while the ride carried none, so the ride's mids rang at the
+full τ=k/√f. The listening report that found this was precise in a way the measurements were not:
+"the MIDDLE of the noise of the ride feels like a crash when the mix is sparse". **Compare a voice
+against its own family before reaching for its level**; the ride had already been through a +10 dB
+boost and a ring-scale attempt, and neither was the thing that made it the wrong instrument.
+
 **Measure a voice's dominance as LEVEL-IN-ITS-BAND plus DUTY CYCLE, and never as whole-mix RMS.**
 "A cymbal is overpowering everything" was chased through the bass and the reverb because muting the
 ride moved whole-mix RMS by 0.77 dB — RMS is owned by the low end and says nothing about a

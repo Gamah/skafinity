@@ -628,8 +628,18 @@ readonly struct CymbalBands
 	/// mid-centred but the ATTACK is broadband, so a bigger splash is a per-stroke click in the
 	/// clear rather than more mud. That is what a ride's ping is, and it is inside the 0.5–1.8
 	/// band the audition approved.</summary>
+	/// <remarks>THE KNEE IS WHY A RIDE STROKE STOPS READING AS A CRASH. Measured per band as the
+	/// time to fall 20 dB, the ride against the bright crash was low 2.80 s vs 1.00, mid 2.53 vs
+	/// 0.89, upper-mid 2.03 vs 0.87, top 1.53 vs 0.81 — while the two spectra's band WEIGHTS are
+	/// within a dB of each other (mid −8.4 dB vs −8.5). A ride whose spectral balance is a crash's
+	/// and whose tail is 2.8× longer is a crash that will not stop, and that is what it sounded
+	/// like wherever the mix got sparse enough to expose it. The crash already carried a knee for
+	/// this reason; the ride carried none, so its mids rang at the full τ=k/√f. At 2 kHz the mid
+	/// comes to 1.47 s — still 1.65× the crash, because a ride SHOULD sustain longer than one, and
+	/// no longer the same object. The stick attack is untouched (peak still inside the first 20 ms),
+	/// which is the point: this shortens the wash behind the ping, not the ping.</remarks>
 	public static CymbalBands Bow( float splash = 1f, float wash = 1f, float ring = 1f )
-		=> Build( BowStrike, tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
+		=> Build( BowStrike, tauK: 39f, knee: 2000f, sizzle: 0f, ring: ring,
 			splash: 1.25f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
 			washTau: 0.70f * ring, stick: 0.55f, stickCut: 7000f, noiseHp: 240f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 3200f );
@@ -638,7 +648,7 @@ readonly struct CymbalBands
 	/// fundamental — the measurement puts its energy in a clang cluster around 2.3 kHz over the
 	/// same metal as the bow.</summary>
 	public static CymbalBands Bell( float splash = 1f, float ring = 1f, float clang = 2300f )
-		=> Build( BellStrike( clang ), tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
+		=> Build( BellStrike( clang ), tauK: 39f, knee: 2000f, sizzle: 0f, ring: ring,
 			splash: 0.40f * splash, splashTau: 0.05f, washLvl: 0.030f,
 			washTau: 0.55f * ring, stick: 0.40f, stickCut: 6500f, noiseHp: 240f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 2600f );
