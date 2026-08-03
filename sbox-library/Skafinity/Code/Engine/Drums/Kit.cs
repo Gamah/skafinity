@@ -90,8 +90,19 @@ static class KitNuance
 	/// <summary>The open hi-hat's ring, and its corner. Approved as a range for the same reason
 	/// the others are: the tail of an open hat is how hard the foot was off it, which is a
 	/// different amount every bar. A hat that rings the identical 600 ms eight times is the same
-	/// tell as a kick that never varies.</summary>
-	public const float OpenHatDurMin = 0.45f, OpenHatDurMax = 0.75f;
+	/// tell as a kick that never varies.
+	///
+	/// <para>The band was 0.45–0.75 s, and that is a hat measured on its own rather than one in a
+	/// pattern. With <c>decayFrac</c> ~0.45 it is a 200–340 ms time constant, while an eighth at
+	/// the top of a genre's band is ~185 ms — so the open hat was still half up when the next
+	/// stroke landed, on every open cell, and a groove that plays them continuously (the country
+	/// train beat) reads as a wash that never clears rather than as an open hat. The range is kept
+	/// because the nuance is real; it is the LENGTH that was a solo measurement.</para>
+	///
+	/// <para>THE VALUE HERE IS THE ONE THAT COUNTS: <c>HatTone.Default.openDur</c> is overridden
+	/// per song from this band (see Compose.cs), so editing the preset moves nothing a listener
+	/// hears — the digests not budging is what says so.</para></summary>
+	public const float OpenHatDurMin = 0.26f, OpenHatDurMax = 0.42f;
 	public const float OpenHatCut = 6250f;
 
 	/// <summary>Where half open sits. The pedal's travel is geometric (see RenderHat), and this is
@@ -406,6 +417,9 @@ readonly struct HatTone
 			attackSec < 0 ? AttackSec : attackSec, openCurve < 0 ? OpenCurve : openCurve,
 			sizzleHz < 0 ? SizzleHz : sizzleHz, sizzleDepth < 0 ? SizzleDepth : sizzleDepth );
 
+	/// <remarks>openDur here is only the base a song varies FROM: Compose.cs overrides it out of
+	/// KitNuance.OpenHatDurMin/Max on every song, so this number reaches nothing but the audition
+	/// path. Change the band, not this.</remarks>
 	public static readonly HatTone Default = new(
 		closedDur: 0.035f, openDur: 0.16f, decayFrac: 0.4, closedCut: 7000f, openCut: 7000f,
 		level: 1f, lowThud: 0f );
@@ -989,7 +1003,7 @@ public sealed partial class MusicGen
 	/// <summary>The ride and its bell, on the right of the kit opposite the hats.</summary>
 	void RenderRideCym( int at, float amp, float[][] t, int chokeAt = int.MaxValue,
 		float chokeTau = HandChoke )
-		=> RenderCymbal( at, amp, t, _c.HatBalance, _drumPan, chokeAt, chokeTau );
+		=> RenderCymbal( at, amp, t, _c.RideBalance, _drumPan, chokeAt, chokeTau );
 
 	/// <summary>A crash. The kit's two crashes are panned apart and which side each is on is the
 	/// song's own draw, so a ridden crash and the one accenting over it land opposite each other

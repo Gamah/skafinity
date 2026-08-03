@@ -242,7 +242,7 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 87;
+	public const int Size = 88;
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
@@ -265,7 +265,7 @@ static class Cfg
 		c.MasterReverb,
 		// advanced peak-balance / level tuning (not vibe knobs; see VibeCodec.AdvancedFields)
 		c.KitPresence,
-		c.KickBalance, c.SnareBalance, c.TomBalance, c.HatBalance, c.CrashBalance,
+		c.KickBalance, c.SnareBalance, c.TomBalance, c.HatBalance, c.RideBalance, c.CrashBalance,
 		c.BassBalance, c.SkankBalance, c.OrganBalance, c.MelodyBalance, c.HornBalance,
 		c.KeysBalance, c.RhythmGtrBalance, c.LeadGtrBalance,
 		// stereo double-tracking / width (see VibeCodec.AdvancedFields)
@@ -297,7 +297,7 @@ static class Cfg
 		c.RhythmGtrVol = (float)a[i++]; c.RhythmGtrCutoff = (float)a[i++]; c.RhythmGtrDrive = (float)a[i++]; c.RhythmGtrChug = (float)a[i++];
 		c.MasterReverb = (float)a[i++];
 		c.KitPresence = (float)a[i++];
-		c.KickBalance = (float)a[i++]; c.SnareBalance = (float)a[i++]; c.TomBalance = (float)a[i++]; c.HatBalance = (float)a[i++]; c.CrashBalance = (float)a[i++];
+		c.KickBalance = (float)a[i++]; c.SnareBalance = (float)a[i++]; c.TomBalance = (float)a[i++]; c.HatBalance = (float)a[i++]; c.RideBalance = (float)a[i++]; c.CrashBalance = (float)a[i++];
 		c.BassBalance = (float)a[i++]; c.SkankBalance = (float)a[i++]; c.OrganBalance = (float)a[i++]; c.MelodyBalance = (float)a[i++]; c.HornBalance = (float)a[i++];
 		c.KeysBalance = (float)a[i++]; c.RhythmGtrBalance = (float)a[i++]; c.LeadGtrBalance = (float)a[i++];
 		c.DoubleTrack = (float)a[i++]; c.WidthBacking = (float)a[i++]; c.WidthLead = (float)a[i++]; c.WidthDetune = (float)a[i++];

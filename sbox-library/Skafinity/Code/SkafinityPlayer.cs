@@ -67,8 +67,9 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	[Property, Group( "Output" ), Range( 1, 8 )] public int RenderThreads { get; set; } = 6;
 
 	// ── Crossfade / scheduling ──
-	/// <summary>Crossfade window (also the first song's fade-in from silence), seconds. The two
-	/// songs only both-audible for <see cref="CrossfadeOverlap"/> of this, centred.</summary>
+	/// <summary>Crossfade window between songs, seconds. The two songs are only both-audible for
+	/// <see cref="CrossfadeOverlap"/> of this, centred. The first song's fade up from silence is
+	/// separate and much shorter — see <c>StartFadeSeconds</c>.</summary>
 	[Property, Group( "Crossfade" ), Range( 0.5f, 8f )] public float Crossfade { get; set; } = 3.75f;
 	[Property, Group( "Crossfade" ), Range( 0f, 1f )] public float CrossfadeOverlap { get; set; } = 0.5f;
 	/// <summary>How many upcoming songs to keep pre-generated (built one-per-tick so the fill never stalls a frame).</summary>
@@ -655,6 +656,13 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 
 	int FadeFrames => Math.Max( 1, (int)(Math.Clamp( Crossfade, 0.25f, 8f ) * _sr) );
 
+	// Coming up from silence at the start of a session. Short on purpose and NOT the crossfade
+	// window: a crossfade is long because two songs have to trade places without either being
+	// heard to stop, and nothing is being traded here. See BeginAt for what the long version did
+	// to the opening bars.
+	const float StartFadeSeconds = 0.15f;
+	int StartFadeFrames => Math.Max( 1, (int)(StartFadeSeconds * _sr) );
+
 	// All look-ahead buffers are interleaved stereo PCM; lengths/offsets below are in frames.
 	static int Frames( short[] pcm ) => pcm.Length / MusicGen.Channels;
 
@@ -818,13 +826,18 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	void BeginAt( int n )
 	{
 		_curRaw = _pcm[n];
-		int fade = Math.Min( FadeFrames, Frames( _curRaw ) / 3 );
-		_curReserve = fade;
+		_curReserve = Math.Min( FadeFrames, Frames( _curRaw ) / 3 );
 
 		_stream = new SoundStream( _sr, MusicGen.Channels );
 
-		// One pass, fade-in over the first `fade`, last `fade` held back for the crossfade into n+1.
-		int written = WriteSongBody( _curRaw, 0, _curReserve, fade );
+		// The tail held back for the crossfade is the crossfade's length; the fade UP FROM SILENCE
+		// is not, and used to be. A ramp over the whole crossfade window put the first bars of the
+		// song under it — half a second in, a 3.75 s linear ramp is still at 0.13 (-17.5 dB) — and
+		// what that does to a drum kit is specific rather than merely quiet: it crushes the STRIKE
+		// and lets the RING arrive at full level a second later, so every cymbal in the opening
+		// sounds like it was hit before the song started. Coming out of silence only has to not
+		// click.
+		int written = WriteSongBody( _curRaw, 0, _curReserve, Math.Min( StartFadeFrames, _curReserve ) );
 		_pushedSeconds = written / (double)_sr;
 
 		_handle = _stream.Play();

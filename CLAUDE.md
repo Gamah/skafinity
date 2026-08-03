@@ -193,7 +193,13 @@ table says where, and it has been wrong to guess before.
 
 - `-- --seed vibe:tag:n` prints what the composer decided for that seed: the decoded knobs, the
   tempo and swing (flagging a shuffle), key, changes, voicing, groove, figure lengths, tune
-  lengths, ending style, and the form with each section's energy/feel/key.
+  lengths, ending style, and the form with each section's energy/feel/key **and which cymbal its
+  hand is on**. That last column exists because a listening note about a cymbal is ambiguous three
+  ways and the repairs differ: the ride's level, the crash's level, and a section on the hats where
+  neither applies. It is drawn per SECTION against the song's ride preference, so nothing about the
+  genre or the knobs predicts it — a country song with ride pref 0.11 came back hats on all eight
+  sections, which said the ring being complained about was the section-boundary CRASH before a
+  single constant was touched.
 - `-- --grid [genre]` prints, per voice, how often it lands on a bar line and how far its onsets
   sit from the song's own sixteenth grid (swing and tempo curve included). **A gesture written in
   TICKS scales with tempo** — country's strum spread was "a couple of ticks per string", which is
@@ -217,6 +223,14 @@ per-genre `Level` entries in `BassTone`/`RhythmGtrTone`/`KeysLevel`/`LeadLevel` 
 numbers and they go stale when the part they were tuned for is replaced. The suite asserts the
 outcome — comp under the kit, lead not dominating, bass present, and silence when every voice is
 muted.
+
+**A per-song NUANCE BAND outranks the preset it varies, and editing the preset is a silent no-op.**
+The kit draws `_hatTone`/`_footTone`/`_kickTone`/the cymbals per song out of `KitNuance` bands
+(`Compose.cs`), overriding the `HatTone.Default`-style presets field by field. So "the open hat
+rings too long" is `KitNuance.OpenHatDurMin/Max`, not `HatTone.Default.openDur` — a change to the
+latter compiles, reads correctly, and moves nothing a listener hears. **The digests are what catch
+it**: a deliberate audible change that leaves every hash untouched has not happened. Treat an
+unmoved digest after an intended timbre edit as a failed edit, not as a lucky no-op.
 
 **But `--levels` is ONE SEED PER GENRE, and a single seed varies about 4 dB around its target** (the
 suite's own ceiling is written to allow for exactly that). So the tool answers "did this change move
@@ -748,6 +762,15 @@ To add a baseline-mix knob: add the `Config` field, add a row to `VibeCodec.Adva
 it to `Cfg.To`/`From` (+ bump `Cfg.Size`), and add a key to the JSON. To make something a *vibe*
 knob instead, put it in a genre grid / `GlobalFields` (see above), not here.
 
+**The ride used to run through `HatBalance`** — it was built as the cymbal HAND replacing the hat
+rather than as an instrument with its own bus, so they shared one number. They are not one
+instrument to mix: a hat is short, high and continuous, a ride rings, and "the hats are too loud"
+is then unanswerable without moving the ride too. `RideBalance` is now its own advanced field,
+seeded from `HatBalance`'s value so the split changed nothing on its own. **The general shape is
+worth keeping**: when a voice was built as a variant of another one, it inherits that one's bus by
+accident rather than by decision, and the first listening note that separates them is when you
+find out.
+
 **`GenreMix` is the one that is not a level.** Each genre carries its own mix profile
 (`GenreProfile.Mix`: reverb, width, and low/mid/high trims — metal dry and mid-scooped, pop wide
 and bright, country dry and centred, ska roomy), and `GenreMix` says how far that profile is
@@ -1080,6 +1103,16 @@ whole song's PCM — for as long as the list does.
 
 Browsers require a user gesture before audio — `AudioContext.resume()` is gated on the play
 button.
+
+**A fade UP FROM SILENCE is not a crossfade, and must not borrow its length.** A crossfade is long
+because two songs have to trade places without either being heard to stop; nothing is being traded
+at the start of a session. `SkafinityPlayer` used one number for both, and what a multi-second linear
+ramp does to a drum kit is specific rather than merely quiet: it crushes the STRIKE and lets the RING
+arrive at full level a second later, so every cymbal in the opening bars sounds like it was hit
+before the song started. That is the diagnosis for "the song starts with a cymbal already ringing" —
+and the tell that it is a HOST bug rather than an engine one is that the engine's own render of the
+same seed starts on a clean attack (check it with `--render` and look at the first few milliseconds,
+not at a block envelope, which cannot tell an attack from a mid-decay start).
 
 ---
 
