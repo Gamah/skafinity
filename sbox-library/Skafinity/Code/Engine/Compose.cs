@@ -13,6 +13,24 @@ namespace Skafinity;
 
 public sealed partial class MusicGen
 {
+	// A copy of an int[], spelled out. NOT `(int[])a.Clone()`: s&box compiles this same source
+	// against an API whitelist that DENIES Array.Clone specifically, so it is a compile error
+	// there (SB1000) while compiling fine here and in the wasm build — a build we cannot run, so
+	// the fix has to be a habit rather than a test.
+	//
+	// It is a deliberate carve-out rather than an omission [SOURCE, read 2026-08-03]:
+	// Sandbox.Access/Rules/Types.cs allows "System.Array*" and then denies
+	// "!System.Private.CoreLib/System.Array.Clone*" on the next line — one of only seven deny
+	// entries in the whole ruleset, sitting directly under the same treatment of
+	// Object.MemberwiseClone. So the rule is about that ONE MEMBER, not about System.Array:
+	// Array.Sort, Array.Empty and Array.Copy are all allowed and all used in this engine.
+	static int[] CopyOf( int[] src )
+	{
+		var d = new int[src.Length];
+		for ( int i = 0; i < src.Length; i++ ) d[i] = src[i];
+		return d;
+	}
+
 	// Single-threaded generation (used by Generate / GenerateSamples). The controller
 	// uses the chunked path instead (BeginPlan → parallel RenderPitchedRange → FinishStereo).
 	float Compose( string tag )
@@ -59,7 +77,7 @@ public sealed partial class MusicGen
 		_voicingRes = _voicing;
 		if ( _susVoice >= 0 )
 		{
-			_voicingRes = (int[])_voicing.Clone();
+			_voicingRes = CopyOf( _voicing );
 			_voicingRes[_susVoice] = Harmony.Third;
 		}
 		// How each chord inverts to stay near the one before it. A property of the changes and
@@ -596,7 +614,7 @@ public sealed partial class MusicGen
 		var tones = VoicedMidis( chordBase, root, _voicingRes );
 		var lead = Harmony.LeadToward( _scale, _endingPrev, chordBase, root, _voicingRes );
 		for ( int i = 0; i < tones.Length; i++ ) tones[i] += lead[i];
-		_endingPrev = (int[])tones.Clone();
+		_endingPrev = CopyOf( tones );
 		if ( _prof.Comp is not (CompStyle.Skank or CompStyle.Pad) )
 			tones = DrivenVoicing( tones, _voicingRes );
 

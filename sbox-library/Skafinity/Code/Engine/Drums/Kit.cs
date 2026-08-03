@@ -90,8 +90,19 @@ static class KitNuance
 	/// <summary>The open hi-hat's ring, and its corner. Approved as a range for the same reason
 	/// the others are: the tail of an open hat is how hard the foot was off it, which is a
 	/// different amount every bar. A hat that rings the identical 600 ms eight times is the same
-	/// tell as a kick that never varies.</summary>
-	public const float OpenHatDurMin = 0.45f, OpenHatDurMax = 0.75f;
+	/// tell as a kick that never varies.
+	///
+	/// <para>The band was 0.45–0.75 s, and that is a hat measured on its own rather than one in a
+	/// pattern. With <c>decayFrac</c> ~0.45 it is a 200–340 ms time constant, while an eighth at
+	/// the top of a genre's band is ~185 ms — so the open hat was still half up when the next
+	/// stroke landed, on every open cell, and a groove that plays them continuously (the country
+	/// train beat) reads as a wash that never clears rather than as an open hat. The range is kept
+	/// because the nuance is real; it is the LENGTH that was a solo measurement.</para>
+	///
+	/// <para>THE VALUE HERE IS THE ONE THAT COUNTS: <c>HatTone.Default.openDur</c> is overridden
+	/// per song from this band (see Compose.cs), so editing the preset moves nothing a listener
+	/// hears — the digests not budging is what says so.</para></summary>
+	public const float OpenHatDurMin = 0.26f, OpenHatDurMax = 0.42f;
 	public const float OpenHatCut = 6250f;
 
 	/// <summary>Where half open sits. The pedal's travel is geometric (see RenderHat), and this is
@@ -406,6 +417,9 @@ readonly struct HatTone
 			attackSec < 0 ? AttackSec : attackSec, openCurve < 0 ? OpenCurve : openCurve,
 			sizzleHz < 0 ? SizzleHz : sizzleHz, sizzleDepth < 0 ? SizzleDepth : sizzleDepth );
 
+	/// <remarks>openDur here is only the base a song varies FROM: Compose.cs overrides it out of
+	/// KitNuance.OpenHatDurMin/Max on every song, so this number reaches nothing but the audition
+	/// path. Change the band, not this.</remarks>
 	public static readonly HatTone Default = new(
 		closedDur: 0.035f, openDur: 0.16f, decayFrac: 0.4, closedCut: 7000f, openCut: 7000f,
 		level: 1f, lowThud: 0f );
@@ -560,7 +574,16 @@ readonly struct CymbalBands
 			=> LogBump( f, Centre, Width ) + (Level2 > 0f ? Level2 * LogBump( f, Centre2, Width2 ) : 0f);
 	}
 
-	static readonly Strike BowStrike = new( 1200f, 1.1f );
+	// THE BOW'S BUMP IS A MIX DECISION AND NOT THE MEASUREMENT. The reference puts a real ride's
+	// sustain at ~1.2 kHz, and that is where this sat — which is both darker than the hi-hat it
+	// stands in for and, worse, exactly where the guitars are. Measured against an open hat as
+	// spectral centroid: the hat is 12.5 kHz at the attack and STILL 12.4 kHz half a second later,
+	// because it is one high-passed noise with one decay; the ride was 10.4 kHz falling to 8.8 kHz,
+	// because tau=k/sqrt(f) means the low bands outlive the high ones and a cymbal built on that law
+	// ALWAYS darkens as it rings. So a ride reads as the dark voice against a hat that never moves,
+	// which is backwards for the one carrying the pulse. At 4200 Hz with the noise floor lifted the
+	// tail comes to 10.9 kHz — still under the hat, and 2.1 kHz brighter than it was.
+	static readonly Strike BowStrike = new( 4200f, 0.95f );
 	static Strike BellStrike( float clang ) => new( clang, 0.45f, 290f, 0.25f, 0.30f );
 	static readonly Strike BrightCrashStrike = new( 3200f, 0.80f, 400f, 0.55f, 0.25f );
 	static readonly Strike DarkCrashStrike = new( 520f, 0.75f, 9000f, 0.60f, 0.45f );
@@ -572,7 +595,18 @@ readonly struct CymbalBands
 	/// measured with --levels, a ride at the crash's stroke level put country's whole kit 2.6 dB
 	/// over the rest of its band on its riding sections alone. A crash overlaps nothing, being one
 	/// gesture a phrase, so it keeps the louder stroke.</summary>
-	const float StrokeLevelRide = 0.95f, StrokeLevelCrash = 0.60f;
+	// StrokeLevelRide was 0.30 and went to 0.95 in one +10 dB step, by ear, to stop the ride being
+	// buried — and that commit's own message flagged the result as "worth watching". This is that
+	// watch firing: measured in the >2.5 kHz band, where nothing else in a ska arrangement lives,
+	// 0.95 puts the ride +6.9 dB over the ENTIRE REST OF THE MIX and holds that band within 12 dB
+	// of its own peak 43% of the time. 0.30 was +1.4 dB and 12.8%, which is the buried the boost
+	// was aimed at; 0.55 is +3.65 dB and 21.3% — present without being the arrangement.
+	//
+	// The lesson is about the measurement, not the number: a level set by ear against ONE
+	// balance ("can I hear the ride?") has no way to notice the other one ("is the ride now the
+	// loudest thing in its band?"), and a +10 dB single step is where that goes wrong. The
+	// duty-cycle-in-band reading answers both and is what the next change to this should use.
+	const float StrokeLevelRide = 0.45f, StrokeLevelCrash = 0.60f;
 
 	/// <summary>The extra decay a cymbal takes on WHILE IT IS BEING PLAYED — see RenderCymbal's
 	/// chokeTau. A stroke landing on a ringing cymbal excites it and damps it, because the stick is
@@ -603,17 +637,27 @@ readonly struct CymbalBands
 	/// mid-centred but the ATTACK is broadband, so a bigger splash is a per-stroke click in the
 	/// clear rather than more mud. That is what a ride's ping is, and it is inside the 0.5–1.8
 	/// band the audition approved.</summary>
+	/// <remarks>THE KNEE IS WHY A RIDE STROKE STOPS READING AS A CRASH. Measured per band as the
+	/// time to fall 20 dB, the ride against the bright crash was low 2.80 s vs 1.00, mid 2.53 vs
+	/// 0.89, upper-mid 2.03 vs 0.87, top 1.53 vs 0.81 — while the two spectra's band WEIGHTS are
+	/// within a dB of each other (mid −8.4 dB vs −8.5). A ride whose spectral balance is a crash's
+	/// and whose tail is 2.8× longer is a crash that will not stop, and that is what it sounded
+	/// like wherever the mix got sparse enough to expose it. The crash already carried a knee for
+	/// this reason; the ride carried none, so its mids rang at the full τ=k/√f. At 2 kHz the mid
+	/// comes to 1.47 s — still 1.65× the crash, because a ride SHOULD sustain longer than one, and
+	/// no longer the same object. The stick attack is untouched (peak still inside the first 20 ms),
+	/// which is the point: this shortens the wash behind the ping, not the ping.</remarks>
 	public static CymbalBands Bow( float splash = 1f, float wash = 1f, float ring = 1f )
-		=> Build( BowStrike, tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
+		=> Build( BowStrike, tauK: 39f, knee: 3500f, sizzle: 0f, ring: ring,
 			splash: 1.25f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
-			washTau: 0.70f * ring, stick: 0.55f, stickCut: 7000f, noiseHp: 240f, washLp: 6500f,
+			washTau: 0.70f * ring, stick: 0.55f, stickCut: 9000f, noiseHp: 900f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 3200f );
 
 	/// <summary>The bell. A ride bell is not a church bell: no harmonic stack and no low
 	/// fundamental — the measurement puts its energy in a clang cluster around 2.3 kHz over the
 	/// same metal as the bow.</summary>
 	public static CymbalBands Bell( float splash = 1f, float ring = 1f, float clang = 2300f )
-		=> Build( BellStrike( clang ), tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
+		=> Build( BellStrike( clang ), tauK: 39f, knee: 3500f, sizzle: 0f, ring: ring,
 			splash: 0.40f * splash, splashTau: 0.05f, washLvl: 0.030f,
 			washTau: 0.55f * ring, stick: 0.40f, stickCut: 6500f, noiseHp: 240f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 2600f );
@@ -989,7 +1033,7 @@ public sealed partial class MusicGen
 	/// <summary>The ride and its bell, on the right of the kit opposite the hats.</summary>
 	void RenderRideCym( int at, float amp, float[][] t, int chokeAt = int.MaxValue,
 		float chokeTau = HandChoke )
-		=> RenderCymbal( at, amp, t, _c.HatBalance, _drumPan, chokeAt, chokeTau );
+		=> RenderCymbal( at, amp, t, _c.RideBalance, _drumPan, chokeAt, chokeTau );
 
 	/// <summary>A crash. The kit's two crashes are panned apart and which side each is on is the
 	/// song's own draw, so a ridden crash and the one accenting over it land opposite each other

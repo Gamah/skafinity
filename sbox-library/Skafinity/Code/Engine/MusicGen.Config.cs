@@ -159,6 +159,12 @@ public sealed partial class MusicGen
 		public float SnareBalance = 0.900f;
 		public float TomBalance = 0.780f;     // tuned by ear
 		public float HatBalance = 0.407f;     // equal-peak baseline (0.582) backed off 30% by ear
+		// The ride used to ride on HatBalance, because it was built as the cymbal HAND replacing
+		// the hat rather than as an instrument with its own bus. They are not one instrument to
+		// mix: a hat is short and high and plays continuously, a ride rings — so wanting one back
+		// and not the other is an ordinary request, and it was unanswerable. Seeded from
+		// HatBalance's value so splitting them changed nothing on its own.
+		public float RideBalance = 0.407f;
 		public float CrashBalance = 0.380f;
 		// Melodic-voice peak balance — the instrument analog of the kit balances above (same
 		// equal-peak-then-tune workflow). Bass measured the same peak across genres, so one value.

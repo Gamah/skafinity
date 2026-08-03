@@ -848,6 +848,40 @@ static class Program
 		}
 		Check( "some genre has a loud comp", loudGenres > 0, $"{loudGenres} of {VibeCodec.GenreCount}" );
 
+		// ── crash-riding (a genre's cymbal hand) ──
+		// CrashRideFrom's "over 1 means never" is a SENTINEL, and it is only never while no form
+		// authors a section above 1.0 — an implicit coupling between GenreProfile's default and
+		// Structure.cs's Full. Raise one without the other and a genre that opted out (country: a
+		// crash-ridden train beat is not a country sound) starts crash-riding with nothing failing.
+		int crashRiders = 0, optedOut = 0;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			float peak = 0f;
+			foreach ( var part in p.Form ) peak = Math.Max( peak, part.Energy );
+			if ( p.CrashRideFrom > 1f )
+			{
+				optedOut++;
+				Check( $"genre {g} opted out of crash-riding, and really cannot reach it",
+					peak < p.CrashRideFrom, $"peak energy {peak:0.00} vs CrashRideFrom {p.CrashRideFrom:0.00}" );
+			}
+			else
+			{
+				crashRiders++;
+				// Opted IN has the mirror trap: a threshold above the genre's own peak is a
+				// setting that reads as enabled and never fires.
+				Check( $"genre {g} opted in to crash-riding, and reaches it", peak >= p.CrashRideFrom,
+					$"peak energy {peak:0.00} vs CrashRideFrom {p.CrashRideFrom:0.00}" );
+				// A crash-ride is a lift, so it must not be every section either.
+				float trough = 1f;
+				foreach ( var part in p.Form ) trough = Math.Min( trough, part.Energy );
+				Check( $"genre {g} does not crash-ride the whole song", trough < p.CrashRideFrom );
+			}
+		}
+		// Both sides non-vacuous, or one of the two checks above is never exercised.
+		Check( "some genre crash-rides", crashRiders > 0, $"{crashRiders} of {VibeCodec.GenreCount}" );
+		Check( "some genre does not", optedOut > 0, $"{optedOut} of {VibeCodec.GenreCount}" );
+
 		// SWING must be gone from the seed grid — that is what "not a knob" means on the wire.
 		bool noSwingKnob = true;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
@@ -1391,6 +1425,23 @@ static class Program
 					VibeCodec.Encode( r2 ) == e2 );
 			}
 		}
+
+		// ── stream names ──
+		// The station a tag resolves to is part of WHAT SONG a seed is, so both stream names must
+		// spell it the same way and the empty-tag fallback is a fixed word rather than a host's
+		// choice. A host that picks its own makes an untagged seed a different song there than on
+		// every other target — which is the only parity guarantee this repo makes.
+		Check( "an untagged song seed falls back to the shared station",
+			VibeCodec.SongSeed( "", 7 ) == "rotaliate:7", VibeCodec.SongSeed( "", 7 ) );
+		Check( "the vibe stream uses the same station as the song stream",
+			VibeCodec.VibeSeed( "", 7 ).StartsWith( "rotaliate:" )
+			&& VibeCodec.VibeSeed( "Gamah", 7 ).StartsWith( "gamah:" ) );
+		Check( "a tag is trimmed and lower-cased into a station",
+			VibeCodec.SongSeed( "  Gamah  ", 7 ) == VibeCodec.SongSeed( "gamah", 7 ) );
+		// The two streams must not collide: the same tag and n feed the composer and the vibe
+		// roll, and one string for both would make a song's vibe its own PRNG line.
+		Check( "the song and vibe streams are distinct",
+			VibeCodec.SongSeed( "x", 7 ) != VibeCodec.VibeSeed( "x", 7 ) );
 
 		// ── reroll ──
 		// One definition of "reroll" shared by every player. A seeded roll is the shuffle line,

@@ -126,10 +126,23 @@ public sealed partial class MusicGen
 			sb.AppendLine( $"  {i,2} {p.Type,-10} {p.Bars,2} bars  energy {p.Energy:0.00}  feel {p.Feel:0.0}"
 				+ $"{(p.KeyShift != 0 ? $"  key +{p.KeyShift}" : "")}"
 				+ $"{(p.Hemiola ? "  hemiola" : "")}{(p.BarBeats != null ? "  short bar" : "")}"
-				+ $"  tune {(TuneFor( p.Type ) != null ? "yes" : "no")}" );
+				+ $"  tune {(TuneFor( p.Type ) != null ? "yes" : "no")}"
+				// Which cymbal the hand is on. Drawn per SECTION against the song's ride
+				// preference, so it is not derivable from the genre or the seed's knobs — and it is
+				// the first thing to check when a listening note is about a cymbal, because "the
+				// ride is too loud" and "the crash is too loud" are different repairs and a section
+				// on the hats is neither.
+				+ $"  {CymbalHand( i )}" );
 		}
 		return sb.ToString();
 	}
+
+	// The cymbal the hand was on for section i, as recorded while it rendered.
+	string CymbalHand( int i ) =>
+		i < 0 || i >= _sections.Count ? "?"
+		: _sections[i].CrashRide ? "crash-ride"
+		: _sections[i].Ride ? "ride"
+		: "hats";
 
 	/// <summary>
 	/// The rendered mix's level BEFORE the master bus — peak, and RMS over everything above

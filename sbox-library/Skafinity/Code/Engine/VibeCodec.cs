@@ -150,6 +150,7 @@ public static class VibeCodec
 		F( "SnareBalance", 0f, 2f, false, c => c.SnareBalance, ( c, v ) => c.SnareBalance = v ),
 		F( "TomBalance", 0f, 2f, false, c => c.TomBalance, ( c, v ) => c.TomBalance = v ),
 		F( "HatBalance", 0f, 2f, false, c => c.HatBalance, ( c, v ) => c.HatBalance = v ),
+		F( "RideBalance", 0f, 2f, false, c => c.RideBalance, ( c, v ) => c.RideBalance = v ),
 		F( "CrashBalance", 0f, 2f, false, c => c.CrashBalance, ( c, v ) => c.CrashBalance = v ),
 		F( "BassBalance", 0f, 2f, false, c => c.BassBalance, ( c, v ) => c.BassBalance = v ),
 		F( "SkankBalance", 0f, 2f, false, c => c.SkankBalance, ( c, v ) => c.SkankBalance = v ),
@@ -570,15 +571,23 @@ public static class VibeCodec
 		Roll( c, rng.Next, includeGenre, includeVolumes );
 	}
 
+	/// <summary>The station a tag names: trimmed and lower-cased, so "Gamah" and " gamah " are one
+	/// station rather than three, with the default for an empty tag.</summary>
+	/// <remarks>Every stream name in the toy is built from this, on BOTH targets, because the
+	/// fallback word is load-bearing: it is part of what song a seed with no tag resolves to, and
+	/// a host that picks its own makes <c>vibe::23</c> a different song there than everywhere
+	/// else. It has been exactly that — the s&amp;box player spelled the fallback "skafinity"
+	/// while the engine and the web spelled it "rotaliate".</remarks>
+	static string Station( string tag ) =>
+		string.IsNullOrWhiteSpace( tag ) ? "rotaliate" : tag.Trim().ToLowerInvariant();
+
+	/// <summary>The PRNG stream song <paramref name="n"/> is COMPOSED from — what a host hands
+	/// <see cref="MusicGen.Generate"/>/<see cref="MusicGen.BeginPlan"/> as the tag.</summary>
+	public static string SongSeed( string tag, int n ) => $"{Station( tag )}:{n}";
+
 	/// <summary>The stream name song <paramref name="n"/>'s vibe is rolled from. One definition
 	/// so every player walks the same line for a given tag.</summary>
-	public static string VibeSeed( string tag, int n )
-	{
-		// Lower-cased to match how MusicGen seeds the song itself, so "Gamah" and "gamah" are one
-		// station rather than two.
-		var t = string.IsNullOrWhiteSpace( tag ) ? "rotaliate" : tag.Trim().ToLowerInvariant();
-		return $"{t}:vibe:{n}";
-	}
+	public static string VibeSeed( string tag, int n ) => $"{Station( tag )}:vibe:{n}";
 
 	/// <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and long enough
 	/// that it cannot be a tag. The floor is the whole test — it sits well above an 8-char player

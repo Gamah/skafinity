@@ -22,7 +22,8 @@ the single source of truth for both the game and this web toy**. The web build c
 | `test/engine/` | Engine-only test harness (`make test-engine`) — compiles `Engine/**` alone into the same assembly as the tests, so it runs on a plain dev host where s&box cannot. The safety net for engine work. |
 | `sbox-library/Skafinity/skafinity.config.json` | The single shared **house-mix config** (peak balances / kit presence). Canonical here; the s&box plugin reads it at runtime and `make` copies it to `web/config.json`. Edit it to retune the baseline mix without a rebuild. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
-| `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. Re-themeable via the `.scss` variable block. |
+| `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. |
+| `sbox-library/Skafinity/Code/UI/SkafinityTheme.cs` | The panel's palette, derived at RUNTIME from one `Accent` colour so a consuming game can retint a *vendored* copy without editing it. Unset = neutral gray/black. |
 | `reference/*.cs` | The original Rotaliate-client copies, kept for context. **Read-only.** The `sbox-library` copies are what actually compile. |
 
 Everything under `Code/Engine/` is framework-free (only `System` / `System.Collections.Generic`
@@ -92,7 +93,8 @@ skafinity/
         Drums/            #   Groove (DrumGroove tables + the kit/fill pass) + Kit (voices)
         Synth/            #   Patch, Notes (queue), Render, Osc
       SkafinityPlayer.cs  # s&box-only playback driver — outside the glob
-      UI/                 # s&box-only Razor panel — outside the glob
+      SkafinityCommands.cs# s&box-only console commands — the only way to try this target
+      UI/                 # s&box-only Razor panel + its runtime palette — outside the glob
   docker/                 # Dockerfile + compose (nginx on loopback 6970; external Caddy fronts it)
   wasm/
     Skafinity.Wasm.csproj # browser-wasm project; <Compile Include>s the shared .cs
@@ -191,7 +193,13 @@ table says where, and it has been wrong to guess before.
 
 - `-- --seed vibe:tag:n` prints what the composer decided for that seed: the decoded knobs, the
   tempo and swing (flagging a shuffle), key, changes, voicing, groove, figure lengths, tune
-  lengths, ending style, and the form with each section's energy/feel/key.
+  lengths, ending style, and the form with each section's energy/feel/key **and which cymbal its
+  hand is on**. That last column exists because a listening note about a cymbal is ambiguous three
+  ways and the repairs differ: the ride's level, the crash's level, and a section on the hats where
+  neither applies. It is drawn per SECTION against the song's ride preference, so nothing about the
+  genre or the knobs predicts it — a country song with ride pref 0.11 came back hats on all eight
+  sections, which said the ring being complained about was the section-boundary CRASH before a
+  single constant was touched.
 - `-- --grid [genre]` prints, per voice, how often it lands on a bar line and how far its onsets
   sit from the song's own sixteenth grid (swing and tempo curve included). **A gesture written in
   TICKS scales with tempo** — country's strum spread was "a couple of ticks per string", which is
@@ -215,6 +223,14 @@ per-genre `Level` entries in `BassTone`/`RhythmGtrTone`/`KeysLevel`/`LeadLevel` 
 numbers and they go stale when the part they were tuned for is replaced. The suite asserts the
 outcome — comp under the kit, lead not dominating, bass present, and silence when every voice is
 muted.
+
+**A per-song NUANCE BAND outranks the preset it varies, and editing the preset is a silent no-op.**
+The kit draws `_hatTone`/`_footTone`/`_kickTone`/the cymbals per song out of `KitNuance` bands
+(`Compose.cs`), overriding the `HatTone.Default`-style presets field by field. So "the open hat
+rings too long" is `KitNuance.OpenHatDurMin/Max`, not `HatTone.Default.openDur` — a change to the
+latter compiles, reads correctly, and moves nothing a listener hears. **The digests are what catch
+it**: a deliberate audible change that leaves every hash untouched has not happened. Treat an
+unmoved digest after an intended timbre edit as a failed edit, not as a lucky no-op.
 
 **But `--levels` is ONE SEED PER GENRE, and a single seed varies about 4 dB around its target** (the
 suite's own ceiling is written to allow for exactly that). So the tool answers "did this change move
@@ -277,8 +293,68 @@ so the targets work on a box with no system-wide .NET or node. Override with
 **The s&box side cannot.** There is no engine install here, so `Code/SkafinityPlayer.cs` and
 `Code/UI/` are verified by review and grep only. When changing engine internals, check what
 they actually reference — today that is just `MusicGen.{Config, Channels, GenerateSamples,
-BeginPlan, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
+BeginPlan, Explain, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
 uncompilable target stays safe.
+
+**`Code/SkafinityCommands.cs` is how the s&box side gets tried at all.** It cannot be built here,
+so the editor is the only place it runs, and the two things most worth trying there were the two
+that needed code written first: the board **ships no launcher** (`skafinity_panel`), and the
+accent is a static a game sets at startup (`skafinity_theme #hex`, `clear` to go neutral). The
+**`skafinity_spawn` is what makes any of that testable at all**: it builds a player + its own
+`ScreenPanel` + the board on a `NotSaved` / `NetworkMode.Never` GameObject, so the library can be
+tried in a scene that has nothing wired up — and `skafinity_panel` calls it when there is no board,
+so one command works from cold. It never makes a SECOND of anything: an existing board (a previous
+rig or the game's own UI) is what it hands back, and an existing player is what the board drives.
+That is the rule to keep — a debug command that quietly duplicates the game's own UI over the top
+of it is worse than one that does nothing. Shape copied from rotaliate-client's `LocalMusicSystem`,
+which builds the same three components for real. The
+rest drive the seed (`_seed _next _prev _genre _reroll _save`) and read it back — `skafinity_status`
+for the player's state, including whether `skafinity.config.json` actually mounted, which nothing
+else would ever say; `skafinity_explain` for the composer's decisions, i.e. the harness's `--seed`
+read-out from inside the game. Adding a public entry point for a diagnostic is worth it: the
+alternative on this target is guessing by ear, and there is no other way in.
+
+**What the s&box side CAN be checked for mechanically is drift against the engine's own
+defaults, and that is the failure this target actually has.** `SkafinityPlayer`'s `[Property]`
+knobs are a second copy of a `MusicGen.Config` default — the inspector value wins for every song
+that has no vibe — so a knob retuned in `Config` leaves the game playing the old number while the
+web plays the new one, silently and with nothing to notice it. It had happened to the whole kit
+(hats at 0.22 against a rebuilt, velocity-reading kit whose balance is measured in
+`skafinity.config.json`), to `LeadGtrDrive` (3.6 under a knob whose floor is 5), and to
+`PanAmount`. A `[Range]` drifts the same way and costs the inspector its reach — `Genre` was
+capped at 1 with six genres shipping. So: **a player property that isn't equal to its `Config`
+default is this host disagreeing with the shipped song, and it has to say why** — `SampleRate`
+is the one that legitimately does. Diff the two lists after any `Config` retune; it is a grep,
+and it is the only check this target gets.
+
+**The panel's palette is runtime, not SCSS.** A consuming game vendors this library and must not
+patch the vendored copy, so a compile-time `$accent` could never be its colour. `SkafinityTheme`
+derives the whole palette from one `Accent` (unset = neutral gray/black) and the `.razor` binds
+it as inline `style=` values — the pattern rotaliate/gambit's `WallTheme` already uses, and the
+same factors, so a game passing its wall accent in gets the board it has elsewhere. The split
+that keeps it working: **the razor sets fills and themed text, the stylesheet owns every border**,
+because a `:hover` rule in a stylesheet cannot be relied on to beat an inline `background-color`.
+That is why hover feedback is a border rather than a fill, and why the accent must be folded into
+`BuildHash` — inline styles only re-render when the panel rebuilds.
+
+**s&box compiles `Engine/` against an API WHITELIST, and that is a second way the shared source
+can fail on a build we cannot run.** `(int[])a.Clone()` — the obvious way to copy an array — is
+`SB1000: … is not allowed when whitelist is enabled` in the game and compiles perfectly here and
+in the wasm build. `MusicGen.CopyOf` is the spelled-out replacement.
+
+**The list is a public source file, and it is per-MEMBER** [SOURCE, read 2026-08-03]:
+`sbox-public/engine/Sandbox.Access/Rules/Types.cs` allows `"System.Array*"` and then denies
+`"!System.Private.CoreLib/System.Array.Clone*"` on the very next line — a leading `!` is a
+blacklist entry that `AccessRules.IsInWhitelist` checks *before* the whitelist, so it wins. There
+are only seven such entries in the whole ruleset. So `Array.Sort`, `Array.Empty` and `Array.Copy`
+are all allowed and all fine to use; the rule is not "avoid `System.Array`", and guessing which
+member is blocked from the shape of the error is how you'd get that wrong. The list changes
+without notice — re-read the file, don't trust this paragraph, after an engine update.
+
+Two things generalise past the one member. **"It compiles here" is not evidence about the s&box
+target at all** — not for the whitelist, not for the `GlobalGameNamespace` ambiguity below. And
+when a convenience method on a BCL type is the only reason to reach for it, prefer the loop; the
+engine is small, hot, and already written that way.
 
 **Be sparing with `using static` in `Engine/`.** The s&box build adds a project-wide
 `GlobalGameNamespace` static using, so importing a collision-prone bare name (`Rest`,
@@ -627,8 +703,50 @@ complexity, so the repeat-tell is cheap to break.
 phrase end and every section start here, and at that density the measured three-to-four-second ring
 never clears before the next one — the arrangement swims. `CrashRingScale` keeps that departure as
 one explicit number rather than a quietly re-fitted constant, so the law stays legible and the mix
-decision stays a mix decision. The ride needs no equivalent: it is struck far more often but its own
-strokes damp each other, which is the physical version of the same problem.
+decision stays a mix decision. The ride has no equivalent and did not need one.
+
+**A CYMBAL BUILT ON τ=k/√f ALWAYS DARKENS AS IT RINGS; A HI-HAT NEVER DOES.** The hat is one
+high-passed noise with one decay, so it measures 12.5 kHz at the attack and still 12.4 kHz half a
+second later. The ride's low bands outlive its high ones by construction, so it measured 10.4 kHz
+falling to 8.8 kHz — the voice carrying the pulse was the DARK one against a hat that never moves,
+and it got darker the longer it rang. Two levers, and they do different jobs: `RingTau`'s `knee`
+stops the low tail dominating (it is what keeps the tail from darkening), and the strike bump is
+where the energy sits in the first place. **The bow's bump is a mix decision, not the
+measurement** — the reference puts a real ride at ~1.2 kHz, which is both darker than the hat and
+exactly where the guitars are, so it sits at 4200 Hz instead. Measured on a song rather than a dry
+hit, that took the ride from +4.74 dB to +1.98 dB over the rest of the mix in the 1–3 kHz band while
+keeping it present at 6–14 kHz: **moving a voice OUT of a crowded band beats turning it down**, and
+the two are easy to confuse because both make it less annoying.
+
+**A RIDE AND A CRASH DIFFER BY THEIR TAIL, NOT BY THEIR SPECTRUM — and that is a trap, because
+the band weights are nearly identical and look correct.** Measured per band as the time to fall
+20 dB, the ride against the bright crash was low 2.80 s vs 1.00, mid 2.53 vs 0.89, upper-mid 2.03 vs
+0.87, top 1.53 vs 0.81, while the two spectra's weights sit within a dB of each other (mid −8.4 dB
+vs −8.5). A voice whose balance is a crash's and whose tail is 2.8× longer IS a crash that will not
+stop, and it reads as one wherever the arrangement gets sparse enough to expose it. `RingTau`'s
+`knee` is the in-model lever — it shortens the tail below a corner without touching the stick attack
+— and the crash had always carried one while the ride carried none, so the ride's mids rang at the
+full τ=k/√f. The listening report that found this was precise in a way the measurements were not:
+"the MIDDLE of the noise of the ride feels like a crash when the mix is sparse". **Compare a voice
+against its own family before reaching for its level**; the ride had already been through a +10 dB
+boost and a ring-scale attempt, and neither was the thing that made it the wrong instrument.
+
+**Measure a voice's dominance as LEVEL-IN-ITS-BAND plus DUTY CYCLE, and never as whole-mix RMS.**
+"A cymbal is overpowering everything" was chased through the bass and the reverb because muting the
+ride moved whole-mix RMS by 0.77 dB — RMS is owned by the low end and says nothing about a
+broadband voice sitting on top. Band-limited to >2.5 kHz, where nothing else in a ska arrangement
+lives, the same ride was **+6.9 dB over the entire rest of the mix** and held that band within 12 dB
+of its own peak **43% of the time**. Two readings, and they answer different questions: the first is
+"is it too loud", the second is "does it ever stop". Take both before touching a constant.
+
+**A level set by ear against one balance cannot see the other one.** `StrokeLevelRide` went 0.30 →
+0.95 in a single +10 dB step to stop the ride being buried, and its own commit message flagged the
+result as worth watching. It was: 0.30 measured +1.4 dB over the rest of the mix (the buried it was
+aimed at) and 0.95 measured +6.9 dB. "Can I hear it?" and "is it now the loudest thing in its band?"
+are both real questions and ear-tuning one answers neither of the other. It sits at 0.55 (+3.65 dB,
+21% occupancy). **Shortening the ring was tried first and is the wrong lever** — it bought 1 dB
+against the level's 3.3 and left the ride still on top, which is what "suspect the pattern before
+the timbre" looks like when the answer is actually neither.
 
 **`--cymbal [dir]` writes one dry hit per cymbal for `tools/spectool` to re-measure**, and a
 spectrum fitted to a measurement is not fitted until the RESULT has been measured the same way. It
@@ -685,6 +803,15 @@ One JSON file tunes them for **both** targets without a rebuild:
 To add a baseline-mix knob: add the `Config` field, add a row to `VibeCodec.AdvancedFields`, add
 it to `Cfg.To`/`From` (+ bump `Cfg.Size`), and add a key to the JSON. To make something a *vibe*
 knob instead, put it in a genre grid / `GlobalFields` (see above), not here.
+
+**The ride used to run through `HatBalance`** — it was built as the cymbal HAND replacing the hat
+rather than as an instrument with its own bus, so they shared one number. They are not one
+instrument to mix: a hat is short, high and continuous, a ride rings, and "the hats are too loud"
+is then unanswerable without moving the ride too. `RideBalance` is now its own advanced field,
+seeded from `HatBalance`'s value so the split changed nothing on its own. **The general shape is
+worth keeping**: when a voice was built as a variant of another one, it inherits that one's bus by
+accident rather than by decision, and the first listening note that separates them is when you
+find out.
 
 **`GenreMix` is the one that is not a level.** Each genre carries its own mix profile
 (`GenreProfile.Mix`: reverb, width, and low/mid/high trims — metal dry and mid-scooped, pop wide
@@ -1018,6 +1145,16 @@ whole song's PCM — for as long as the list does.
 
 Browsers require a user gesture before audio — `AudioContext.resume()` is gated on the play
 button.
+
+**A fade UP FROM SILENCE is not a crossfade, and must not borrow its length.** A crossfade is long
+because two songs have to trade places without either being heard to stop; nothing is being traded
+at the start of a session. `SkafinityPlayer` used one number for both, and what a multi-second linear
+ramp does to a drum kit is specific rather than merely quiet: it crushes the STRIKE and lets the RING
+arrive at full level a second later, so every cymbal in the opening bars sounds like it was hit
+before the song started. That is the diagnosis for "the song starts with a cymbal already ringing" —
+and the tell that it is a HOST bug rather than an engine one is that the engine's own render of the
+same seed starts on a clean attack (check it with `--render` and look at the first few milliseconds,
+not at a block envelope, which cannot tell an attack from a mid-decay start).
 
 ---
 
