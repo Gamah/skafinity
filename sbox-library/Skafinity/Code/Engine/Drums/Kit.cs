@@ -586,7 +586,18 @@ readonly struct CymbalBands
 	/// measured with --levels, a ride at the crash's stroke level put country's whole kit 2.6 dB
 	/// over the rest of its band on its riding sections alone. A crash overlaps nothing, being one
 	/// gesture a phrase, so it keeps the louder stroke.</summary>
-	const float StrokeLevelRide = 0.95f, StrokeLevelCrash = 0.60f;
+	// StrokeLevelRide was 0.30 and went to 0.95 in one +10 dB step, by ear, to stop the ride being
+	// buried — and that commit's own message flagged the result as "worth watching". This is that
+	// watch firing: measured in the >2.5 kHz band, where nothing else in a ska arrangement lives,
+	// 0.95 puts the ride +6.9 dB over the ENTIRE REST OF THE MIX and holds that band within 12 dB
+	// of its own peak 43% of the time. 0.30 was +1.4 dB and 12.8%, which is the buried the boost
+	// was aimed at; 0.55 is +3.65 dB and 21.3% — present without being the arrangement.
+	//
+	// The lesson is about the measurement, not the number: a level set by ear against ONE
+	// balance ("can I hear the ride?") has no way to notice the other one ("is the ride now the
+	// loudest thing in its band?"), and a +10 dB single step is where that goes wrong. The
+	// duty-cycle-in-band reading answers both and is what the next change to this should use.
+	const float StrokeLevelRide = 0.55f, StrokeLevelCrash = 0.60f;
 
 	/// <summary>The extra decay a cymbal takes on WHILE IT IS BEING PLAYED — see RenderCymbal's
 	/// chokeTau. A stroke landing on a ringing cymbal excites it and damps it, because the stick is
@@ -603,19 +614,9 @@ readonly struct CymbalBands
 	/// so, but a crash lands at every phrase end and every section start here, so at that density
 	/// the full ring never clears before the next one and the arrangement swims. The law stays
 	/// legible and the departure from it is one number rather than a quietly re-fitted constant.
-	/// legible and the departure from it is one number rather than a quietly re-fitted constant.</summary>
+	/// The ride is untouched: it is struck far more often but its strokes damp each other
+	/// (RestrikeTau), which is the physical version of the same problem.</summary>
 	const float CrashRingScale = 0.45f;
-
-	/// <summary>The same decision for the ride. <b>RestrikeTau was believed to make this
-	/// unnecessary and does not</b>: it only starts damping once the NEXT stroke lands, so it does
-	/// nothing to the gap a stroke is currently filling — and the gap is the problem. A ride bow
-	/// falls ~2.7 dB over the 252 ms between eighths at 119 bpm, i.e. essentially flat, so a riding
-	/// section is one continuous sound rather than a series of strokes. Measured over an intro on
-	/// the ride, in the >2.5 kHz band where nothing else in the mix lives, as the share of time the
-	/// band sits within 12 dB of its own peak: 43.2% at ring ×1, 30.6% at ×0.55, 25.1% at ×0.35,
-	/// and 11% with no ride at all. RMS moves ~1 dB across that, which is the point — the wash goes
-	/// and the stroke stays, where a level cut would have taken the attack with it.</summary>
-	const float RideRingScale = 0.55f;
 
 	/// <summary>THE STROKE HAS TO CUT, and level is the wrong lever for that. Measured against the
 	/// hi-hat it replaces, the ride carries MORE energy — and it still disappears in a band mix,
@@ -628,18 +629,18 @@ readonly struct CymbalBands
 	/// clear rather than more mud. That is what a ride's ping is, and it is inside the 0.5–1.8
 	/// band the audition approved.</summary>
 	public static CymbalBands Bow( float splash = 1f, float wash = 1f, float ring = 1f )
-		=> Build( BowStrike, tauK: 39f, knee: 0f, sizzle: 0f, ring: ring * RideRingScale,
+		=> Build( BowStrike, tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
 			splash: 1.25f * splash, splashTau: 0.10f, washLvl: 0.060f * wash,
-			washTau: 0.70f * ring * RideRingScale, stick: 0.55f, stickCut: 7000f, noiseHp: 240f, washLp: 6500f,
+			washTau: 0.70f * ring, stick: 0.55f, stickCut: 7000f, noiseHp: 240f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 3200f );
 
 	/// <summary>The bell. A ride bell is not a church bell: no harmonic stack and no low
 	/// fundamental — the measurement puts its energy in a clang cluster around 2.3 kHz over the
 	/// same metal as the bow.</summary>
 	public static CymbalBands Bell( float splash = 1f, float ring = 1f, float clang = 2300f )
-		=> Build( BellStrike( clang ), tauK: 39f, knee: 0f, sizzle: 0f, ring: ring * RideRingScale,
+		=> Build( BellStrike( clang ), tauK: 39f, knee: 0f, sizzle: 0f, ring: ring,
 			splash: 0.40f * splash, splashTau: 0.05f, washLvl: 0.030f,
-			washTau: 0.55f * ring * RideRingScale, stick: 0.40f, stickCut: 6500f, noiseHp: 240f, washLp: 6500f,
+			washTau: 0.55f * ring, stick: 0.40f, stickCut: 6500f, noiseHp: 240f, washLp: 6500f,
 			level: StrokeLevelRide, splashHp: 2600f );
 
 	/// <summary>The bright crash. THE ROAR IS THE INSTRUMENT: a third of a second in, the

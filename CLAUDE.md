@@ -701,25 +701,26 @@ complexity, so the repeat-tell is cheap to break.
 
 **A measured ring length is a cymbal in a ROOM, not a cymbal in this mix.** A crash lands at every
 phrase end and every section start here, and at that density the measured three-to-four-second ring
-never clears before the next one — the arrangement swims. `CrashRingScale` and `RideRingScale` keep
-that departure as explicit numbers rather than quietly re-fitted constants, so the law stays legible
-and the mix decision stays a mix decision.
+never clears before the next one — the arrangement swims. `CrashRingScale` keeps that departure as
+one explicit number rather than a quietly re-fitted constant, so the law stays legible and the mix
+decision stays a mix decision. The ride has no equivalent and did not need one.
 
-**The ride was believed not to need one, because `RestrikeTau` damps a stroke train — and that is
-wrong in a way worth keeping.** `RestrikeTau` only begins damping once the NEXT stroke lands, so it
-does nothing to the gap the current stroke is filling, and the gap is the whole problem: a ride bow
-falls ~2.7 dB over the 252 ms between eighths at 119 bpm, i.e. essentially flat, so a riding section
-is one continuous sound rather than a series of strokes. **The general trap is that a mechanism
-aimed at a stroke TRAIN says nothing about a single stroke's tail**, and the two read identically in
-a description ("the ride does not clear") while responding to different constants.
+**Measure a voice's dominance as LEVEL-IN-ITS-BAND plus DUTY CYCLE, and never as whole-mix RMS.**
+"A cymbal is overpowering everything" was chased through the bass and the reverb because muting the
+ride moved whole-mix RMS by 0.77 dB — RMS is owned by the low end and says nothing about a
+broadband voice sitting on top. Band-limited to >2.5 kHz, where nothing else in a ska arrangement
+lives, the same ride was **+6.9 dB over the entire rest of the mix** and held that band within 12 dB
+of its own peak **43% of the time**. Two readings, and they answer different questions: the first is
+"is it too loud", the second is "does it ever stop". Take both before touching a constant.
 
-**Measure a wash as a DUTY CYCLE, not as a level.** The complaint was "a cymbal is overpowering
-everything" and the ride measured +0.77 dB of whole-mix RMS — which is what sent two rounds of this
-after the wrong voice, because RMS is dominated by the bass and says nothing about a broadband voice
-sitting on top of a mix. In the >2.5 kHz band, where nothing else in this arrangement lives, the
-same ride was +6.9 dB and held the band within 12 dB of its own peak **43% of the time** against 11%
-with the ride muted. Band-limit to where the voice lives, then ask how much of the time it is
-sounding; a wash is a thing that never stops, so occupancy is the measurement and level is not.
+**A level set by ear against one balance cannot see the other one.** `StrokeLevelRide` went 0.30 →
+0.95 in a single +10 dB step to stop the ride being buried, and its own commit message flagged the
+result as worth watching. It was: 0.30 measured +1.4 dB over the rest of the mix (the buried it was
+aimed at) and 0.95 measured +6.9 dB. "Can I hear it?" and "is it now the loudest thing in its band?"
+are both real questions and ear-tuning one answers neither of the other. It sits at 0.55 (+3.65 dB,
+21% occupancy). **Shortening the ring was tried first and is the wrong lever** — it bought 1 dB
+against the level's 3.3 and left the ride still on top, which is what "suspect the pattern before
+the timbre" looks like when the answer is actually neither.
 
 **`--cymbal [dir]` writes one dry hit per cymbal for `tools/spectool` to re-measure**, and a
 spectrum fitted to a measurement is not fitted until the RESULT has been measured the same way. It
