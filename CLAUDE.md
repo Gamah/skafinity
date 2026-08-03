@@ -701,10 +701,25 @@ complexity, so the repeat-tell is cheap to break.
 
 **A measured ring length is a cymbal in a ROOM, not a cymbal in this mix.** A crash lands at every
 phrase end and every section start here, and at that density the measured three-to-four-second ring
-never clears before the next one — the arrangement swims. `CrashRingScale` keeps that departure as
-one explicit number rather than a quietly re-fitted constant, so the law stays legible and the mix
-decision stays a mix decision. The ride needs no equivalent: it is struck far more often but its own
-strokes damp each other, which is the physical version of the same problem.
+never clears before the next one — the arrangement swims. `CrashRingScale` and `RideRingScale` keep
+that departure as explicit numbers rather than quietly re-fitted constants, so the law stays legible
+and the mix decision stays a mix decision.
+
+**The ride was believed not to need one, because `RestrikeTau` damps a stroke train — and that is
+wrong in a way worth keeping.** `RestrikeTau` only begins damping once the NEXT stroke lands, so it
+does nothing to the gap the current stroke is filling, and the gap is the whole problem: a ride bow
+falls ~2.7 dB over the 252 ms between eighths at 119 bpm, i.e. essentially flat, so a riding section
+is one continuous sound rather than a series of strokes. **The general trap is that a mechanism
+aimed at a stroke TRAIN says nothing about a single stroke's tail**, and the two read identically in
+a description ("the ride does not clear") while responding to different constants.
+
+**Measure a wash as a DUTY CYCLE, not as a level.** The complaint was "a cymbal is overpowering
+everything" and the ride measured +0.77 dB of whole-mix RMS — which is what sent two rounds of this
+after the wrong voice, because RMS is dominated by the bass and says nothing about a broadband voice
+sitting on top of a mix. In the >2.5 kHz band, where nothing else in this arrangement lives, the
+same ride was +6.9 dB and held the band within 12 dB of its own peak **43% of the time** against 11%
+with the ride muted. Band-limit to where the voice lives, then ask how much of the time it is
+sounding; a wash is a thing that never stops, so occupancy is the measurement and level is not.
 
 **`--cymbal [dir]` writes one dry hit per cymbal for `tools/spectool` to re-measure**, and a
 spectrum fitted to a measurement is not fitted until the RESULT has been measured the same way. It
