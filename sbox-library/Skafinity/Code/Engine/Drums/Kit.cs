@@ -572,7 +572,7 @@ readonly struct CymbalBands
 	/// measured with --levels, a ride at the crash's stroke level put country's whole kit 2.6 dB
 	/// over the rest of its band on its riding sections alone. A crash overlaps nothing, being one
 	/// gesture a phrase, so it keeps the louder stroke.</summary>
-	const float StrokeLevelRide = 0.30f, StrokeLevelCrash = 0.60f;
+	const float StrokeLevelRide = 0.95f, StrokeLevelCrash = 0.60f;
 
 	/// <summary>The extra decay a cymbal takes on WHILE IT IS BEING PLAYED — see RenderCymbal's
 	/// chokeTau. A stroke landing on a ringing cymbal excites it and damps it, because the stick is

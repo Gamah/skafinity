@@ -85,7 +85,8 @@ static class Audition
 			lines = lines.FindAll( l => l.Voice.Equals( only, StringComparison.OrdinalIgnoreCase ) );
 		if ( lines.Count == 0 )
 		{
-			Console.WriteLine( $"no audition lines for '{only}' — try kick|snare|toms|hats|crash|ride" );
+			Console.WriteLine( $"no audition lines for '{only}' — try "
+				+ "kick|snare|toms|hats|crash|ride|rates|fills|section|riding" );
 			return;
 		}
 
@@ -718,7 +719,10 @@ static class Audition
 					}
 					into.Add( new Line
 					{
-						Voice = "section",
+						// The two riding lines are their own name so they can be re-rendered
+						// alone: they are the ones a level change needs re-hearing, and a
+						// twelve-second answer beats a two-minute one.
+						Voice = title.StartsWith( "RIDING" ) ? "riding" : "section",
 						Text = $"{title} — {seed}, the {sec.Type.ToLowerInvariant()} "
 							+ $"({(to - from) / (double)Rate:0.0}s, whole band, post-master)",
 						Bpm = 116, Beats = 0, Tail = 0, Raw = () => (l, r),
@@ -728,7 +732,8 @@ static class Audition
 			}
 			into.Add( new Line
 			{
-				Voice = "section", Text = $"{title} — NO SEED IN THE SEARCH LIST HAS ONE",
+				Voice = title.StartsWith( "RIDING" ) ? "riding" : "section",
+				Text = $"{title} — NO SEED IN THE SEARCH LIST HAS ONE",
 				Bpm = 116, Beats = 1, Tail = 0, Play = _ => { },
 			} );
 		}

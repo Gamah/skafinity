@@ -360,7 +360,7 @@ public sealed partial class MusicGen
 				// Crash-riding is a LIFT — the hand moves onto the loudest thing in the kit and the
 				// whole section rises. Measured, it was landing within 0.2 dB of an ordinary ride,
 				// which is the technique costing a cymbal and buying nothing.
-				RenderCrashCym( at, _c.CrashVol * kit * (cell == DrumGroove.Open ? 0.95f : 0.62f),
+				RenderCrashCym( at, _c.CrashVol * kit * (cell == DrumGroove.Open ? 0.67f : 0.44f),
 					_crashDark, dark: true, next, CymbalBands.RestrikeTau );
 			else if ( _ride )
 				// The bell is a CELL now. It used to be positional — every quarter note was a
