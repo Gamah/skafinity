@@ -42,6 +42,9 @@ static class Audition
 		public double Beats;          // length of the figure, landing beat included
 		public double Tail = TailSec; // ring-out; a cymbal line needs most of a bar of it
 		public Action<Take> Play;
+		/// <summary>Samples supplied directly rather than rendered into a Take — for the lines that
+		/// are excerpts of a whole song rather than a figure played by one voice.</summary>
+		public Func<(float[] L, float[] R)> Raw;
 	}
 
 	/// <summary>The instance one line renders into, plus the two things a figure needs: where a
@@ -72,9 +75,11 @@ static class Audition
 		// The default run is what is still OPEN. The ride is solved, so the default is the
 		// CRASHES — plus the ride, because the table stamp is a new way of playing an approved
 		// sound and it has to be heard again for that to mean anything.
-		Crash( lines );
-		Ride( lines );
-		if ( !string.IsNullOrEmpty( only ) ) { Kick( lines ); Snare( lines ); Toms( lines ); Hats( lines ); }
+		Rates( lines );
+		Fills( lines );
+		Section( lines );
+		if ( !string.IsNullOrEmpty( only ) )
+		{ Kick( lines ); Snare( lines ); Toms( lines ); Hats( lines ); Crash( lines ); Ride( lines ); }
 
 		if ( !string.IsNullOrEmpty( only ) )
 			lines = lines.FindAll( l => l.Voice.Equals( only, StringComparison.OrdinalIgnoreCase ) );
@@ -87,29 +92,41 @@ static class Audition
 		var L = new List<float>();
 		var R = new List<float>();
 		var script = new StringBuilder();
-		script.AppendLine( "AUDITION — skafinity drum kit, round 10: THE CYMBAL, DISTILLED" );
+		script.AppendLine( "AUDITION — skafinity drum kit, round 11: RATES, FILLS, AND IN A SECTION" );
 		script.AppendLine( "One kit part per line. Each line is a figure played by that voice alone." );
 		script.AppendLine( "Dry: no tone lean, no genre mix, no reverb, no master. Centred except where noted." );
 		script.AppendLine();
-		script.AppendLine( "The cymbals are measured, then DISTILLED: seven filtered-noise bands whose ring" );
-		script.AppendLine( "times fall as 1/sqrt(f), one low beating pair, splash and wash. The mode forest" );
-		script.AppendLine( "that carried them before was accurate and unusable — 390 partials against two or" );
-		script.AppendLine( "three sines everywhere else in the kit, which no level reconciles." );
-		script.AppendLine( "The RIDE lines isolate the two things that decide wall-versus-ride: damping on" );
-		script.AppendLine( "restrike, and a lighter offbeat stroke. --audition kick|snare|toms|hats too." );
+		script.AppendLine( "RATES: each cymbal and the hats at quarters, eighths and sixteenths, two bars" );
+		script.AppendLine( "each, played as the engine plays them — every stroke damped by the next, and" );
+		script.AppendLine( "the offbeats lighter. This is the DENSITY question, not the timbre one: a" );
+		script.AppendLine( "voice that is right alone can still be wrong at the rate the music plays it." );
+		script.AppendLine( "Then the pedal on its own at sixteenths, four bars." );
 		script.AppendLine();
+		script.AppendLine( "FILLS: the engine\'s own fill pass, four draws over the same two bars." );
+		script.AppendLine();
+		script.AppendLine( "SECTION: three real sections of real songs, WHOLE BAND and post-master —" );
+		script.AppendLine( "the only lines here that are not one dry voice, because how the cymbal hand" );
+		script.AppendLine( "sits in a mix cannot be heard from the cymbal alone. Seeds are printed." );
+		script.AppendLine( "--audition kick|snare|toms|hats|crash|ride plays the single voices." );
 
 		int gap = (int)(Rate * GapSec);
 		string voice = null;
 		for ( int i = 0; i < lines.Count; i++ )
 		{
 			var line = lines[i];
-			double seconds = line.Beats * 60.0 / line.Bpm + line.Tail;
-			var g = MusicGen.ForAudition( Cfg(), seconds, line.Bpm );
-			var take = new Take( g, line.Bpm );
-			line.Play( take );
-
-			var (bl, br) = g.AuditionBuffers();
+			float[] bl, br;
+			if ( line.Raw != null )
+			{
+				(bl, br) = line.Raw();
+			}
+			else
+			{
+				double seconds = line.Beats * 60.0 / line.Bpm + line.Tail;
+				var g = MusicGen.ForAudition( Cfg(), seconds, line.Bpm );
+				var take = new Take( g, line.Bpm );
+				line.Play( take );
+				(bl, br) = g.AuditionBuffers();
+			}
 			if ( voice != line.Voice )
 			{
 				voice = line.Voice;
@@ -551,5 +568,174 @@ static class Audition
 			}
 			t.G.RenderCymbal( t.At( 4 ), 1f, kb, 1f, 0.25f );
 		}, 2.4 );
+	}
+
+	// ── RATES ──
+	// Each cymbal at quarters, eighths and sixteenths, two bars each. This is the density question
+	// rather than the timbre one: a voice that is right on its own can still be wrong at the rate
+	// the music actually plays it, and the ride's whole trouble on this branch was that eight even
+	// strokes a bar is a wall however good one stroke sounds. Played as the engine plays them —
+	// each stroke damped by the next (RestrikeTau) and the offbeats lighter, which is what
+	// RideStroke does in a groove.
+
+	static void Rates( List<Line> into )
+	{
+		const int Bpm = 116;
+
+		// which: 0 bow, 1 bell, 2 bright crash, 3 dark crash. Hats are a different voice entirely.
+		void Cym( Take t, int which, int per, bool damp )
+		{
+			t.G.AuditionKit( 1 );
+			t.G.AuditionPan = 0.25f;
+			var k = t.G.AuditionCymbal( which );
+			float pan = which >= 2 ? (which == 3 ? 0.25f : -0.25f) : 0.25f;
+			int n = 8 * per;                                   // two bars
+			for ( int i = 0; i < n; i++ )
+			{
+				double at = i * (1.0 / per);
+				bool onBeat = i % per == 0;
+				int next = damp ? t.At( (i + 1) * (1.0 / per) ) : int.MaxValue;
+				t.G.RenderCymbal( t.At( at ), onBeat ? 1f : 0.5f, k, 1f, pan, next,
+					CymbalBands.RestrikeTau );
+			}
+			t.G.RenderCymbal( t.At( 8 ), 1f, k, 1f, pan );
+		}
+
+		void Hat( Take t, int per )
+		{
+			t.G.AuditionPan = 0.25f;
+			int n = 8 * per;
+			for ( int i = 0; i < n; i++ )
+			{
+				double at = i * (1.0 / per);
+				bool onBeat = i % per == 0;
+				t.G.RenderHat( t.At( at ), 0f, onBeat ? 1f : 0.55f, t.N, HatTone.Default );
+			}
+			t.G.RenderHat( t.At( 8 ), 0f, 1f, t.N, HatTone.Default );
+		}
+
+		var rates = new (string Name, int Per)[] { ("quarters", 1), ("eighths", 2), ("sixteenths", 4) };
+		var voices = new (string Name, int Which)[]
+			{ ("BRIGHT CRASH", 2), ("DARK CRASH", 3), ("RIDE (bow)", 0) };
+
+		foreach ( var v in voices )
+			foreach ( var r in rates )
+			{
+				int which = v.Which; int per = r.Per;
+				Add( into, "rates", $"{v.Name} — {r.Name}, 2 bars", Bpm, 9,
+					t => Cym( t, which, per, true ), 2.2 );
+			}
+		foreach ( var r in rates )
+		{
+			int per = r.Per;
+			Add( into, "rates", $"HATS (closed) — {r.Name}, 2 bars", Bpm, 9, t => Hat( t, per ), 0.6 );
+		}
+
+		// THE PEDAL ON ITS OWN, worked at sixteenths. The foot is the one part of the kit that
+		// needs no hand, and a riding section used to silence the hi-hat completely. This is that
+		// voice alone, over four bars, on a figure rather than on every cell — a foot keeps a
+		// pattern the way a hand does (see FootOccupancy).
+		Add( into, "rates", "HATS — the PEDAL alone, sixteenth figure, 4 bars", Bpm, 17, t =>
+		{
+			t.G.AuditionPan = 0.25f;
+			// x . x x  . x . x  per beat, repeating — a foot working the pedal rather than a
+			// metronome on every sixteenth, which no drummer plays and no ear reads as time.
+			bool[] cell = { true, false, true, true, false, true, false, true };
+			for ( int i = 0; i < 64; i++ )
+			{
+				if ( !cell[i % cell.Length] ) continue;
+				t.G.RenderHat( t.At( i * 0.25 ), 0f, i % 4 == 0 ? 1f : 0.7f, t.N, HatTone.Foot );
+			}
+		}, 0.6 );
+	}
+
+	// ── FILLS ──
+	// The engine's own fill pass, four times over the same two bars with a different draw each
+	// time. A fill is a SHAPE, a DENSITY and a set of DYNAMICS (see FillShape), so four of them is
+	// the smallest number that shows whether those are actually varying or whether every fill is
+	// the same object wearing different hits.
+
+	static void Fills( List<Line> into )
+	{
+		for ( int i = 0; i < 4; i++ )
+		{
+			int seed = i;
+			Add( into, "fills", $"FILL {seed + 1} — two bars, whole kit", 116, 9, t =>
+			{
+				t.G.AuditionKit( 1 );
+				t.G.AuditionPan = 0.25f;
+				t.G.AuditionFill( 0, 8 * Timing.TicksPerBeat, new Rng( $"audition:fillnoise:{seed}" ),
+					new Rng( $"audition:fill:{seed}" ) );
+			}, 2.2 );
+		}
+	}
+
+	// ── IN A SECTION ──
+	// The one place the audition's rule is deliberately set aside, twice over. Every other line is
+	// ONE VOICE, DRY, because that is how a voice is judged; these are the whole band, through the
+	// master bus, because the question is the opposite one — how the cymbal hand sits in a mix is
+	// not answerable from the cymbal alone, and it is where every remaining complaint about this
+	// branch has come from.
+	//
+	// They are real sections of real songs, and the seeds are printed so any of them can be pulled
+	// up again with --render or in the browser. Riding is a per-section roll against a per-song
+	// preference and crash-riding needs the energy as well, so a section like this cannot be asked
+	// for: the seeds below are found by planning songs and looking at what their sections did.
+
+	static void Section( List<Line> into )
+	{
+		// Candidates to search, in order. Rock and metal lean on the ride hardest and are the only
+		// genres whose energy reaches a crash-ride at all (with punk); ska is here for the hats.
+		string[] seeds =
+		{
+			"1:rotaliate:0", "1:gamah:3", "1:rotaliate:5", "3:doom:11", "3:rotaliate:0",
+			"4:rotaliate:0", "0:skafinity:7", "1:kit:2", "3:kit:4", "4:kit:6", "5:rotaliate:0",
+		};
+
+		void Find( string title, Func<MusicGen.SectionInfo, bool> want, bool needsOpenHats = false )
+		{
+			foreach ( var seed in seeds )
+			{
+				var bits = seed.Split( ':' );
+				var cfg = new MusicGen.Config { SampleRate = Rate };
+				VibeCodec.Apply( bits[0], cfg );
+				var g = MusicGen.BeginPlan( $"{bits[1]}:{bits[2]}", cfg );
+				if ( needsOpenHats && !g.AuditionGrooveOpens ) continue;
+				g.RenderPitchedRange( 0, g.TotalSamples );
+				var pcm = g.FinishStereo();
+				foreach ( var sec in g.AuditionSections )
+				{
+					if ( !want( sec ) ) continue;
+					// An intro is a build-in and an ending has resolved; neither is what a section
+					// of a song sounds like, and both are short.
+					if ( sec.Type is "Intro" or "Ending" ) continue;
+					int from = Math.Max( 0, sec.Start ), to = Math.Min( pcm.Length / 2, sec.End );
+					if ( to - from < Rate * 8 ) continue;          // long enough to settle into
+					var l = new float[to - from]; var r = new float[to - from];
+					for ( int i = 0; i < l.Length; i++ )
+					{
+						l[i] = pcm[(from + i) * 2] / 32768f;
+						r[i] = pcm[(from + i) * 2 + 1] / 32768f;
+					}
+					into.Add( new Line
+					{
+						Voice = "section",
+						Text = $"{title} — {seed}, the {sec.Type.ToLowerInvariant()} "
+							+ $"({(to - from) / (double)Rate:0.0}s, whole band, post-master)",
+						Bpm = 116, Beats = 0, Tail = 0, Raw = () => (l, r),
+					} );
+					return;
+				}
+			}
+			into.Add( new Line
+			{
+				Voice = "section", Text = $"{title} — NO SEED IN THE SEARCH LIST HAS ONE",
+				Bpm = 116, Beats = 1, Tail = 0, Play = _ => { },
+			} );
+		}
+
+		Find( "HATS, open and closed", s => !s.Ride && !s.CrashRide, needsOpenHats: true );
+		Find( "RIDING, with crashes accenting", s => s.Ride && !s.CrashRide );
+		Find( "RIDING THE CRASH", s => s.CrashRide );
 	}
 }

@@ -325,6 +325,8 @@ public sealed partial class MusicGen
 		// And the foot's part under it (see FootOccupancy). Its own stream, so a section acquiring
 		// a pedal figure moves nothing else in the kit, and drawn per section because that is the
 		// scale a drummer holds a figure over.
+		_sections.Add( new SectionInfo( _time.TickToSample( sectionTick ),
+			_time.TickToSample( sectionTick + _sectionTicks ), _ride, _crashRide, $"{part.Type}" ) );
 		var footRng = new Rng( $"{_tag}:foot:{bk}" );
 		_footCells = 0;
 		for ( int i = 0; i < 8; i++ )

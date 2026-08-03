@@ -270,6 +270,81 @@ public sealed partial class MusicGen
 	/// so this is how a line hears them as two cymbals rather than one.</summary>
 	internal bool AuditionCrashBrightLeft { get => _crashBrightLeft; set => _crashBrightLeft = value; }
 
+	/// <summary>
+	/// Set the instance up as a PLAYABLE KIT: a genre's groove, its tom tuning, its four cymbals
+	/// and a pedal figure. The audition's own rule is one voice per line, and this is what a line
+	/// needs when the question is the opposite one — how a fill moves across the kit, or how the
+	/// cymbal hand sits under a groove. Everything drawn here comes off fixed local streams, so a
+	/// line is repeatable and nothing touches a song's composition.
+	/// </summary>
+	internal void AuditionKit( int genre )
+	{
+		_genre = Math.Clamp( genre, 0, GenreProfile.Count - 1 );
+		_prof = GenreProfile.For( _genre );
+		_groove = _prof.DrawGroove( new Rng( "audition:groove" ) );
+		_tomKit = TomKit.Tuned( _prof.Toms, 48 );
+		var cy = CymbalDraw.Default;
+		_rideBow = BuildCymbal( CymbalBands.Bow( cy.RideSplash, cy.RideWash, cy.RideRing ), 0 );
+		_rideBell = BuildCymbal( CymbalBands.Bell( ring: cy.BellRing, clang: cy.BellClang ), 1 );
+		_crashBright = BuildCymbal( CymbalBands.CrashBright( cy.BrightSplash, cy.BrightRing ), 2 );
+		_crashDark = BuildCymbal( CymbalBands.CrashDark( cy.DarkSplash, cy.DarkRing, cy.DarkWash ), 3 );
+		var footRng = new Rng( "audition:foot" );
+		_footCells = 0;
+		for ( int i = 0; i < 8; i++ )
+			if ( footRng.Chance( FootOccupancy[i] ) ) _footCells |= 1 << i;
+	}
+
+	/// <summary>Which instrument the cymbal hand is on, for the lines that are about exactly that.
+	/// </summary>
+	internal void AuditionCymbalHand( bool ride, bool crashRide )
+	{
+		_ride = ride || crashRide;
+		_crashRide = crashRide;
+	}
+
+	internal string AuditionGrooveName => _groove?.Name ?? "—";
+
+	/// <summary>What each section of the planned song turned out to be — where it sits in samples,
+	/// and which instrument its cymbal hand took. A line that wants "a section where the drummer
+	/// rides" cannot ask for one directly: riding is a per-section roll against a per-song
+	/// preference, so the only way to find one is to plan songs and look.</summary>
+	internal readonly struct SectionInfo
+	{
+		public readonly int Start, End;
+		public readonly bool Ride, CrashRide;
+		public readonly string Type;
+		public SectionInfo( int start, int end, bool ride, bool crashRide, string type )
+		{ Start = start; End = end; Ride = ride; CrashRide = crashRide; Type = type; }
+	}
+
+	readonly List<SectionInfo> _sections = new();
+	internal IReadOnlyList<SectionInfo> AuditionSections => _sections;
+
+	/// <summary>Whether this song's groove ever opens the hats. A line about open-and-closed hats
+	/// needs a groove that HAS an open cell — metal's have none at all, so a metal verse is a
+	/// perfectly good section and a useless demonstration.</summary>
+	internal bool AuditionGrooveOpens
+	{
+		get
+		{
+			foreach ( var h in _groove.Cymbal.Slice( 0, _groove.Cymbal.LengthTicks ) )
+				if ( h.Value == DrumGroove.Open ) return true;
+			return false;
+		}
+	}
+
+	/// <summary>One bar of the genre's groove, and one fill — the engine's own passes, so a line
+	/// hears what a song hears rather than a hand-written imitation of it.</summary>
+	internal void AuditionBar( int barTick, Rng noise )
+		=> RenderDrumBar( barTick, _time.BarTicks, barTick + _time.BarTicks, noise );
+
+	internal void AuditionFill( int fromTick, int toTick, Rng noise, Rng rng )
+		=> RenderFill( fromTick, toTick, noise, rng );
+
+	/// <summary>The kit's cymbals, for the lines that play one directly.</summary>
+	internal float[][] AuditionCymbal( int which )
+		=> which switch { 0 => _rideBow, 1 => _rideBell, 2 => _crashBright, _ => _crashDark };
+
 	internal (float Peak, double Rms) RawLevels()
 	{
 		float peak = 0; double sum = 0; int n = 0;
