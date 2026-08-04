@@ -68,6 +68,43 @@ enum EndingStyle
 	Fall,
 }
 
+/// <summary>
+/// THE GENRE'S TUNE VOCABULARY — what kind of melody it writes, as opposed to what its lead
+/// GUITAR does with one.
+///
+/// It is here rather than in a <c>_prof.Lead switch</c> inside <c>DrawTunes</c> because that
+/// switch was the <c>if ( _genre == … )</c> smell one level removed: two genres sharing a
+/// <see cref="LeadStyle"/> got the same tune vocabulary, which is half of why two genres' tunes
+/// used to come back byte-identical. A vocabulary belongs to the genre, not to the lead's grammar.
+///
+/// EVERY NUMBER BELOW IS AUTHORED, not measured. There is no melodic corpus in this repo the way
+/// there is a drum one, so these say what a genre's tunes should be made of and nothing more —
+/// unlike the accent weights and the groove placements, which are fitted numbers and say so. Do
+/// not write them up as if they were measured.
+/// </summary>
+readonly struct TuneVocab
+{
+	/// <summary>Weights over <see cref="Melody.Lengths"/> — the note lengths this genre sings in.
+	/// This IS the genre's density: a table that leans on the quarter and the half writes a punk
+	/// tune, one that leans on the eighth and the sixteenth writes a metal one.</summary>
+	public readonly int[] LengthWeights;
+
+	/// <summary>How often a cell is silence rather than a note. A rest is an OMITTED ONSET — the
+	/// note before it simply holds longer — so this thins the line without needing a rest cell the
+	/// renderer would have to know about.</summary>
+	public readonly float Rest;
+
+	/// <summary>How often the line jumps rather than steps.</summary>
+	public readonly float Leap;
+
+	/// <summary>Weights over <see cref="Melody.Answers"/> — how this genre answers its own call.
+	/// </summary>
+	public readonly int[] AnswerWeights;
+
+	public TuneVocab( int[] lengths, float rest, float leap, int[] answers )
+	{ LengthWeights = lengths; Rest = rest; Leap = leap; AnswerWeights = answers; }
+}
+
 /// <summary>Per-genre mix trim. Not a knob and not a per-song draw: a genre's records simply
 /// sound like this. Scaled globally by <c>Config.GenreMix</c> so the house can dial the whole
 /// effect back at runtime without a rebuild.</summary>
@@ -249,6 +286,11 @@ sealed class GenreProfile
 	/// and metal gesture and it makes a ska verse sound like a mistake.</summary>
 	public float CrashRideFrom { get; init; } = 1.01f;
 
+	/// <summary>What kind of TUNE this genre writes (see <see cref="TuneVocab"/>). Distinct from
+	/// <see cref="Lead"/>, which is what the lead instrument does when it improvises instead.
+	/// </summary>
+	public TuneVocab Tune { get; init; }
+
 	/// <summary>How the lead phrases.</summary>
 	public LeadStyle Lead { get; init; }
 	/// <summary>Phrase length in bars, and the chance a phrase is a rest instead. A genre whose
@@ -400,7 +442,11 @@ sealed class GenreProfile
 			// on its own. Ramp-led, with the flick off the last chop that its comp figures carry.
 			FillHits = 12f, FillShapes = new[] { 4, 2, 2, 2 },
 			Toms = TomTune.Fourths,
-			Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
+			// The horn line: eighth-led and busy, phrased in short answers. Ska's tune is the section
+				// singing over an offbeat bed, so it leans on the eighth and does not sit on long notes.
+				Tune = new TuneVocab( new[] { 2, 6, 2, 4, 1, 1 }, rest: 0.12f, leap: 0.20f,
+					answers: new[] { 4, 3, 2, 1, 1 } ),
+				Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
 			AccentDown = 0.95f, AccentBack = 1.05f, AccentOff = 1.1f, // the offbeat is still the loud one
 			// Dry and bright — a 90s record, not a 60s room. The high trim is a TIMBRE call and was
 			// checked not to be a level one: moving it 0.95→1.15 shifts the kit's RMS by 0.02%,
@@ -442,7 +488,11 @@ sealed class GenreProfile
 			Grooves = DrumGroove.Rock, GrooveWeights = new[] { 3, 2 },
 			FillHits = 13.2f, FillShapes = new[] { 4, 3, 2, 1 },   // measured, 204 bars of fill
 			Toms = TomTune.Fourths, CrashRideFrom = 0.90f,
-			Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
+			// Alt-rock: quarters and eighths with room between them, and enough of an inverted
+				// answer to keep a vocal from being one shape restated a step down.
+				Tune = new TuneVocab( new[] { 1, 4, 2, 5, 2, 2 }, rest: 0.18f, leap: 0.20f,
+					answers: new[] { 4, 3, 2, 1, 2 } ),
+				Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			AccentDown = 0.99f, AccentBack = 1.16f, AccentOff = 0.82f,   // measured, 6521 bars
 			Mix = new MixProfile( 1f, 1f, 1f, 1.05f, 1f ),
 		},
@@ -482,7 +532,11 @@ sealed class GenreProfile
 			// lick out of the train beat's ghosted snare, not a roll across the toms.
 			FillHits = 10f, FillShapes = new[] { 3, 2, 2, 4 },
 			Toms = TomTune.Thirds,
-			Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
+			// Nashville: long held notes with a sixteenth lick between them, and the most
+				// conservative answer set on the roster — a country hook restates and resolves.
+				Tune = new TuneVocab( new[] { 2, 4, 1, 5, 2, 2 }, rest: 0.20f, leap: 0.25f,
+					answers: new[] { 5, 3, 1, 1, 1 } ),
+				Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
 			// Boom AND chick carry weight — and the measurement says both carry MORE than this
 			// genre was giving them. Thin (120 bars), so it is an indication rather than settled.
 			AccentDown = 1.04f, AccentBack = 1.33f, AccentOff = 1.22f,
@@ -529,7 +583,11 @@ sealed class GenreProfile
 			// asks for above rock arrives as sixteenth ornament (see FillChances).
 			FillHits = 14f, FillShapes = new[] { 2, 5, 2, 1 },
 			Toms = TomTune.Wide, CrashRideFrom = 0.80f,
-			Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
+			// The only genre whose tune is written at the sixteenth, and the one that rests least:
+				// metal's vocal sits ON the riff rather than in the gaps a riff leaves.
+				Tune = new TuneVocab( new[] { 5, 6, 1, 3, 1, 1 }, rest: 0.08f, leap: 0.35f,
+					answers: new[] { 3, 2, 2, 2, 3 } ),
+				Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
 			RiffBassChance = 0.75f,
 			AccentDown = 1f, AccentBack = 1f, AccentOff = 0.95f,    // deliberately flat: it's a wall
 			Mix = new MixProfile( 0.45f, 1f, 1.05f, 0.85f, 1.05f ), // dry, mid-scooped
@@ -565,7 +623,11 @@ sealed class GenreProfile
 			// that reads there, because there is no room for anything longer to develop.
 			FillHits = 13f, FillShapes = new[] { 3, 4, 3, 1 },
 			Toms = TomTune.Fixed, CrashRideFrom = 0.85f,
-			Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
+			// Shouted: quarters and halves, the fewest notes on the roster, and the most rests —
+				// a skate-punk hook is four words held over a wall of eighths, not a melisma.
+				Tune = new TuneVocab( new[] { 1, 4, 1, 6, 1, 3 }, rest: 0.22f, leap: 0.20f,
+					answers: new[] { 5, 3, 1, 1, 1 } ),
+				Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
 			RiffBassChance = 0.35f,
 			// Punk's offbeat is as loud as its downbeat — the relentless eighth has no dynamic in
 			// it, which is the measurement disagreeing with the 0.9 this genre used to assume.
@@ -615,7 +677,12 @@ sealed class GenreProfile
 			// more often than it is a drummer going round the kit.
 			FillHits = 8.5f, FillShapes = new[] { 3, 1, 4, 3 },
 			Toms = TomTune.Fixed,
-			Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
+			// The DOTTED EIGHTH is the pop signature — a hook that pulls against the four-on-the-floor
+				// instead of sitting on it — and the new-tail answer is what a chorus does: same line,
+				// different landing.
+				Tune = new TuneVocab( new[] { 2, 5, 3, 4, 2, 2 }, rest: 0.20f, leap: 0.22f,
+					answers: new[] { 3, 4, 2, 1, 1 } ),
+				Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			// The widest gap between what was assumed and what was measured, and the one to
 			// revisit first: a programmed pop kit puts its off-beat hats far under the pulse.
 			AccentDown = 0.92f, AccentBack = 1.02f, AccentOff = 0.57f,

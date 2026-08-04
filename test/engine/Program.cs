@@ -1287,14 +1287,15 @@ static class Program
 	static void MelodyTests()
 	{
 		int bar = 4 * Timing.TicksPerBeat;
-		var tune = Melody.Draw( new Rng( "tune:a" ), 4, bar, 0.4f, 0.2f );
+		var vocab = GenreProfile.For( 1 ).Tune;
+		var tune = Melody.Draw( new Rng( "tune:a" ), 4, bar, vocab );
 
 		Check( "a tune is as long as it was asked to be", tune.LengthTicks == 4 * bar );
 		Check( "a tune has notes in every bar", tune.Count >= 4 );
 		Check( "a tune is reproducible from its seed",
-			SameTune( tune, Melody.Draw( new Rng( "tune:a" ), 4, bar, 0.4f, 0.2f ) ) );
+			SameTune( tune, Melody.Draw( new Rng( "tune:a" ), 4, bar, vocab ) ) );
 		Check( "a different seed writes a different tune",
-			!SameTune( tune, Melody.Draw( new Rng( "tune:b" ), 4, bar, 0.4f, 0.2f ) ) );
+			!SameTune( tune, Melody.Draw( new Rng( "tune:b" ), 4, bar, vocab ) ) );
 
 		// Call and answer: the second phrase repeats the FIRST phrase's rhythm exactly (that
 		// symmetry is what makes a line sound composed), and resolves home on the last note.
@@ -1313,10 +1314,94 @@ static class Program
 		foreach ( var h in all ) inRange &= h.Value >= -3 && h.Value <= 10;
 		Check( "a tune stays in a singable range", inRange );
 
-		// Density is a real control — a punk tune must be sparser than a ska horn line.
-		int sparse = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.2f, 0.2f ).Count;
-		int busy = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.9f, 0.2f ).Count;
-		Check( "density controls how much a tune moves", busy > sparse, $"{busy} vs {sparse} notes" );
+		// The verse's `move` factor is a real control: the same vocabulary, fewer notes in it.
+		// Measured over seeds rather than on one, because it leans a draw rather than setting a
+		// count — a single seed can go either way and that is the mechanism working.
+		int chorusNotes = 0, verseNotes = 0;
+		for ( int i = 0; i < 60; i++ )
+		{
+			chorusNotes += Melody.Draw( new Rng( $"move:{i}" ), 4, bar, vocab ).Count;
+			verseNotes += Melody.Draw( new Rng( $"move:{i}" ), 4, bar, vocab, 0.8f ).Count;
+		}
+		Check( "the verse tune moves less than the chorus tune", verseNotes < chorusNotes,
+			$"{verseNotes} vs {chorusNotes} notes over 60 tunes" );
+
+		// ── the three contour mechanisms ──
+		// Each is asserted as the SENTENCE it was written to express, not as a number that makes a
+		// check pass.
+
+		// Reflection, not a clamp. A clamp is sticky — a line that reaches an end and keeps
+		// stepping outward parks there — so the check is that stepping past an end turns round
+		// rather than stopping, and that the range still holds.
+		Check( "a degree past the top reflects back inside", Melody.Reflect( Melody.DegreeMax + 2 ) == Melody.DegreeMax - 2 );
+		Check( "a degree past the bottom reflects back inside", Melody.Reflect( Melody.DegreeMin - 3 ) == Melody.DegreeMin + 3 );
+		Check( "reflection still respects the range", Melody.Reflect( 99 ) <= Melody.DegreeMax && Melody.Reflect( -99 ) >= Melody.DegreeMin );
+
+		// Post-skip reversal: a melody that jumps comes back. Counted over the CALL of many tunes,
+		// against the leaps themselves — a random walk would reverse about half the time.
+		int leaps = 0, reversed = 0, pinnedNotes = 0, allNotes = 0;
+		var lengths = new HashSet<int>();
+		for ( int i = 0; i < 200; i++ )
+		{
+			var t = Melody.Draw( new Rng( $"contour:{i}" ), 4, bar, GenreProfile.For( 3 ).Tune );
+			var hits = t.Slice( 0, t.LengthTicks );
+			int half = hits.Count / 2;
+			for ( int k = 0; k + 2 < half; k++ )
+			{
+				int a = hits[k + 1].Value - hits[k].Value, b = hits[k + 2].Value - hits[k + 1].Value;
+				if ( Math.Abs( a ) < 2 ) continue;
+				leaps++;
+				if ( Math.Sign( b ) == -Math.Sign( a ) ) reversed++;
+			}
+			foreach ( var h in hits )
+			{
+				allNotes++;
+				if ( h.Value <= Melody.DegreeMin || h.Value >= Melody.DegreeMax ) pinnedNotes++;
+				lengths.Add( h.SpanTicks );
+			}
+		}
+		Check( "a leap is followed back the other way far more often than not",
+			leaps > 100 && reversed > leaps * 0.8, $"{reversed} of {leaps}" );
+		Check( "notes stop piling up at the range ends", pinnedNotes < allNotes / 20,
+			$"{pinnedNotes} of {allNotes} pinned" );
+		Check( "a tune is written in more than three note lengths", lengths.Count > 3,
+			$"{lengths.Count} distinct spans" );
+
+		// A leap really is a range of intervals now, not one interval wearing a general name.
+		var sizes = new HashSet<int>();
+		for ( int i = 0; i < 200; i++ )
+		{
+			var t = Melody.Draw( new Rng( $"leapsize:{i}" ), 4, bar, GenreProfile.For( 3 ).Tune );
+			var hits = t.Slice( 0, t.LengthTicks );
+			for ( int k = 0; k + 1 < hits.Count / 2; k++ )
+				sizes.Add( Math.Abs( hits[k + 1].Value - hits[k].Value ) );
+		}
+		Check( "a leap is a third, a fourth or a fifth — not always a third",
+			sizes.Contains( 2 ) && sizes.Contains( 3 ) && sizes.Contains( 4 ), string.Join( " ", sizes ) );
+
+		// The answer is DRAWN now. It used to be the call minus one degree, 100% of the time, in
+		// every genre — half of every tune in the engine was a mechanical transform of the other
+		// half. Measured as the rate rather than by classifying each answer, because two operators
+		// can land on the same notes and a classifier would have to guess which one ran.
+		int stepDown = 0, tunesSeen = 0, resolved = 0;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int i = 0; i < 120; i++ )
+			{
+				var t = Melody.Draw( new Rng( $"answer:{g}:{i}" ), 4, bar, GenreProfile.For( g ).Tune );
+				var hits = t.Slice( 0, t.LengthTicks );
+				int half = hits.Count / 2;
+				tunesSeen++;
+				if ( hits[^1].Value == 0 ) resolved++;
+				bool down = half > 1;
+				for ( int k = 0; k < half - 1 && down; k++ )
+					down = hits[half + k].Value == Melody.Reflect( hits[k].Value - 1 );
+				if ( down ) stepDown++;
+			}
+		Check( "a tune always resolves on the tonic", resolved == tunesSeen, $"{resolved} of {tunesSeen}" );
+		Check( "the answer is not always the call a step down", stepDown < tunesSeen * 0.7,
+			$"{stepDown} of {tunesSeen}" );
+		Check( "…and the step down is still the commonest answer", stepDown > tunesSeen * 0.2,
+			$"{stepDown} of {tunesSeen}" );
 
 		// THERE IS DELIBERATELY NO CHECK HERE THAT TWO GENRES SING DIFFERENT TUNES. The genre goes
 		// into the tune's stream so that two genres at one seed are not reliably identical, but

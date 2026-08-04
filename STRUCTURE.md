@@ -407,6 +407,56 @@ rather than distinguishing.
 
 Re-bless.
 
+### What landed, and what it moved
+
+Every target above was met. Baseline → after, across the six genres:
+
+| | before | after |
+|---|---|---|
+| off the eighth grid | 0% | 28–48% |
+| pinned at the range ends | 12–18% | 2–4% |
+| repeated adjacent notes | 8–12% | 1–2% |
+| answer ≡ call−1 | 100% | 18–44% |
+| leap sizes | always a third | third / fourth / fifth |
+| distinct rhythms (punk, pop) | 266, 331 | 491, 500 |
+| cross-genre onset overlap (worst pairs) | 48%, 54% | 26%, 35% |
+
+The convergence guard holds: the vocabulary widened and the tunes got **less** alike, not more.
+
+**Three things went in that this document did not ask for, and the reason is the same for all
+three: the contour was a plain random walk, and none of the vocabulary work reaches that.**
+
+- **Post-skip reversal.** A melody that leaps comes back — one of the most robust findings there
+  is about how tunes are actually written, and what makes a leap read as a gesture rather than as
+  the line relocating. Without it, widening leaps from "always a third" to thirds/fourths/fifths
+  would have made the wandering worse rather than better.
+- **The melodic arch.** Phrases rise and then fall on average. The engine had nothing of the kind:
+  it wandered, and the only thing that ever brought it home was the forced tonic on the last note,
+  which is a landing with no approach to it.
+- **Tessitura — a pull toward the middle of the range.** This is the one that actually keeps a tune
+  off the range ends, and finding that out is the useful part. Reflection alone was not enough:
+  reflecting stops a line *parking* at a boundary, but a walk with no centre still spends its time
+  out there, and the arch makes it worse by leaning uphill in the first half of every phrase
+  whatever the register already is. Reflection took pinning 12–18% → 5.5%; the centre pull took it
+  to 2–4%. **They are different jobs** — one decides where the line lives, the other decides what
+  happens when it arrives at an edge anyway — and a session that reads only the pinning number
+  will conclude reflection did it.
+
+**The register bound itself is unchanged and is still a judgement.** `-2..9` is twelve scale
+degrees, ~19 semitones in a major scale — which is a WHOLE-SONG figure being used as a PHRASE
+figure, since the tune here is 2–8 bars. (The large-scale pop-melody work measures range on a
+rolling two-bar window for exactly that reason.) The right shape is probably two bounds: a tight
+span a single phrase may cover, inside a looser one the whole tune may reach. It is not done here
+because the arch plus the centre pull already narrow the phrase in practice, and because no source
+found gives a phrase-range figure for this roster's genres — so it would be a second authored
+number dressed as a fix. Left as a judgement, labelled as one, in `Melody.DegreeMin/DegreeMax`.
+
+**One thing this document asserts that is not there.** The claimed off-by-one — "the call loop
+tests `t < phraseTicks` *before* adding, so the call can overrun the phrase and the answer starts
+on top of it" — is not a bug. Every onset the loop adds has `t < phraseTicks` by construction, and
+what overruns is the last note's *duration*, which `Pattern` computes from the next onset rather
+than from the drawn length. Nothing was changed for it.
+
 ---
 
 ## Phase 3 — the arranger
