@@ -26,6 +26,16 @@ static class Melody
 	/// <summary>Cell value for a rest — no onset, the previous note holds.</summary>
 	public const int Rest = Harmony.Rest;
 
+	/// <summary>The range a tune is written in, in SCALE DEGREES from the key's tonic: from the
+	/// sixth below it up to the third above the octave. Twelve degrees, about an octave and a fifth
+	/// in a major scale, and deliberately lopsided — a melody sits above its tonic and only dips
+	/// under it, so a symmetric range would spend half of itself where no tune goes.
+	///
+	/// It is an authored bound rather than a measured one: what it is FOR is that a line which
+	/// wanders further stops being singable, and singable is what makes the thing a tune. The
+	/// number is a judgement about that and nothing more.</summary>
+	public const int DegreeMin = -2, DegreeMax = 9;
+
 	/// <summary>
 	/// Draw a tune: <paramref name="bars"/> bars of CALL AND ANSWER. The first phrase states a
 	/// shape and leaves it open; the second repeats that rhythm and resolves it home. That
@@ -64,7 +74,7 @@ static class Melody
 			ticks.Add( t );
 			degrees.Add( degree );
 			int step = rng.Next() < leap ? (rng.Chance( 0.5f ) ? 2 : -2) : (rng.Chance( 0.5f ) ? 1 : -1);
-			degree = Math.Clamp( degree + step, -2, 9 );
+			degree = Math.Clamp( degree + step, DegreeMin, DegreeMax );
 		}
 
 		// ── the answer ──
@@ -76,7 +86,7 @@ static class Melody
 		{
 			ticks.Add( phraseTicks + ticks[i] );
 			bool last = i == n - 1;
-			degrees.Add( last ? 0 : Math.Clamp( degrees[i] - 1, -2, 9 ) );
+			degrees.Add( last ? 0 : Math.Clamp( degrees[i] - 1, DegreeMin, DegreeMax ) );
 		}
 
 		// A held final note, so the tune breathes before it comes round again.
@@ -164,7 +174,9 @@ public sealed partial class MusicGen
 		// like the tape sped up. Scaling the hook by the same multiplier deletes the gesture and
 		// leaves only a faster song. So the tune slices at the nominal rate; every other voice
 		// (comp, keys, bass, horns, kit) reads _feel.
-		foreach ( var h in tune.Slice( barTick, barTick + barTicks, anchor ) )
+		var sung = tune.Slice( barTick, barTick + barTicks, anchor );
+		Trace?.Add( TraceVoice.Tune, sung );
+		foreach ( var h in sung )
 		{
 			int degree = h.Value;
 			int len = Math.Min( h.SpanTicks, Timing.TicksPerBeat * 2 );

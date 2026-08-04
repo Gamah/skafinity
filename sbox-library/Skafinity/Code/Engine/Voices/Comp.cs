@@ -24,6 +24,7 @@ public sealed partial class MusicGen
 		// Remember what the riff played: where the bass doubles it (metal, and punk's unison
 		// option) it reads these onsets rather than a table of its own.
 		_riffOnsets.AddRange( hits );
+		Trace?.Add( TraceVoice.Comp, hits );
 
 		switch ( loud ? _prof.LoudComp : _prof.Comp )
 		{
@@ -105,6 +106,7 @@ public sealed partial class MusicGen
 	void RenderKeysVoice( int barTick, int to, int chord, Rng rng, Rng exprRng, bool ornament )
 	{
 		var hits = (ornament ? _prof.KeysOrnament : _keysFig).Slice( barTick, to, _sectionTick, _feel );
+		Trace?.Add( TraceVoice.Keys, hits );
 		switch ( _prof.Keys )
 		{
 			case KeysStyle.HonkyTonk: RenderHonkyTonkBar( hits, chord, rng, exprRng ); break;

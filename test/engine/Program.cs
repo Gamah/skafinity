@@ -63,6 +63,15 @@ static class Program
 			return 0;
 		}
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
+		// --stats [N]: the sweep — how much a genre varies from song to song, over N songs per
+		// genre. A DIAGNOSTIC: not in the section list below, not in CI, not in blessing. See
+		// Stats.cs for what it measures and why it does not re-derive the plan to do it.
+		int st = Array.IndexOf( args, "--stats" );
+		if ( st >= 0 )
+		{
+			Stats.Run( st + 1 < args.Length && int.TryParse( args[st + 1], out var sn ) ? sn : 500 );
+			return 0;
+		}
 		// --hand: the cymbal hand measured against the hi-hat it stands in for. See CymbalHand.
 		if ( Array.IndexOf( args, "--hand" ) >= 0 ) { CymbalHand(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );

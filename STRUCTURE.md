@@ -82,9 +82,22 @@ var fig = hemiola ? CompFigure.Hemiola
 ```
 
 — because two implementations of "what does the comp play in this bar" drift, and when they drift
-the tool starts lying with a straight face. Factor it into a pure `FigureFor( in Part part, int
-bar, ... )` that the renderer and the sweep both call. The same goes for the bass's riff branch
-and the keys' gate.
+the tool starts lying with a straight face.
+
+**What landed goes further than the `FigureFor` this planned, and the reason is worth keeping.**
+Factoring the precedence into a pure function still leaves the sweep re-walking the structure and
+re-slicing the patterns, which is a second implementation of *everything else* — the bass's riff
+branch, the keys' energy gate, the tune's section test, the cymbal's sparse-section thinning, the
+snare's ghost roll. And `_compOrn` cannot be re-derived at all outside a render: it is rolled off
+`rhythmRng` interleaved with that voice's own note draws, so a walk that only takes the ornament
+roll gets a different answer than the song did.
+
+So the onsets are recorded BY THE VOICES, at the moment they play them — `Engine/PlanTrace.cs`,
+attached with `MusicGen.BeginPlan( tag, cfg, trace )` and null in every ordinary render. There is
+then exactly one answer to what a bar played, structurally rather than by discipline. The cost is
+that a song has to genuinely compose (the drums synthesise during the plan pass), so the sweep
+composes at 8 kHz — every number it reports is a tick or a count, so the rate is a straight
+multiplier on cost and reaches nothing else. 3000 songs in ~65 s.
 
 ### What it prints, and today's numbers
 
@@ -105,9 +118,173 @@ Per genre, over N songs (default 500):
 - **cross-genre tune collisions** — % of seeds where two genres return the identical tune.
   Today Rock↔Country **50**, Punk↔Pop **53**, Ska↔Country **10**.
 
-Record the tool's full output for `--stats 500` in this file, once, before Phase 1. That is the
-baseline every later phase diffs against, and re-deriving it later means checking out a pre-branch
-build.
+### The baseline, recorded before Phase 1
+
+`dotnet run --project test/engine -c Release -- --stats 500`, on the branch point. This is what
+every later phase diffs against; re-deriving it later means checking out a pre-branch build.
+
+Two places it reads differently from the numbers quoted above, and both are the tool being more
+precise rather than disagreeing. **The state count includes the KEYS figure**, so it is the whole
+rhythm section rather than three of its four draws — which is what makes rock 48, country 32 and
+pop 24 (exactly 2x the triple, since those three genres are precisely the ones with a keys voice).
+And **"answer = call-1" reads 100%**, not 51-80%: the answer IS always the call transposed down a
+degree, by construction, and the only thing that ever differs is the last note, which is forced to
+the tonic and is the tune landing rather than a derivation. Counting that forced note as a failed
+derivation is what produced a number under 100, and it measured the ending rather than the answer.
+
+```
+── sweep: 500 songs x 6 genres, tag "rotaliate", composed at 8000 Hz ──
+
+
+  composed genre 0…  
+  composed genre 1…  
+  composed genre 2…  
+  composed genre 3…  
+  composed genre 4…  
+  composed genre 5…  
+  3000 songs in 63.5 s
+
+── distinct rhythm-section states (comp x keys x bass x groove figures) ──
+  Ska-Punk    30   (table ceiling 30: 3 comp x 1 keys x 5 bass x 2 groove)
+  Rock        48   (table ceiling 48: 3 comp x 2 keys x 4 bass x 2 groove)
+  Country     32   (table ceiling 32: 2 comp x 2 keys x 4 bass x 2 groove)
+  Metal       18   (table ceiling 18: 3 comp x 1 keys x 3 bass x 2 groove)
+  Punk        12   (table ceiling 12: 2 comp x 1 keys x 3 bass x 2 groove)
+  Pop         24   (table ceiling 24: 2 comp x 2 keys x 3 bass x 2 groove)
+
+── distinct forms, and total bars ──
+  Ska-Punk     1 forms   bars 60:100%
+  Rock         1 forms   bars 64:100%
+  Country      1 forms   bars 56:100%
+  Metal        1 forms   bars 64:100%
+  Punk         1 forms   bars 52:100%
+  Pop          1 forms   bars 60:100%
+
+── cohesion: bass on kick, comp on snare (% of A's onsets that land on a B) ──
+  Ska-Punk  bass->kick   25%   comp->snare   14%   bass->comp   54%
+  Rock      bass->kick   44%   comp->snare   26%   bass->comp   65%
+  Country   bass->kick   40%   comp->snare   50%   bass->comp   18%
+  Metal     bass->kick   60%   comp->snare   14%   bass->comp   98%
+  Punk      bass->kick   43%   comp->snare   63%   bass->comp   96%
+  Pop       bass->kick   50%   comp->snare   10%   bass->comp   24%
+
+── the full pairwise agreement matrix (rows = A, cols = B) ──
+  Ska-Punk
+                Kick   Snare  Cymbal    Bass    Comp    Keys    Tune
+    Kick           —     80%    100%     86%     42%       —     46%
+    Snare        72%       —    100%     93%     32%       —     44%
+    Cymbal       29%     26%       —     94%     52%       —     43%
+    Bass         25%     23%     89%       —     54%       —     42%
+    Comp         19%     14%     84%     93%       —       —     41%
+    Keys           —       —       —       —       —       —       —
+    Tune         27%     23%     87%     88%     51%       —       —
+  Rock
+                Kick   Snare  Cymbal    Bass    Comp    Keys    Tune
+    Kick           —      5%     98%     72%     67%     50%     35%
+    Snare         7%       —    100%     87%     61%     14%     35%
+    Cymbal       44%     27%       —     69%     58%     43%     33%
+    Bass         44%     32%     93%       —     65%     42%     33%
+    Comp         47%     26%     90%     74%       —     42%     33%
+    Keys         51%      9%     97%     70%     62%       —     35%
+    Tune         46%     28%     97%     72%     61%     46%       —
+  Country
+                Kick   Snare  Cymbal    Bass    Comp    Keys    Tune
+    Kick           —     52%     68%    100%      0%     11%     40%
+    Snare         8%       —     19%     58%     18%     46%     23%
+    Cymbal       28%     53%       —     45%     64%     15%     32%
+    Bass         40%     68%     43%       —     18%     44%     35%
+    Comp          0%     50%     73%     21%       —     10%     26%
+    Keys          9%     87%     30%     93%     18%       —     35%
+    Tune         31%     64%     60%     68%     42%     32%       —
+  Metal
+                Kick   Snare  Cymbal    Bass    Comp    Keys    Tune
+    Kick           —     28%     75%     83%     93%       —     29%
+    Snare       100%       —     98%     87%     95%       —     36%
+    Cymbal       83%     31%       —     88%     96%       —     38%
+    Bass         60%     18%     59%       —     98%       —     23%
+    Comp         51%     14%     47%     80%       —       —     19%
+    Keys           —       —       —       —       —       —       —
+    Tune         82%     29%     97%     89%     97%       —       —
+  Punk
+                Kick   Snare  Cymbal    Bass    Comp    Keys    Tune
+    Kick           —     58%    100%     99%     96%       —     45%
+    Snare        31%       —    100%     99%     96%       —     39%
+    Cymbal       45%     68%       —     99%     96%       —     36%
+    Bass         43%     65%     95%       —     96%       —     35%
+    Comp         42%     63%     93%     98%       —       —     35%
+    Keys           —       —       —       —       —       —       —
+    Tune         57%     69%     97%     99%     97%       —       —
+  Pop
+                Kick   Snare  Cymbal    Bass    Comp    Keys    Tune
+    Kick           —     30%     99%     72%     35%     90%     46%
+    Snare        61%       —    100%     55%      7%     90%     43%
+    Cymbal       42%     19%       —     53%     14%     95%     33%
+    Bass         50%     19%     91%       —     24%     89%     39%
+    Comp         96%     10%     95%     94%       —     91%     59%
+    Keys         23%     10%     60%     32%      8%       —     21%
+    Tune         56%     22%     97%     66%     26%    100%       —
+
+── chorus tune shape ──
+  Ska-Punk  (500 tunes, 31.2 notes each)
+    off the 8th grid  0%   pinned at the range ends 17%   repeated adjacent 11%
+    last note tonic   100%   answer = call-1 100%
+    note lengths      24:33%  48:48%  72:1%  96:18%
+    first degree      0:38%  2:29%  4:34%
+    step sizes        0:7%  1:75%  2:18%
+    distinct          500 rhythms, 500 contours, 500 tunes
+  Rock  (500 tunes, 27.4 notes each)
+    off the 8th grid  0%   pinned at the range ends 16%   repeated adjacent 10%
+    last note tonic   100%   answer = call-1 100%
+    note lengths      24:23%  48:49%  72:1%  96:27%
+    first degree      0:38%  2:30%  4:32%
+    step sizes        0:6%  1:76%  2:18%
+    distinct          499 rhythms, 500 contours, 500 tunes
+  Country  (500 tunes, 28.2 notes each)
+    off the 8th grid  0%   pinned at the range ends 17%   repeated adjacent 11%
+    last note tonic   100%   answer = call-1 100%
+    note lengths      24:25%  48:48%  72:1%  96:26%
+    first degree      0:37%  2:32%  4:31%
+    step sizes        0:7%  1:75%  2:18%
+    distinct          499 rhythms, 500 contours, 500 tunes
+  Metal  (500 tunes, 34.9 notes each)
+    off the 8th grid  0%   pinned at the range ends 18%   repeated adjacent 12%
+    last note tonic   100%   answer = call-1 100%
+    note lengths      24:40%  48:48%  72:0%  96:11%
+    first degree      0:36%  2:33%  4:31%
+    step sizes        0:8%  1:61%  2:31%
+    distinct          500 rhythms, 500 contours, 500 tunes
+  Punk  (500 tunes, 13.4 notes each)
+    off the 8th grid  0%   pinned at the range ends 13%   repeated adjacent 8%
+    last note tonic   100%   answer = call-1 100%
+    note lengths      24:19%  48:51%  72:2%  96:28%
+    first degree      0:35%  2:33%  4:32%
+    step sizes        0:4%  1:78%  2:18%
+    distinct          266 rhythms, 410 contours, 498 tunes
+  Pop  (500 tunes, 14.1 notes each)
+    off the 8th grid  0%   pinned at the range ends 12%   repeated adjacent 8%
+    last note tonic   100%   answer = call-1 100%
+    note lengths      24:25%  48:49%  72:2%  96:25%
+    first degree      0:34%  2:36%  4:30%
+    step sizes        0:4%  1:78%  2:18%
+    distinct          331 rhythms, 441 contours, 499 tunes
+
+── cross-genre tune collisions (same n, two genres, identical chorus tune) ──
+  Ska-Punk  <-> Rock      identical    5%   onset overlap 57%
+  Ska-Punk  <-> Country   identical   11%   onset overlap 63%
+  Ska-Punk  <-> Metal     identical    1%   onset overlap 70%
+  Ska-Punk  <-> Punk      identical    0%   onset overlap 25%
+  Ska-Punk  <-> Pop       identical    0%   onset overlap 28%
+  Rock      <-> Country   identical   53%   onset overlap 83%
+  Rock      <-> Metal     identical    0%   onset overlap 62%
+  Rock      <-> Punk      identical    0%   onset overlap 31%
+  Rock      <-> Pop       identical    0%   onset overlap 37%
+  Country   <-> Metal     identical    0%   onset overlap 63%
+  Country   <-> Punk      identical    0%   onset overlap 29%
+  Country   <-> Pop       identical    0%   onset overlap 34%
+  Metal     <-> Punk      identical    0%   onset overlap 23%
+  Metal     <-> Pop       identical    0%   onset overlap 25%
+  Punk      <-> Pop       identical   52%   onset overlap 83%
+```
 
 ---
 

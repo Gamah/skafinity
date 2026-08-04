@@ -346,6 +346,7 @@ public sealed partial class MusicGen
 		{
 			var h = play[i];
 			if ( h.Tick >= to ) break;
+			Trace?.Add( TraceVoice.Cymbal, h.Tick );
 			int at = _time.TickToSample( h.Tick );
 			int next = i + 1 < play.Count ? _time.TickToSample( play[i + 1].Tick ) : int.MaxValue;
 			int cell = h.Value;
@@ -402,7 +403,9 @@ public sealed partial class MusicGen
 		// waveform at the identical level sixteen times a bar — which is what machine-gunning is.
 		// Its depth is under the cymbal hand's and near the fill's: the kick is the floor of the
 		// groove and should breathe least.
-		foreach ( var h in _groove.Kick.Slice( barTick, to, _sectionTick, _feel ) )
+		var kicks = _groove.Kick.Slice( barTick, to, _sectionTick, _feel );
+		Trace?.Add( TraceVoice.Kick, kicks );
+		foreach ( var h in kicks )
 			RenderKick( _time.TickToSample( h.Tick ), noise, KitGain( h.Tick, h.Vel, 0.30f ),
 				_kickTone, 0f );
 
@@ -421,6 +424,7 @@ public sealed partial class MusicGen
 			// The groove's own ghost notes thin out with the section rather than hammering a
 			// verse as hard as a chorus.
 			if ( ghost && !noise.Chance( 0.35f + 0.65f * _energy ) ) continue;
+			Trace?.Add( TraceVoice.Snare, h.Tick );
 			RenderSnare( _time.TickToSample( h.Tick ), noise, ghost );
 		}
 

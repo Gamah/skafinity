@@ -71,6 +71,16 @@ public sealed partial class MusicGen
 		return g;
 	}
 
+	/// <summary>As <see cref="BeginPlan(string,Config)"/>, with every voice's onsets recorded as it
+	/// plays them (see <see cref="PlanTrace"/>). The trace has to be attached BEFORE the plan runs,
+	/// which is the whole reason this overload exists.</summary>
+	internal static MusicGen BeginPlan( string tag, Config cfg, PlanTrace trace )
+	{
+		var g = new MusicGen( cfg ) { Trace = trace };
+		g.ComposePlan( tag );
+		return g;
+	}
+
 	public int TotalSamples => _bufL?.Length ?? 0;
 	public int SampleRate => _sr;
 
@@ -188,6 +198,21 @@ public sealed partial class MusicGen
 	/// sixteenth-only ruler would flag it as drift.</summary>
 	/// <summary>The genre this plan was composed for (diagnostics).</summary>
 	internal int Genre => _genre;
+
+	/// <summary>What the song's CHORUSES play — the draws that are the song's rhythm-section
+	/// identity. A sweep counts distinct combinations of these, which is the number that says how
+	/// many different rhythm sections a genre can produce at all: they come out of tables, so it is
+	/// a table-size ceiling rather than anything randomness can reach.</summary>
+	internal (Pattern Comp, Pattern Keys, Pattern Bass, DrumGroove Groove) SongParts =>
+		(_songComp, _songKeys, _songBass, _groove);
+
+	/// <summary>The song's two tunes (diagnostics — see <see cref="Melody"/>).</summary>
+	internal (Pattern Chorus, Pattern Verse) Tunes => (_chorusTune, _verseTune);
+
+	/// <summary>THIS SONG's form. One accessor rather than five call sites re-deriving it: a form
+	/// that varies per song must be the same list everywhere, or the diagnostics' bar rulers
+	/// disagree with the song that was rendered.</summary>
+	internal IReadOnlyList<Part> Form => BuildStructure( _genre );
 
 	/// <summary>Every audible note as (sample start, frequency), in composition order. The
 	/// per-voice score behind the <c>--score</c> diagnostic: solo a voice, read what it actually
@@ -417,6 +442,9 @@ public sealed partial class MusicGen
 	bool _riffBass;          // the bass reads the riff's onsets instead of playing its own pattern
 	EndingStyle _ending;     // how this song lands (see EndingStyle) — a per-song draw, not a fixed pad
 	readonly List<Hit> _riffOnsets = new(); // this bar's riff, for the bass to double
+	// Where every part's onsets get written when a sweep is watching (see PlanTrace). Null in
+	// every ordinary render, so this is a null check per bar per voice and nothing else.
+	internal PlanTrace Trace;
 	bool _ride;              // per-SECTION: ride cymbal drives the eighth pulse instead of closed hats (set in RenderSection from _ridePref)
 	float _ridePref;         // per-song lean toward riding the ride vs the hats; each section rolls its own _ride against this
 	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
