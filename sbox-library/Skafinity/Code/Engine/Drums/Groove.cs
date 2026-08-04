@@ -211,6 +211,14 @@ sealed class DrumGroove
 			// A separate OBJECT because no two genres may share a groove (the suite asserts it),
 			// which is a rule about tables accidentally converging rather than about two genres
 			// never playing the same rhythm.
+			//
+			// WEIGHTED BEHIND EACH GENRE'S OWN GROOVE, on purpose. This one was added because a
+			// listener said it was missing, and the check on that kind of change is not whether the
+			// reason was good — it was, the beat really was absent from both tables — but whether
+			// the WEIGHT came from the same evidence. It did not: joint-top billing was a choice,
+			// and it pushed "eighth drive", which this file calls the punk engine, from 60% of punk
+			// songs to 37%. A genre's signature stays its most common groove and a new arrival
+			// earns its share; ~29% is present without displacing anything.
 			Kick = S( 0, R, R, R, 0, 0, R, R,
 			          0, R, R, R, 0, 0, R, R ),
 			Snare = S( R, R, 0, R, R, R, 0, R,

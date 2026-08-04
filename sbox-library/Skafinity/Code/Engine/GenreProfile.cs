@@ -686,7 +686,7 @@ sealed class GenreProfile
 				MutateRate = 0.55f,
 				CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
 			CompOrnament = CompFigure.MetalTremolo,
-			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2, 3 },
+			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2, 2 },
 			// The one genre whose fill really is the wall. It is also the genre that showed the
 			// density model up: past ~13.4/bar a flat scale had nothing left to give, so what metal
 			// asks for above rock arrives as sixteenth ornament (see FillChances).
@@ -744,7 +744,7 @@ sealed class GenreProfile
 				MutateRate = 0.40f,
 				CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
 			CompOrnament = CompFigure.PunkTurnaround,
-			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2, 3 },
+			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2, 2 },
 			// Busy, but at punk's tempo a bar of fill is over in a second: the pickup is the shape
 			// that reads there, because there is no room for anything longer to develop.
 			FillHits = 13f, FillShapes = new[] { 3, 4, 3, 1 },
