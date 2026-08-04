@@ -242,11 +242,11 @@ public partial class Engine
 // a vibe edit made on one side is fully preserved across the boundary.
 static class Cfg
 {
-	public const int Size = 88;
+	public const int Size = 86;   // two fewer: TempoScale and FastChance are the genre's now
 
 	public static double[] To( MusicGen.Config c ) => new double[]
 	{
-		c.SampleRate, c.TempoScale, c.FastChance,
+		c.SampleRate,
 		c.BassVol, c.SkankVol, c.OrganVol, c.MelodyVol, c.HornVol,
 		c.KickVol, c.SnareVol, c.TomVol, c.HatVol, c.CrashVol, c.DrumVol,
 		c.Detune, c.BassCutoff, c.SkankCutoff, c.SkankHighpass, c.SkankChop,
@@ -280,7 +280,7 @@ static class Cfg
 		var c = new MusicGen.Config();
 		if ( a == null || a.Length < Size ) return c;
 		int i = 0;
-		c.SampleRate = (int)a[i++]; c.TempoScale = (float)a[i++]; c.FastChance = (float)a[i++];
+		c.SampleRate = (int)a[i++];
 		c.BassVol = (float)a[i++]; c.SkankVol = (float)a[i++]; c.OrganVol = (float)a[i++]; c.MelodyVol = (float)a[i++]; c.HornVol = (float)a[i++];
 		c.KickVol = (float)a[i++]; c.SnareVol = (float)a[i++]; c.TomVol = (float)a[i++]; c.HatVol = (float)a[i++]; c.CrashVol = (float)a[i++]; c.DrumVol = (float)a[i++];
 		c.Detune = (float)a[i++]; c.BassCutoff = (float)a[i++]; c.SkankCutoff = (float)a[i++]; c.SkankHighpass = (float)a[i++]; c.SkankChop = (float)a[i++];

@@ -60,6 +60,14 @@ sealed class Pattern
 
 	public int Count => _tick.Length;
 
+	// Read access to the authored cells. Slice() is how a VOICE reads a pattern — it wants song
+	// time, an anchor and a feel. These are for the diagnostics, which want the figure itself:
+	// what rhythm was written, how long each note is, what degree it sings.
+	public int TickAt( int i ) => _tick[i];
+	public int ValueAt( int i ) => _value[i];
+	public int SpanAt( int i ) => _span[i];
+	public float VelAt( int i ) => _vel[i];
+
 	/// <summary>Onsets, in ticks from the pattern's own start. Must be sorted and inside
 	/// <paramref name="lengthTicks"/>.</summary>
 	public Pattern( int lengthTicks, int[] ticks, int[] values, float[] vels = null )

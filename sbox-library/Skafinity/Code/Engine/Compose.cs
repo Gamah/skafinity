@@ -51,6 +51,7 @@ public sealed partial class MusicGen
 	void ComposePlan( string tag )
 	{
 		_events.Clear();
+		_chorusArranged = false;
 		int beatsPerBar = 4;   // 4/4 today; Timing carries it so voices never assume
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
 		_genre = Math.Clamp( _c.Genre, 0, GenreProfile.Count - 1 );
@@ -60,10 +61,11 @@ public sealed partial class MusicGen
 		_hornLead = prof.HornLead;
 		var rng = new Rng( _tag.ToLowerInvariant() );
 
-		// TEMPO BIAS — punk always runs hot (it's the fast genre); the roll still consumes one
-		// draw so every genre pulls the same number of values here.
-		_fast = rng.Chance( _c.FastChance ) || prof.AlwaysFast;
-		int bpm = _bpm = prof.DrawBpm( rng, _fast, _c.TempoScale );
+		// Whether this song takes the genre's uptempo band. The genre's own odds now (see
+		// GenreProfile.FastChance) rather than a knob's — one draw either way, so the draw count
+		// still cannot depend on the genre.
+		_fast = rng.Chance( prof.FastChance );
+		int bpm = _bpm = prof.DrawBpm( rng, _fast );
 		_scale = rng.PickWeighted( prof.Scales, prof.ScaleWeights );
 		_prog = rng.Pick( prof.Progressions );
 		// The song's chord vocabulary — a triad, a 7th, a sus, a bare power chord. Every chordal
@@ -92,6 +94,9 @@ public sealed partial class MusicGen
 		// rest route the lead to a guitar in RenderLeadNote).
 		_lead = PickInstrument( rng );
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
+		// NOTE the ceiling: a genre's Mix.Width above 1 cannot be reached at the design width, so
+		// pop's 1.2 lands at 1.0 like everyone else. The RELATIVE widths still hold (country 0.85
+		// sits inside pop's), which is what the profile is for.
 		_widthScale = Math.Clamp( _c.PanAmount * prof.Mix.Width * _c.GenreMix, 0f, 1f );
 		_drumPan = DrumPan * _widthScale;
 		_bassPat = _songBass = rng.Pick( prof.BassPatterns );
@@ -118,6 +123,10 @@ public sealed partial class MusicGen
 		// Every song can do both — each SECTION rolls its own choice against this preference.
 		_ridePref = prof.DrawRidePref( rng );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
+		// How much room this song sits in — per-song character drawn from a band, the way tempo and
+		// swing are, and then trimmed by the genre's own profile in Master(). A fixed value made
+		// every song of a genre sit in the identical space.
+		_reverbWet = ReverbMin + rng.Next() * (ReverbMax - ReverbMin);
 		_crashBrightLeft = rng.Chance( 0.5f );
 		// THE KIT IS SET UP ONCE, the way a drummer sets one up: three toms tuned in the genre's
 		// intervals from the song's own key, and the rack on one side or the other. Drawn from
@@ -151,14 +160,18 @@ public sealed partial class MusicGen
 		// How the song lands. Every song used to end on the same fixed pad, whatever the genre.
 		_ending = rng.PickWeighted( prof.Endings, prof.EndingWeights );
 
-		// The song's TUNE — the thing a listener hums back. Drawn off its own streams, so a song
-		// having a melody shifts nothing else in the composition.
-		DrawTunes( beatsPerBar * Timing.TicksPerBeat );
-
 		// Swing is the genre's own feel, drawn per song from its band exactly the way tempo is —
 		// not a knob, so a reroll can never hand metal a shuffle. Ska-punk and country may instead
 		// draw a genuine 2:1 triplet shuffle, which is a different feel rather than more swing.
+		//
+		// DRAWN BEFORE THE TUNE, because the tune has to know. Under a shuffle the beat's own
+		// subdivision is the triplet, and a melody written in straight sixteenths against that is
+		// not syncopation, it is two grids at once — see Melody.Draw.
 		float swing = prof.DrawSwing( rng, _fast );
+
+		// The song's TUNE — the thing a listener hums back. Drawn off its own streams, so a song
+		// having a melody shifts nothing else in the composition.
+		DrawTunes( beatsPerBar * Timing.TicksPerBeat, swing > 0f );
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 
@@ -175,7 +188,11 @@ public sealed partial class MusicGen
 
 		// Lay out the structure first — the time base is built over the song's full tick span,
 		// so it has to know how long the song is, and the sections carry the tempo curve.
-		var structure = BuildStructure( _genre );
+		// THE FORM IS DRAWN ONCE AND CACHED. Off its own stream, so a form that varies costs the
+		// song stream nothing and its draw-count rule holds unchanged; and cached because four
+		// diagnostics read it back to build bar rulers, and a ruler derived from a second draw is a
+		// ruler for a different song.
+		var structure = _form = DrawForm( _prof, new Rng( $"{_tag}:form" ) );
 		_sectionStart = new int[structure.Count];
 		int totalTicks = 0;
 		for ( int si = 0; si < structure.Count; si++ )
@@ -349,6 +366,19 @@ public sealed partial class MusicGen
 		_footCells = 0;
 		for ( int i = 0; i < 8; i++ )
 			if ( footRng.Chance( FootOccupancy[i] ) ) _footCells |= 1 << i;
+
+		// ── the arrangement ──
+		// One authority writes every part of this section against one skeleton, in one pass, off
+		// its own stream (so the song stream's draw count is untouched and its rule holds
+		// unchanged). Everything it needs exists by now: the section's state is published, the
+		// figures are drawn, the groove is a set of Patterns and the tune is a Pattern.
+		//
+		// It replaces _bassPat / _compFig / _keysFig with ARRANGED versions of themselves, which is
+		// why nothing downstream changed: a voice still slices the figure it was handed. Rewriting
+		// each voice to read the skeleton directly would have put the arranger's rules in six
+		// places and left every one of them able to disagree about what the section is — the same
+		// argument PlanTrace makes about re-deriving the plan.
+		PlanArrangement( part, sectionTick, beatsPerBar * Timing.TicksPerBeat, tune, bk );
 
 
 		bool isIntro = part.Type == Section.Intro;

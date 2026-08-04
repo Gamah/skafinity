@@ -26,10 +26,8 @@ public sealed partial class MusicGen
 		// Tempo. The BAND is the genre's, not a knob — a country song and a metal song sharing
 		// one 130–185 range was most of why the genres sounded alike (see GenreProfile). What
 		// stays a knob is the listener's preference on top of it:
-		//   TempoScale — push or drag the drawn tempo (1.0 = the genre's own speed).
-		//   FastChance — how often a song draws from the genre's uptempo band instead.
-		public float TempoScale = 1.0f;
-		public float FastChance = 0.30f;
+		// Tempo is the GENRE's and nothing else reaches it — see GenreProfile's band block and
+		// the two reserved slots in VibeCodec where the knobs used to be.
 		// Swing is not a Config value either: per-genre character drawn per song (GenreProfile).
 
 		// Mix (per-voice gain pre-master) — the six "volume" sliders are normalized:
@@ -98,9 +96,11 @@ public sealed partial class MusicGen
 		public float MasterDrive = 1.1f;
 		public float MasterPeak = 0.95f;
 
-		// Master room reverb — a touch of stereo space so the mix reads with depth
-		// instead of dry/"16-bit". Wet = blend, Decay = tail length (0..1).
-		public float MasterReverb = 0.5f;
+		// Master room reverb. The WET is drawn per song (MusicGen.ReverbMin/Max) and trimmed by the
+		// genre's own mix profile; this is the house SCALE over that, not the wet itself — house
+		// config rather than a vibe slider, because bone dry and swimming are both reachable on a
+		// slider and neither is a thing any of these genres is. 1 = as drawn. Decay = tail (0..1).
+		public float MasterReverb = 1.0f;
 		public float ReverbDecay = 0.5f;
 
 		// Feel
@@ -116,7 +116,7 @@ public sealed partial class MusicGen
 		public float MelodyLeapChance = 0.18f;
 		public float MelodyVibrato = 5.0f;
 
-		// STEREO WIDTH (vibe slider): master 0..1 stereo amount. Scales the lead/horn placement
+		// Stereo width (HOUSE CONFIG, not a vibe slider): master 0..1 stereo amount. Scales the lead/horn placement
 		// AND the drum pan + double-tracking spread/decorrelation (see _widthScale). 1 = full
 		// design width (the "100%" the rest of the mix is tuned for); 0 = mono.
 		public float PanAmount = 1.0f;

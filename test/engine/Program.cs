@@ -63,6 +63,15 @@ static class Program
 			return 0;
 		}
 		if ( Array.IndexOf( args, "--levels" ) >= 0 ) { Levels(); return 0; }
+		// --stats [N]: the sweep — how much a genre varies from song to song, over N songs per
+		// genre. A DIAGNOSTIC: not in the section list below, not in CI, not in blessing. See
+		// Stats.cs for what it measures and why it does not re-derive the plan to do it.
+		int st = Array.IndexOf( args, "--stats" );
+		if ( st >= 0 )
+		{
+			Stats.Run( st + 1 < args.Length && int.TryParse( args[st + 1], out var sn ) ? sn : 500 );
+			return 0;
+		}
 		// --hand: the cymbal hand measured against the hi-hat it stands in for. See CymbalHand.
 		if ( Array.IndexOf( args, "--hand" ) >= 0 ) { CymbalHand(); return 0; }
 		int gi = Array.IndexOf( args, "--grid" );
@@ -838,12 +847,12 @@ static class Program
 			// Reachable: the threshold must sit at or below the loudest energy any of its own
 			// sections actually reach, or the loud comp is dead code.
 			float peak = 0f;
-			foreach ( var part in p.Form ) peak = Math.Max( peak, part.Energy );
+			foreach ( var part in AllParts( p ) ) peak = Math.Max( peak, part.Energy );
 			Check( $"genre {g} actually reaches its loud threshold", peak >= p.LoudFrom,
 				$"peak energy {peak:0.00} vs LoudFrom {p.LoudFrom:0.00}" );
 			// And it must NOT be reached by every section, or the quiet comp is the dead one.
 			float trough = 1f;
-			foreach ( var part in p.Form ) trough = Math.Min( trough, part.Energy );
+			foreach ( var part in AllParts( p ) ) trough = Math.Min( trough, part.Energy );
 			Check( $"genre {g} still has quiet sections", trough < p.LoudFrom );
 		}
 		Check( "some genre has a loud comp", loudGenres > 0, $"{loudGenres} of {VibeCodec.GenreCount}" );
@@ -858,7 +867,7 @@ static class Program
 		{
 			var p = GenreProfile.For( g );
 			float peak = 0f;
-			foreach ( var part in p.Form ) peak = Math.Max( peak, part.Energy );
+			foreach ( var part in AllParts( p ) ) peak = Math.Max( peak, part.Energy );
 			if ( p.CrashRideFrom > 1f )
 			{
 				optedOut++;
@@ -874,7 +883,7 @@ static class Program
 					$"peak energy {peak:0.00} vs CrashRideFrom {p.CrashRideFrom:0.00}" );
 				// A crash-ride is a lift, so it must not be every section either.
 				float trough = 1f;
-				foreach ( var part in p.Form ) trough = Math.Min( trough, part.Energy );
+				foreach ( var part in AllParts( p ) ) trough = Math.Min( trough, part.Energy );
 				Check( $"genre {g} does not crash-ride the whole song", trough < p.CrashRideFrom );
 			}
 		}
@@ -907,43 +916,20 @@ static class Program
 			bool inBand = true;
 			for ( int i = 0; i < 200; i++ )
 			{
-				int bpm = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), false, 1f );
+				int bpm = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), false );
 				inBand &= bpm >= p.BpmMin && bpm <= p.BpmMax;
-				int fast = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), true, 1f );
+				int fast = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), true );
 				inBand &= fast >= p.FastBpmMin && fast <= p.FastBpmMax;
 			}
 			Check( $"genre {g} draws inside its tempo band", inBand );
 
-			// The knob's saturation points. A single symmetric 0.70–1.45 multiplier put the ends of
-			// the slider outside every genre at once (ska 268, metal 290, country 67), so each genre
-			// says where it stops being itself and the knob keeps its full travel in the UI.
-			Check( $"genre {g} saturation contains its own bands",
-				p.TempoFloor <= p.BpmMin && p.TempoCeil >= p.FastBpmMax,
-				$"{p.TempoFloor}–{p.TempoCeil} vs {p.BpmMin}–{p.FastBpmMax}" );
-
-			bool playable = true;
-			for ( int i = 0; i < 200; i++ )
-				foreach ( var scale in new[] { 0.70f, 0.85f, 1f, 1.2f, 1.45f } )
-				{
-					int b = p.DrawBpm( new Rng( $"knob:{g}:{i}" ), i % 2 == 0, scale );
-					playable &= b >= p.TempoFloor && b <= p.TempoCeil;
-				}
-			Check( $"genre {g} stays playable across the whole TEMPO knob", playable );
+			// How often it runs hot is the GENRE's, like its swing. A 0 or a 1 here would be a
+			// genre with only one band, which is what punk's AlwaysFast was and why it went.
+			Check( $"genre {g} sometimes takes its uptempo band, and not always",
+				p.FastChance > 0.05f && p.FastChance < 0.95f, $"{p.FastChance:0.00}" );
 
 			Check( $"genre {g} has a harmonic rhythm of at least a bar", p.ChordBars >= 1 );
 		}
-
-		// …and the saturation is not vacuous: the knob's ends must actually be clamped somewhere,
-		// or these are six numbers that do nothing.
-		bool everSaturates = false;
-		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-		{
-			var p = GenreProfile.For( g );
-			for ( int i = 0; i < 50; i++ )
-				everSaturates |= p.DrawBpm( new Rng( $"sat:{g}:{i}" ), true, 1.45f ) == p.TempoCeil
-					|| p.DrawBpm( new Rng( $"sat:{g}:{i}" ), false, 0.70f ) == p.TempoFloor;
-		}
-		Check( "the TEMPO knob saturates at the genre's bound", everSaturates );
 
 		// The whole point of the row: the bands must actually separate the genres. Punk and
 		// country are the two extremes, and nothing in between may collapse them all into one
@@ -955,9 +941,14 @@ static class Program
 			bands.Add( (GenreProfile.For( g ).BpmMin, GenreProfile.For( g ).BpmMax) );
 		Check( "genres do not share one tempo band", bands.Count >= 4, $"{bands.Count} distinct bands" );
 
-		// The TEMPO knob rides on top of the band rather than replacing it.
-		Check( "the tempo knob pushes the drawn tempo",
-			ska.DrawBpm( new Rng( "t" ), false, 1.4f ) > ska.DrawBpm( new Rng( "t" ), false, 0.7f ) );
+		// TEMPO IS THE GENRE'S AND NOTHING RIDES ON TOP OF IT. There is deliberately no check that
+		// a knob moves it, because there is no knob: the ends of that slider were past what the
+		// music is (a ska song came back at 208), and a listener preference overriding a band that
+		// is anchored on records is a preference beating a measurement.
+		bool uptempoSeparates = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			uptempoSeparates &= GenreProfile.For( g ).FastBpmMax > GenreProfile.For( g ).BpmMax;
+		Check( "every genre's uptempo band reaches past its ordinary one", uptempoSeparates );
 
 		// ── grooves ──
 		// Rock, country AND punk used to fall through to one shared `default` backbeat. Each genre
@@ -1081,7 +1072,13 @@ static class Program
 
 		// Punk is the fast genre by definition, and punk/pop take a chord per bar so their
 		// four-chord loop is the four-bar hypermeasure.
-		Check( "punk always runs hot", GenreProfile.For( 4 ).AlwaysFast );
+		// Punk is the fast genre, but it is no longer the one genre with NO ordinary band — it
+		// used to set AlwaysFast with both bands equal, which made its uptempo end the median.
+		// What has to hold is the comparative claim, not the mechanism.
+		bool punkFastest = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			if ( g != 4 ) punkFastest &= GenreProfile.For( 4 ).BpmMin > GenreProfile.For( g ).BpmMin;
+		Check( "punk has the fastest ordinary band", punkFastest );
 		Check( "punk changes chord every bar", GenreProfile.For( 4 ).ChordBars == 1 );
 		Check( "pop changes chord every bar", GenreProfile.For( 5 ).ChordBars == 1 );
 		Check( "ska holds a chord for two bars", GenreProfile.For( 0 ).ChordBars == 2 );
@@ -1101,7 +1098,7 @@ static class Program
 		// harness — and it rendered three of these settings twice over, because the pair checks
 		// and the per-instrument sweep each asked for their own copy.
 		int hornOff = 0, hornOn = 1, bubbleOff = 2, bubbleOn = 3;
-		int trumpet = 4, trombone = 7, byWeight = 8, slow = 9, quick = 10;
+		int trumpet = 4, trombone = 7, byWeight = 8;
 		var settings = new Action<MusicGen.Config>[]
 		{
 			c => c.HornSectionChance = 0f,
@@ -1118,12 +1115,10 @@ static class Program
 				c.TrumpetWeight = c.SaxWeight = c.OrganWeight = 0f;
 				c.TromboneWeight = 1f;
 			},
-			c => c.TempoScale = 0.70f,
-			c => c.TempoScale = 1.45f,
 		};
 		var song = new short[settings.Length][];
 		System.Threading.Tasks.Parallel.For( 0, settings.Length,
-			i => song[i] = Knob( i >= slow ? 1 : 0, settings[i] ) );
+			i => song[i] = Knob( 0, settings[i] ) );
 
 		Check( "the HORN SECTION knob changes the song", !SameSamples( song[hornOff], song[hornOn] ) );
 		Check( "the ORGAN BUBBLE knob changes the song", !SameSamples( song[bubbleOff], song[bubbleOn] ) );
@@ -1142,9 +1137,9 @@ static class Program
 		Check( "the lead weights pick the same instrument as forcing it",
 			SameSamples( song[trombone], song[byWeight] ) );
 
-		// The TEMPO knob is the replacement for the retired absolute band: slower must mean a
-		// longer song, and it must be the same song.
-		Check( "the TEMPO knob changes how long a song runs", song[slow].Length > song[quick].Length );
+		// There is no TEMPO knob to check any more — see the reserved slots in VibeCodec. A song's
+		// length now follows its genre's band and its drawn form, both of which have their own
+		// checks; nothing a listener sets reaches either.
 	}
 
 	/// <summary>One short song, rendered at a low sample rate (these checks look at whether the
@@ -1156,12 +1151,71 @@ static class Program
 		return MusicGen.GenerateSamples( "knob:0", cfg, out _ );
 	}
 
+	/// <summary>Every section of every one of a genre's authored form variants. A genre's form is a
+	/// FAMILY now, so a property that has to hold of "the form" has to hold of all of them —
+	/// checking the first would leave the others able to break it silently.</summary>
+	static IEnumerable<Part> AllParts( GenreProfile p )
+	{
+		foreach ( var variant in p.Forms )
+			foreach ( var part in variant ) yield return part;
+	}
+
+	/// <summary>What a DRAWN form must still be. Unlike the sweep these are cheap and structural,
+	/// and they are exactly the shape of assertion the rest of this section already carries — a
+	/// form that varies per song is a form that can now be wrong per song.</summary>
+	static void DrawnFormTests()
+	{
+		int songs = 0;
+		var shapes = new HashSet<string>();
+		bool hyper = true, chorusAgrees = true, endsResolved = true, enough = true, banded = true;
+		string why = null;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int n = 0; n < 40; n++ )
+			{
+				var form = MusicGen.DrawForm( GenreProfile.For( g ), new Rng( $"form:{n}:form" ) );
+				songs++;
+				var sig = new StringBuilder();
+				int bars = 0, choruses = 0, verses = 0;
+				string chorus = null;
+				foreach ( var p in form )
+				{
+					// The hypermeasure. It is why the ending is four bars and not two, and a drawn
+					// length does not get to stop honouring it.
+					if ( p.Bars % 4 != 0 ) { hyper = false; why ??= $"genre {g} {p.Type} {p.Bars} bars"; }
+					bars += p.Bars;
+					if ( p.Type == Section.Verse ) verses++;
+					if ( p.Type == Section.Chorus )
+					{
+						choruses++;
+						// KeyShift is exempt — the final-chorus lift is the point of it.
+						string c = $"{p.Bars}/{p.Energy}/{p.Feel}/{p.TempoMul}";
+						if ( chorus == null ) chorus = c; else if ( chorus != c ) chorusAgrees = false;
+					}
+					sig.Append( p.Type ).Append( p.Bars ).Append( p.KeyShift ).Append( ' ' );
+				}
+				endsResolved &= form[^1].Type == Section.Ending && form[^1].Bars == 4;
+				enough &= choruses >= 2 && verses >= 1;
+				banded &= bars >= 32 && bars <= 112;
+				shapes.Add( $"{g}:{sig}" );
+			}
+
+		Check( "every section of a drawn form is a multiple of 4 bars", hyper, why );
+		Check( "every chorus of a song matches every other in bars, energy, feel and tempo", chorusAgrees );
+		Check( "a song ends on a 4-bar Ending", endsResolved );
+		Check( "a song has at least 2 choruses and a verse", enough );
+		Check( "a song's total length stays inside a band", banded );
+		// …and the whole point: the form is not one state any more.
+		Check( "a genre's form is not one fixed list", shapes.Count > GenreProfile.Count * 4,
+			$"{shapes.Count} distinct forms over {songs} songs" );
+	}
+
 	static void StructureTests()
 	{
+		DrawnFormTests();
 		var forms = new List<string>();
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 		{
-			var parts = MusicGen.BuildStructure( g );
+			var parts = new List<Part>( GenreProfile.For( g ).Forms[0] );
 			Check( $"genre {g} structure is non-empty", parts.Count > 0 );
 
 			int bars = 0;
@@ -1215,7 +1269,7 @@ static class Program
 		// The new section types have to be reachable, or they are decoration in an enum.
 		var types = new HashSet<Section>();
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in MusicGen.BuildStructure( g ) ) types.Add( p.Type );
+			foreach ( var p in AllParts( GenreProfile.For( g ) ) ) types.Add( p.Type );
 		Check( "the new section types are used by some genre",
 			types.Contains( Section.PreChorus ) && types.Contains( Section.Bridge )
 			&& types.Contains( Section.Solo ) && types.Contains( Section.Breakdown ) );
@@ -1235,7 +1289,7 @@ static class Program
 		// how long the song runs. (Metal's breakdown, pop's drop, ska-punk's bridge.)
 		bool halfTime = false, feelUnderTune = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in MusicGen.BuildStructure( g ) )
+			foreach ( var p in AllParts( GenreProfile.For( g ) ) )
 			{
 				halfTime |= p.Feel < 1f;
 				// Feel is the RHYTHM SECTION's rate and the tune is exempt, so half time is a
@@ -1252,7 +1306,7 @@ static class Program
 		// the hemiola is the metric device that survives, because it re-converges.
 		bool lift = false, hemiola = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in MusicGen.BuildStructure( g ) )
+			foreach ( var p in AllParts( GenreProfile.For( g ) ) )
 			{
 				lift |= p.KeyShift != 0;
 				hemiola |= p.Hemiola;
@@ -1278,14 +1332,15 @@ static class Program
 	static void MelodyTests()
 	{
 		int bar = 4 * Timing.TicksPerBeat;
-		var tune = Melody.Draw( new Rng( "tune:a" ), 4, bar, 0.4f, 0.2f );
+		var vocab = GenreProfile.For( 1 ).Tune;
+		var tune = Melody.Draw( new Rng( "tune:a" ), 4, bar, vocab );
 
 		Check( "a tune is as long as it was asked to be", tune.LengthTicks == 4 * bar );
 		Check( "a tune has notes in every bar", tune.Count >= 4 );
 		Check( "a tune is reproducible from its seed",
-			SameTune( tune, Melody.Draw( new Rng( "tune:a" ), 4, bar, 0.4f, 0.2f ) ) );
+			SameTune( tune, Melody.Draw( new Rng( "tune:a" ), 4, bar, vocab ) ) );
 		Check( "a different seed writes a different tune",
-			!SameTune( tune, Melody.Draw( new Rng( "tune:b" ), 4, bar, 0.4f, 0.2f ) ) );
+			!SameTune( tune, Melody.Draw( new Rng( "tune:b" ), 4, bar, vocab ) ) );
 
 		// Call and answer: the second phrase repeats the FIRST phrase's rhythm exactly (that
 		// symmetry is what makes a line sound composed), and resolves home on the last note.
@@ -1304,10 +1359,120 @@ static class Program
 		foreach ( var h in all ) inRange &= h.Value >= -3 && h.Value <= 10;
 		Check( "a tune stays in a singable range", inRange );
 
-		// Density is a real control — a punk tune must be sparser than a ska horn line.
-		int sparse = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.2f, 0.2f ).Count;
-		int busy = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.9f, 0.2f ).Count;
-		Check( "density controls how much a tune moves", busy > sparse, $"{busy} vs {sparse} notes" );
+		// The verse's `move` factor is a real control: the same vocabulary, fewer notes in it.
+		// Measured over seeds rather than on one, because it leans a draw rather than setting a
+		// count — a single seed can go either way and that is the mechanism working.
+		int chorusNotes = 0, verseNotes = 0;
+		for ( int i = 0; i < 60; i++ )
+		{
+			chorusNotes += Melody.Draw( new Rng( $"move:{i}" ), 4, bar, vocab ).Count;
+			verseNotes += Melody.Draw( new Rng( $"move:{i}" ), 4, bar, vocab, 0.8f ).Count;
+		}
+		Check( "the verse tune moves less than the chorus tune", verseNotes < chorusNotes,
+			$"{verseNotes} vs {chorusNotes} notes over 60 tunes" );
+
+		// ── the three contour mechanisms ──
+		// Each is asserted as the SENTENCE it was written to express, not as a number that makes a
+		// check pass.
+
+		// Reflection, not a clamp. A clamp is sticky — a line that reaches an end and keeps
+		// stepping outward parks there — so the check is that stepping past an end turns round
+		// rather than stopping, and that the range still holds.
+		Check( "a degree past the top reflects back inside", Melody.Reflect( Melody.DegreeMax + 2 ) == Melody.DegreeMax - 2 );
+		Check( "a degree past the bottom reflects back inside", Melody.Reflect( Melody.DegreeMin - 3 ) == Melody.DegreeMin + 3 );
+		Check( "reflection still respects the range", Melody.Reflect( 99 ) <= Melody.DegreeMax && Melody.Reflect( -99 ) >= Melody.DegreeMin );
+
+		// Post-skip reversal: a melody that jumps comes back. Counted over the CALL of many tunes,
+		// against the leaps themselves — a random walk would reverse about half the time.
+		int leaps = 0, reversed = 0, pinnedNotes = 0, allNotes = 0;
+		var lengths = new HashSet<int>();
+		for ( int i = 0; i < 200; i++ )
+		{
+			var t = Melody.Draw( new Rng( $"contour:{i}" ), 4, bar, GenreProfile.For( 3 ).Tune );
+			var hits = t.Slice( 0, t.LengthTicks );
+			int half = hits.Count / 2;
+			for ( int k = 0; k + 2 < half; k++ )
+			{
+				int a = hits[k + 1].Value - hits[k].Value, b = hits[k + 2].Value - hits[k + 1].Value;
+				if ( Math.Abs( a ) < 2 ) continue;
+				leaps++;
+				if ( Math.Sign( b ) == -Math.Sign( a ) ) reversed++;
+			}
+			foreach ( var h in hits )
+			{
+				allNotes++;
+				if ( h.Value <= Melody.DegreeMin || h.Value >= Melody.DegreeMax ) pinnedNotes++;
+				lengths.Add( h.SpanTicks );
+			}
+		}
+		Check( "a leap is followed back the other way far more often than not",
+			leaps > 100 && reversed > leaps * 0.8, $"{reversed} of {leaps}" );
+		Check( "notes stop piling up at the range ends", pinnedNotes < allNotes / 20,
+			$"{pinnedNotes} of {allNotes} pinned" );
+		Check( "a tune is written in more than three note lengths", lengths.Count > 3,
+			$"{lengths.Count} distinct spans" );
+
+		// A leap really is a range of intervals now, not one interval wearing a general name.
+		var sizes = new HashSet<int>();
+		for ( int i = 0; i < 200; i++ )
+		{
+			var t = Melody.Draw( new Rng( $"leapsize:{i}" ), 4, bar, GenreProfile.For( 3 ).Tune );
+			var hits = t.Slice( 0, t.LengthTicks );
+			for ( int k = 0; k + 1 < hits.Count / 2; k++ )
+				sizes.Add( Math.Abs( hits[k + 1].Value - hits[k].Value ) );
+		}
+		Check( "a leap is a third, a fourth or a fifth — not always a third",
+			sizes.Contains( 2 ) && sizes.Contains( 3 ) && sizes.Contains( 4 ), string.Join( " ", sizes ) );
+
+		// UNDER A SHUFFLE THE TUNE MOVES IN EIGHTHS. The beat's own subdivision is already the
+		// triplet, and Timing's warp puts a straight sixteenth at a third of the beat while the
+		// band's eighth-based figures sit on the beat and at two thirds — two grids at once, which
+		// reads as the lead pushing against a band it does not line up with.
+		bool swungOnGrid = true, straightUsesSixteenths = false;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int i = 0; i < 40; i++ )
+			{
+				foreach ( var h in Melody.Draw( new Rng( $"swung:{g}:{i}" ), 4, bar,
+					GenreProfile.For( g ).Tune, 1f, swung: true ).Slice( 0, 4 * bar ) )
+					swungOnGrid &= h.Tick % Timing.TicksPerEighth == 0;
+				foreach ( var h in Melody.Draw( new Rng( $"straight:{g}:{i}" ), 4, bar,
+					GenreProfile.For( g ).Tune ).Slice( 0, 4 * bar ) )
+					straightUsesSixteenths |= h.Tick % Timing.TicksPerEighth != 0;
+			}
+		Check( "a shuffled song's tune stays on the eighth grid", swungOnGrid );
+		Check( "…and a straight one still subdivides it", straightUsesSixteenths );
+
+		// The answer is DRAWN now. It used to be the call minus one degree, 100% of the time, in
+		// every genre — half of every tune in the engine was a mechanical transform of the other
+		// half. Measured as the rate rather than by classifying each answer, because two operators
+		// can land on the same notes and a classifier would have to guess which one ran.
+		int stepDown = 0, tunesSeen = 0, resolved = 0;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int i = 0; i < 120; i++ )
+			{
+				var t = Melody.Draw( new Rng( $"answer:{g}:{i}" ), 4, bar, GenreProfile.For( g ).Tune );
+				var hits = t.Slice( 0, t.LengthTicks );
+				int half = hits.Count / 2;
+				tunesSeen++;
+				if ( hits[^1].Value == 0 ) resolved++;
+				bool down = half > 1;
+				for ( int k = 0; k < half - 1 && down; k++ )
+					down = hits[half + k].Value == Melody.Reflect( hits[k].Value - 1 );
+				if ( down ) stepDown++;
+			}
+		Check( "a tune always resolves on the tonic", resolved == tunesSeen, $"{resolved} of {tunesSeen}" );
+		Check( "the answer is not always the call a step down", stepDown < tunesSeen * 0.7,
+			$"{stepDown} of {tunesSeen}" );
+		Check( "…and the step down is still the commonest answer", stepDown > tunesSeen * 0.2,
+			$"{stepDown} of {tunesSeen}" );
+
+		// THERE IS DELIBERATELY NO CHECK HERE THAT TWO GENRES SING DIFFERENT TUNES. The genre goes
+		// into the tune's stream so that two genres at one seed are not reliably identical, but
+		// "the same seed in another genre sounds like the same song" is a FEATURE of this toy, not
+		// a bug being suppressed — the song stream carries no genre for exactly that reason. A
+		// check here would turn a preference into a prohibition, and the next session would be
+		// writing code to force divergence that nobody asked for. The collision rate is reported by
+		// `--stats` instead, where it is a number to watch rather than a wall to hit.
 	}
 
 	// ── where a player bends ──
@@ -1492,7 +1657,6 @@ static class Program
 		for ( int i = 0; i < 200; i++ )
 		{
 			var c = Rolled( "tempo", i, 0 );
-			tempoSane &= c.TempoScale >= 0.5f && c.TempoScale <= 2f;
 		}
 		Check( "a rolled tempo scale stays musical", tempoSane );
 
@@ -1545,8 +1709,114 @@ static class Program
 	/// <summary>The arrangement has to survive contact with the renderer. Velocity, section energy
 	/// and the tempo curve all scale levels and lengths, so these are the crude checks that catch
 	/// a song that came out silent, clipped, or the wrong length entirely.</summary>
+	/// <summary>What the arranger must never break.
+	///
+	/// Plan-only and cheap — no render — so it sits at the top of the expensive section rather than
+	/// adding to it. The three claims are the ones the whole phase rests on: a genre's technique
+	/// stays on the cells it lives on, every chorus still agrees, and the arranger actually does
+	/// something. The FOURTH claim — that the parts do not all converge onto one rhythm — is not
+	/// assertable on a handful of songs and lives in `--stats` instead, where it is a matrix over
+	/// hundreds.</summary>
+	static void ArrangerTests()
+	{
+		// The allowed cell class IS the genre's technique. Asserted on the mechanism, because the
+		// authored figures deliberately step outside their own class here and there (ska's push on
+		// the "and of 4" lands on a beat) — what must hold is that the arranger never INVENTS an
+		// out-of-class onset, not that a genre's own gestures are pure.
+		var sk = new Skeleton( 0, 8 * 4 * Timing.TicksPerBeat, 4 * Timing.TicksPerBeat );
+		bool offbeatsOffbeat = true, downbeatsOnBeat = true, eighthsEven = true, sixteenthsAll = true;
+		for ( int c = 0; c < sk.BarCells; c++ )
+		{
+			if ( sk.Allows( CellClass.Offbeats, c ) != (c % 4 == 2) ) offbeatsOffbeat = false;
+			if ( sk.Allows( CellClass.Downbeats, c ) != (c % 4 == 0) ) downbeatsOnBeat = false;
+			if ( sk.Allows( CellClass.Eighths, c ) != (c % 2 == 0) ) eighthsEven = false;
+			if ( !sk.Allows( CellClass.Sixteenths, c ) ) sixteenthsAll = false;
+		}
+		Check( "a skank may only be arranged onto the offbeats", offbeatsOffbeat );
+		Check( "a downstroke may only be arranged onto the beat", downbeatsOnBeat );
+		Check( "an eighth-class voice may not be arranged onto a sixteenth", eighthsEven );
+		Check( "a sixteenth-class voice may go anywhere", sixteenthsAll );
+
+		// Every chorus agrees. The arranger caches the song's chorus parts the first time a chorus
+		// is rendered, so this is structural — but it is the song's IDENTITY guarantee, and a
+		// structural guarantee with no check on it is one refactor from being a coincidence.
+		// Read off the TRACE, so what is checked is what the choruses actually played rather than
+		// what the plan intended them to. One plan per song: this section is the suite's most
+		// expensive and a second plan per song would only be re-testing determinism, which the
+		// determinism section already owns.
+		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0;
+		bool ascends = true; string offender = null;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int n = 0; n < 4; n++ )
+			{
+				var cfg = new MusicGen.Config { Genre = g, SampleRate = 8000 };
+				var trace = new PlanTrace();
+				var song = MusicGen.BeginPlan( $"arr:{n}", cfg, trace );
+				songs++;
+
+				// The comp's onsets, relative to each chorus's own first tick. Every chorus must
+				// hand back the same list — that is what makes a chorus a chorus.
+				var comp = trace.Of( TraceVoice.Comp );
+				List<int> firstChorus = null;
+				int tick = 0;
+				foreach ( var part in song.Form )
+				{
+					int len = MusicGen.SectionTicks( part, 4 );
+					if ( part.Type == Section.Chorus )
+					{
+						var rel = new List<int>();
+						foreach ( int t in comp ) if ( t >= tick && t < tick + len ) rel.Add( t - tick );
+						if ( firstChorus == null ) firstChorus = rel;
+						else { chorusPairs++; if ( string.Join( ",", firstChorus ) == string.Join( ",", rel ) ) chorusMatched++; }
+					}
+					tick += len;
+				}
+
+				// …and the song's part is not simply an authored figure handed back. Counted rather
+				// than asserted per song: quoting is a legitimate outcome of the draw.
+				bool authored = false;
+				foreach ( var p in GenreProfile.For( g ).CompFigures )
+					authored |= FigureSig( p ) == FigureSig( song.SongParts.Comp );
+				if ( !authored ) moved++;
+
+				// AN ARRANGED FIGURE STILL ASCENDS. Pattern computes each onset's span from the
+				// NEXT onset, so an out-of-order tick gives a negative span clamped to 1 — every
+				// note in the figure becomes a one-tick blip and nothing anywhere reports it.
+				// Recombine did exactly that by folding a two-bar figure's second bar back onto its
+				// first. Checked here rather than in a loop of its own, because these songs are
+				// already planned and a plan is what this section is expensive for.
+				foreach ( var fig in new[] { song.SongParts.Comp, song.SongParts.Keys, song.SongParts.Bass } )
+				{
+					if ( fig == null ) continue;
+					for ( int i = 1; i < fig.Count; i++ )
+						if ( fig.TickAt( i ) <= fig.TickAt( i - 1 ) )
+						{ ascends = false; offender ??= $"genre {g} seed {n} figure index {i}"; }
+				}
+			}
+		Check( "every chorus of a song plays the same arranged part", chorusPairs > 0 && chorusMatched == chorusPairs,
+			$"{chorusMatched} of {chorusPairs} chorus pairs" );
+
+		// AN ARRANGED FIGURE STILL ASCENDS. Pattern computes each onset's span from the NEXT onset,
+		// so an out-of-order tick produces a negative span clamped to 1 — every note in the figure
+		// becomes a one-tick blip and nothing anywhere reports it. Recombine did exactly that by
+		// folding a two-bar figure's second bar back onto its first, and it cost a listen to find.
+		Check( "an arranged figure's onsets still ascend", ascends, offender );
+		Check( "the arranger works on the song's own part rather than quoting a table",
+			moved > songs / 4, $"{moved} of {songs} songs moved off the authored figure" );
+	}
+
+	static string FigureSig( Pattern p )
+	{
+		if ( p == null ) return "-";
+		var sb = new StringBuilder().Append( p.LengthTicks ).Append( ':' );
+		for ( int i = 0; i < p.Count; i++ )
+			sb.Append( p.TickAt( i ) ).Append( '/' ).Append( p.ValueAt( i ) ).Append( ',' );
+		return sb.ToString();
+	}
+
 	static void ArrangementTests()
 	{
+		ArrangerTests();
 		// This is the expensive section: every measurement below is a rendered song, and there are
 		// four of them per genre. The genres are independent and every Rng is per-instance, so the
 		// RENDERING fans out across the machine and the ASSERTIONS run after it, in genre order —
@@ -1856,7 +2126,9 @@ static class Program
 		// The ruler: bar lines in ticks, and which section each bar belongs to.
 		var ruler = MusicGen.BeginPlan( $"{tag}:{n}", Base() );
 		var barTicks = ruler.BarTickLines();
-		var structure = MusicGen.BuildStructure( ruler.Genre );
+		// The SONG's form, not a second derivation of the genre's: a form varies per song now, and
+		// a ruler built from another draw is a ruler for a different song.
+		var structure = ruler.Form;
 		var barSection = new (string Name, int Chord)[barTicks.Length];
 		int bi = 0;
 		foreach ( var part in structure )

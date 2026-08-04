@@ -83,10 +83,10 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 
 	// ── Tempo ──
 	// The tempo BAND belongs to the genre (Engine/GenreProfile.cs), not to a property here.
-	// TempoScale pushes or drags whatever the genre drew; FastChance is how often a song takes
-	// the genre's uptempo band instead of its main one.
-	[Property, Group( "Tempo" ), Range( 0.7f, 1.45f )] public float TempoScale { get; set; } = 1.0f;
-	[Property, Group( "Tempo" ), Range( 0f, 1f )] public float FastChance { get; set; } = 0.30f;
+	// TEMPO IS THE GENRE'S AND NOTHING ELSE REACHES IT. Two [Property] knobs used to sit here
+	// mirroring Config.TempoScale / Config.FastChance; both are gone (see VibeCodec's reserved
+	// slots for why), and a host property that overrides an anchored tempo band is exactly the
+	// drift this file's own header warns about.
 
 	// ── Mix ──
 	// These are the PLAYER's overlay on the engine's own defaults, so a value here that isn't 1.0
@@ -139,9 +139,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	[Property, Group( "Feel" ), Range( 0f, 12f )] public float MelodyVibrato { get; set; } = 5.0f;
 
 	// ── Stereo ──
-	[Property, Group( "Stereo" ), Range( 0f, 1f )] public float PanAmount { get; set; } = 1.0f;
 	/// <summary>Master reverb send — the GLOBAL "REVERB" vibe knob's resting value.</summary>
-	[Property, Group( "Stereo" ), Range( 0f, 1f )] public float MasterReverb { get; set; } = 0.5f;
 
 	// ── Lead instrument (RNG picks one per tag, weighted; Force overrides) ──
 	[Property, Group( "Instrument" ), Range( 0f, 4f )] public float TrumpetWeight { get; set; } = 1.0f;
@@ -502,8 +500,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	MusicGen.Config BuildKnobConfig() => new()
 	{
 		SampleRate = SampleRate,
-		TempoScale = TempoScale,
-		FastChance = FastChance,
 		BassVol = BassVol,
 		SkankVol = SkankVol,
 		OrganVol = OrganVol,
@@ -541,8 +537,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		MelodyRestChance = MelodyRestChance,
 		MelodyLeapChance = MelodyLeapChance,
 		MelodyVibrato = MelodyVibrato,
-		PanAmount = PanAmount,
-		MasterReverb = MasterReverb,
 		TrumpetWeight = TrumpetWeight,
 		SaxWeight = SaxWeight,
 		OrganWeight = OrganWeight,
@@ -570,7 +564,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	int ConfigHash()
 	{
 		var h = new HashCode();
-		h.Add( SampleRate ); h.Add( TempoScale ); h.Add( FastChance );
+		h.Add( SampleRate );
 		h.Add( BassVol ); h.Add( SkankVol ); h.Add( OrganVol ); h.Add( MelodyVol ); h.Add( HornVol );
 		h.Add( KickVol ); h.Add( SnareVol ); h.Add( TomVol ); h.Add( HatVol ); h.Add( CrashVol ); h.Add( DrumVol );
 		h.Add( Detune ); h.Add( BassCutoff ); h.Add( SkankCutoff ); h.Add( SkankHighpass ); h.Add( SkankChop );
@@ -581,7 +575,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		h.Add( GhostSnareChance ); h.Add( FillChance );
 		h.Add( DrumBusy ); h.Add( DrumTone ); h.Add( DrumDrive ); h.Add( TripletChance ); h.Add( BassTriplets );
 		h.Add( MelodyRestChance ); h.Add( MelodyLeapChance ); h.Add( MelodyVibrato );
-		h.Add( PanAmount );
 		h.Add( TrumpetWeight ); h.Add( SaxWeight ); h.Add( OrganWeight ); h.Add( TromboneWeight );
 		h.Add( ForceInstrument );
 		h.Add( HornSectionChance ); h.Add( HornDensity );
@@ -660,7 +653,12 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	// window: a crossfade is long because two songs have to trade places without either being
 	// heard to stop, and nothing is being traded here. See BeginAt for what the long version did
 	// to the opening bars.
-	const float StartFadeSeconds = 0.15f;
+	// MEASURED rather than judged, on four real renders (see web/app.js, which carries the same
+	// constant and the same reasoning): dry, a song's opening strike sits +2.5 to +5.6 dB above the
+	// ring half a second later. A 2.9 s ramp returns it at -28 to -31 dB, and 0.15 s — what this
+	// was — still leaves it 14-17 dB out, i.e. audibly a cymbal that was hit before the song
+	// started. At 0.01 s the balance is the dry balance on every seed.
+	const float StartFadeSeconds = 0.012f;
 	int StartFadeFrames => Math.Max( 1, (int)(StartFadeSeconds * _sr) );
 
 	// All look-ahead buffers are interleaved stereo PCM; lengths/offsets below are in frames.

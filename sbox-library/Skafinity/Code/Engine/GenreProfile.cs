@@ -68,6 +68,43 @@ enum EndingStyle
 	Fall,
 }
 
+/// <summary>
+/// THE GENRE'S TUNE VOCABULARY — what kind of melody it writes, as opposed to what its lead
+/// GUITAR does with one.
+///
+/// It is here rather than in a <c>_prof.Lead switch</c> inside <c>DrawTunes</c> because that
+/// switch was the <c>if ( _genre == … )</c> smell one level removed: two genres sharing a
+/// <see cref="LeadStyle"/> got the same tune vocabulary, which is half of why two genres' tunes
+/// used to come back byte-identical. A vocabulary belongs to the genre, not to the lead's grammar.
+///
+/// EVERY NUMBER BELOW IS AUTHORED, not measured. There is no melodic corpus in this repo the way
+/// there is a drum one, so these say what a genre's tunes should be made of and nothing more —
+/// unlike the accent weights and the groove placements, which are fitted numbers and say so. Do
+/// not write them up as if they were measured.
+/// </summary>
+readonly struct TuneVocab
+{
+	/// <summary>Weights over <see cref="Melody.Lengths"/> — the note lengths this genre sings in.
+	/// This IS the genre's density: a table that leans on the quarter and the half writes a punk
+	/// tune, one that leans on the eighth and the sixteenth writes a metal one.</summary>
+	public readonly int[] LengthWeights;
+
+	/// <summary>How often a cell is silence rather than a note. A rest is an OMITTED ONSET — the
+	/// note before it simply holds longer — so this thins the line without needing a rest cell the
+	/// renderer would have to know about.</summary>
+	public readonly float Rest;
+
+	/// <summary>How often the line jumps rather than steps.</summary>
+	public readonly float Leap;
+
+	/// <summary>Weights over <see cref="Melody.Answers"/> — how this genre answers its own call.
+	/// </summary>
+	public readonly int[] AnswerWeights;
+
+	public TuneVocab( int[] lengths, float rest, float leap, int[] answers )
+	{ LengthWeights = lengths; Rest = rest; Leap = leap; AnswerWeights = answers; }
+}
+
 /// <summary>Per-genre mix trim. Not a knob and not a per-song draw: a genre's records simply
 /// sound like this. Scaled globally by <c>Config.GenreMix</c> so the house can dial the whole
 /// effect back at runtime without a rebuild.</summary>
@@ -125,24 +162,14 @@ sealed class GenreProfile
 	public int FastBpmMin { get; init; }
 	public int FastBpmMax { get; init; }
 
-	/// <summary>Always draw from the fast band — the genre has no laid-back mode.</summary>
-	public bool AlwaysFast { get; init; }
+	/// <summary>How often a song takes the genre's UPTEMPO band instead of its ordinary one.
+	///
+	/// A genre's, not a listener's, for exactly the reason <see cref="SwingChance"/> is: how often
+	/// this music runs hot is something it IS, and a global slider over it let a reroll hand any
+	/// genre a 100% fast bias. It replaces both the TEMPO BIAS knob and the AlwaysFast flag — the
+	/// flag was a 1.0 that could not be written as one.</summary>
+	public float FastChance { get; init; } = 0.30f;
 
-	/// <summary>Where the listener's TEMPO knob SATURATES for this genre — the slowest and fastest
-	/// this music is still itself.
-	///
-	/// The knob is one global 0.70–1.45 multiplier over whatever the genre drew, and a symmetric
-	/// range chosen against no band in particular put its ends outside every genre at once: ska
-	/// 268, metal 290 and punk 290 at the top, metal 63 and country 67 at the bottom. None of
-	/// those are tempos these genres are, so the usable part of the slider was its middle.
-	///
-	/// Narrowing the knob would have been one number, but it takes headroom off punk and ska that
-	/// they can genuinely use. The band is the genre's and the knob is the preference riding on
-	/// top — so the knob keeps its full travel in the UI and each genre stops where it stops
-	/// being itself. These are ceilings for the KNOB: the drawn band must sit inside them, so at
-	/// neutral nothing is ever clamped.</summary>
-	public int TempoFloor { get; init; }
-	public int TempoCeil { get; init; }
 
 	/// <summary>Bars per chord — the harmonic rhythm. 2 is the reggae/rock norm; 1 makes the
 	/// four-chord loop itself the four-bar hypermeasure, which is what punk and pop do.</summary>
@@ -156,8 +183,67 @@ sealed class GenreProfile
 	public bool HornLead { get; init; }
 
 	// ── Form ──
-	/// <summary>The genre's section map (see <see cref="SongForm"/>).</summary>
-	public Part[] Form { get; init; }
+	/// <summary>The genre's FAMILY of section maps (see <see cref="SongForm"/>), drawn per song.
+	///
+	/// A family rather than one map, and AUTHORED rather than randomised: a form is genre identity,
+	/// which is why it lives here at all, and punk with a sixteen-bar solo is not punk. What varies
+	/// freely is the details below; what varies between variants is an arc somebody wrote down.
+	///
+	/// The form used to be exactly one map per genre — so over 500 songs the tune had 500 states,
+	/// punk's whole rhythm section had 12, and the form had ONE. Every ska-punk song was the same
+	/// nine sections and sixty bars with the hemiola on the second verse and the half-time bridge
+	/// in the same place, forever, and length varied only with tempo.</summary>
+	public Part[][] Forms { get; init; }
+	public int[] FormWeights { get; init; }
+
+	/// <summary>
+	/// How long a VERSE runs. Only the verse: a chorus's length is part of what every chorus has to
+	/// agree about, and the ending is four bars because the hypermeasure says so.
+	///
+	/// IT IS ONE VALUE, AND SHORT IS DELIBERATE. **This is a game, not a record.** The toy streams
+	/// endlessly while somebody plays, so the song boundary is WHERE THE VARIETY ARRIVES — a
+	/// listener who gets through twice as many songs hears twice as many keys, tempos, grooves and
+	/// tunes. Long songs spend that variety on repetition, and they cost memory, since the web
+	/// player holds several whole songs as decoded PCM.
+	///
+	/// Do not "fix" this against record lengths. Published genre averages put punk near 2:46, pop
+	/// 3:00-3:30, country 3:13-4:00 and thrash close to 5:00, and every genre here runs well under
+	/// its own figure on purpose. That research is real and it answers a different question — what
+	/// an album track runs, not what an in-game loop wants.
+	///
+	/// If length ever does want to grow, the musically correct set is { 8, 16 }: over 90% of
+	/// sections in this music are 8 or 16 bars, 12 is the blues form and belongs to country and
+	/// blues-rock rather than to pop or metal, and a 4-bar verse is not a verse. The other
+	/// constraint is the TUNE's length — it is the harmonic cycle, so a 12-bar verse over an 8-bar
+	/// tune restates it mid-phrase.</summary>
+	public int[] VerseBars { get; init; } = { 8 };
+	public int[] VerseBarWeights { get; init; } = { 1 };
+
+	/// <summary>Chance an OPTIONAL section (pre-chorus, bridge, solo, breakdown) is dropped from
+	/// this song. Which optional section a genre has is most of what distinguishes the six forms
+	/// from each other, so this stays low: it is a song that does without, not a genre that does.
+	///
+	/// It is also the direction length variation is allowed to go. With the verse fixed, the drawn
+	/// details SHORTEN — a dropped section, a cut final verse — so a genre's songs spread down from
+	/// its own length rather than up from it.</summary>
+	public float OptionalDropChance { get; init; } = 0.25f;
+
+	/// <summary>Chance the form's key lift actually happens. Country and pop modulated up a tone
+	/// for the final chorus EVERY SINGLE SONG, which is a device wearing out.</summary>
+	public float KeyLiftChance { get; init; } = 0.65f;
+
+	/// <summary>Chance the final chorus comes round twice. It is a repeated SECTION rather than a
+	/// longer one, so every chorus still agrees about its length — which is the invariant, and
+	/// doubling the bar count would have broken it.
+	///
+	/// Kept but made rare: the outro chorus is genuinely idiomatic in pop and ska-punk, and it is
+	/// also the only detail that LENGTHENS a song (see VerseBars on why that is the direction to be
+	/// sparing with).</summary>
+	public float DoubleFinalChorusChance { get; init; } = 0.10f;
+
+	/// <summary>Chance the last verse is cut short by four bars on the way into what follows.
+	/// </summary>
+	public float TruncateFinalVerseChance { get; init; } = 0.15f;
 
 	// ── Harmony ──
 	/// <summary>The harmony tables this genre draws from — one weighted draw each, so a genre's
@@ -248,6 +334,44 @@ sealed class GenreProfile
 	/// the bridge the energy. Over 1 means never, which is most genres: a crash-ride is a rock
 	/// and metal gesture and it makes a ska verse sound like a mistake.</summary>
 	public float CrashRideFrom { get; init; } = 1.01f;
+
+	// ── Arrangement ──
+	// How each part behaves against the section's skeleton (see Arrange.cs). These say HOW a voice
+	// arranges itself and never WHAT it plays — the figure is still the genre's own authored
+	// gesture, and the allowed CELL CLASS is what keeps ska's skank offbeat by rule rather than by
+	// table. Exactly the line this file already draws everywhere else.
+
+	/// <summary>The bass's role. Its <see cref="ArrangeRole.Kick"/> is how hard this genre's bass
+	/// locks to the kick — the number that was previously an accident of two tables agreeing.
+	/// </summary>
+	public ArrangeRole BassRole { get; init; } = new( CellClass.Eighths, 0.6f, 0.1f, 0.3f );
+
+	/// <summary>The main chordal voice's role. Its <see cref="ArrangeRole.Complement"/> is how hard
+	/// it avoids cells the tune and the bass have already taken — a comp is a BED, and a bed that
+	/// lands on every vocal syllable is a second vocal.</summary>
+	public ArrangeRole CompRole { get; init; } = new( CellClass.Eighths, 0.2f, 0.5f, 0.3f );
+
+	/// <summary>The role the main chordal voice takes where the section is LOUD enough that the
+	/// genre changes technique (see <see cref="LoudComp"/>). Null falls back to
+	/// <see cref="CompRole"/>; a genre whose loud technique lives on different cells than its quiet
+	/// one has to say so, or its choruses get arranged against the wrong class — third-wave ska's
+	/// chorus is punk downstrokes on the beat, not a skank, and the chorus is the most recognisable
+	/// thing in the genre.</summary>
+	public ArrangeRole? LoudCompRole { get; init; }
+
+	/// <summary>The second chordal voice's role, where the genre has one. It is arranged last and
+	/// so sees everything, which is what lets it answer rather than double.</summary>
+	public ArrangeRole KeysRole { get; init; } = new( CellClass.Eighths, 0.1f, 0.7f, 0.2f );
+
+	/// <summary>How often a NON-CHORUS section works on its figure rather than quoting it. A
+	/// chorus always quotes: every chorus must agree, which is what makes a chorus a chorus.
+	/// </summary>
+	public float MutateRate { get; init; } = 0.6f;
+
+	/// <summary>What kind of TUNE this genre writes (see <see cref="TuneVocab"/>). Distinct from
+	/// <see cref="Lead"/>, which is what the lead instrument does when it improvises instead.
+	/// </summary>
+	public TuneVocab Tune { get; init; }
 
 	/// <summary>How the lead phrases.</summary>
 	public LeadStyle Lead { get; init; }
@@ -379,16 +503,24 @@ sealed class GenreProfile
 			// before it means anything. 206 is a fast ska song, so it belongs at the CEILING; the
 			// ordinary band sits well under it and the knob is what reaches up there.
 			BpmMin = 138, BpmMax = 172, FastBpmMin = 165, FastBpmMax = 190,
-			TempoFloor = 118, TempoCeil = 210,
 			ChordBars = 2, RideLean = 0.20f, HornLead = true,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.SkaPunk,
+			FastChance = 0.35f,   // the third wave is a fast music; a third of its songs sit at the top
+			Forms = new[] { SongForm.SkaPunk, SongForm.SkaPunkB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.SkaPunkScales, ScaleWeights = Harmony.SkaPunkScaleWeights,
 			Progressions = Harmony.SkaPunkProgressions,
 			Voicings = Harmony.SkaPunkVoicings, VoicingWeights = Harmony.SkaPunkVoicingWeights,
 			BassPatterns = Harmony.SkaPunkBass,
-			CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
+			// The skank is OFFBEAT by rule: the arranger may move a chop, never onto a downbeat.
+				// Ska's bass walks its own line rather than following the kick, which is why its
+				// bass->kick agreement is the lowest on the roster and is meant to be.
+				BassRole = new( CellClass.Eighths, kick: 0.35f, complement: 0.25f, seam: 0.35f ),
+				CompRole = new( CellClass.Offbeats, kick: 0.05f, complement: 0.45f, seam: 0.30f ),
+				// The chorus is punk's downstroke over ska's harmony, and it is on the BEAT.
+				LoudCompRole = new( CellClass.Downbeats, kick: 0.40f, complement: 0.20f, seam: 0.40f ),
+				MutateRate = 0.55f,
+				CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
 			CompOrnament = CompFigure.SkaPunkFlick,
 			// The dynamic that IS third-wave ska: the skank stops for the chorus and the same voice
 			// plays power chords through a driven amp. LoudComp reuses punk's downstroke because the
@@ -400,7 +532,11 @@ sealed class GenreProfile
 			// on its own. Ramp-led, with the flick off the last chop that its comp figures carry.
 			FillHits = 12f, FillShapes = new[] { 4, 2, 2, 2 },
 			Toms = TomTune.Fourths,
-			Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
+			// The horn line: eighth-led and busy, phrased in short answers. Ska's tune is the section
+				// singing over an offbeat bed, so it leans on the eighth and does not sit on long notes.
+				Tune = new TuneVocab( new[] { 1, 4, 1, 6, 2, 2 }, rest: 0.20f, leap: 0.20f,
+					answers: new[] { 4, 3, 2, 1, 1 } ),
+				Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
 			AccentDown = 0.95f, AccentBack = 1.05f, AccentOff = 1.1f, // the offbeat is still the loud one
 			// Dry and bright — a 90s record, not a 60s room. The high trim is a TIMBRE call and was
 			// checked not to be a level one: moving it 0.95→1.15 shifts the kit's RMS by 0.02%,
@@ -427,22 +563,32 @@ sealed class GenreProfile
 			// late by the SAME amount, which is a groove. Human feel is DrumPush and Expression.
 			SwingChance = 0.25f, SwingMin = 0.10f, SwingMax = 0.16f,
 			BpmMin = 95, BpmMax = 140, FastBpmMin = 145, FastBpmMax = 172,
-			TempoFloor = 80, TempoCeil = 185,
 			ChordBars = 2, RideLean = 0.55f,
 			Endings = new[] { EndingStyle.Ring, EndingStyle.StopHit, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.Rock,
+			FastChance = 0.22f,   // alt-rock is mid-tempo — Everlong is the exception, not the median
+			Forms = new[] { SongForm.Rock, SongForm.RockB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.RockScales, ScaleWeights = Harmony.RockScaleWeights,
 			Progressions = Harmony.RockProgressions,
 			Voicings = Harmony.RockVoicings, VoicingWeights = Harmony.RockVoicingWeights,
 			BassPatterns = Harmony.RockBass,
-			CompFigures = CompFigure.Rock, Comp = CompStyle.Riff,
+			// A riff and a bass that mostly move together, with the organ answering the gaps both
+				// of them leave — which is what the Charleston comp is for.
+				BassRole = new( CellClass.Eighths, kick: 0.65f, complement: 0.15f, seam: 0.40f ),
+				CompRole = new( CellClass.Eighths, kick: 0.30f, complement: 0.40f, seam: 0.40f ),
+				KeysRole = new( CellClass.Eighths, kick: 0.05f, complement: 0.75f, seam: 0.20f ),
+				MutateRate = 0.65f,
+				CompFigures = CompFigure.Rock, Comp = CompStyle.Riff,
 			CompOrnament = CompFigure.RockPickup,
 			KeysFigures = CompFigure.RockKeys, Keys = KeysStyle.Stabs,
 			Grooves = DrumGroove.Rock, GrooveWeights = new[] { 3, 2 },
 			FillHits = 13.2f, FillShapes = new[] { 4, 3, 2, 1 },   // measured, 204 bars of fill
 			Toms = TomTune.Fourths, CrashRideFrom = 0.90f,
-			Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
+			// Alt-rock: quarters and eighths with room between them, and enough of an inverted
+				// answer to keep a vocal from being one shape restated a step down.
+				Tune = new TuneVocab( new[] { 1, 3, 1, 6, 3, 3 }, rest: 0.24f, leap: 0.20f,
+					answers: new[] { 4, 3, 2, 1, 2 } ),
+				Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			AccentDown = 0.99f, AccentBack = 1.16f, AccentOff = 0.82f,   // measured, 6521 bars
 			Mix = new MixProfile( 1f, 1f, 1f, 1.05f, 1f ),
 		},
@@ -465,16 +611,23 @@ sealed class GenreProfile
 			// The genre that kept the shuffle. Straight country is real country, so this is not 1.
 			SwingChance = 0.45f, SwingMin = 0.10f, SwingMax = 0.18f, ShuffleChance = 0.18f,
 			BpmMin = 95, BpmMax = 130, FastBpmMin = 130, FastBpmMax = 150,
-			TempoFloor = 78, TempoCeil = 162,
 			ChordBars = 2, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Cadence, EndingStyle.Ring, EndingStyle.Fall },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.Country,
+			FastChance = 0.18f,   // the two-step is a mode country visits, not one it lives in
+			Forms = new[] { SongForm.Country, SongForm.CountryB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.CountryScales, ScaleWeights = Harmony.CountryScaleWeights,
 			Progressions = Harmony.CountryProgressions,
 			Voicings = Harmony.CountryVoicings, VoicingWeights = Harmony.CountryVoicingWeights,
 			BassPatterns = Harmony.CountryBass,
-			CompFigures = CompFigure.Country, Comp = CompStyle.BoomChick,
+			// BOOM AND CHICK ARE THE SAME RULE STATED TWICE: the bass takes the beats and the
+				// guitar takes the "and", so the two are locked by being each other's complement
+				// rather than by playing together. The cell classes carry it.
+				BassRole = new( CellClass.Downbeats, kick: 0.75f, complement: 0.20f, seam: 0.35f ),
+				CompRole = new( CellClass.Offbeats, kick: 0.05f, complement: 0.40f, seam: 0.30f ),
+				KeysRole = new( CellClass.Eighths, kick: 0.05f, complement: 0.70f, seam: 0.25f ),
+				MutateRate = 0.60f,
+				CompFigures = CompFigure.Country, Comp = CompStyle.BoomChick,
 			CompOrnament = CompFigure.CountryPickOff,
 			KeysFigures = CompFigure.CountryKeys, Keys = KeysStyle.HonkyTonk,
 			Grooves = DrumGroove.Country, GrooveWeights = new[] { 3, 2 },
@@ -482,7 +635,11 @@ sealed class GenreProfile
 			// lick out of the train beat's ghosted snare, not a roll across the toms.
 			FillHits = 10f, FillShapes = new[] { 3, 2, 2, 4 },
 			Toms = TomTune.Thirds,
-			Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
+			// Nashville: long held notes with a sixteenth lick between them, and the most
+				// conservative answer set on the roster — a country hook restates and resolves.
+				Tune = new TuneVocab( new[] { 1, 3, 1, 6, 3, 3 }, rest: 0.26f, leap: 0.25f,
+					answers: new[] { 5, 3, 1, 1, 1 } ),
+				Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
 			// Boom AND chick carry weight — and the measurement says both carry MORE than this
 			// genre was giving them. Thin (120 bars), so it is an indication rather than settled.
 			AccentDown = 1.04f, AccentBack = 1.33f, AccentOff = 1.22f,
@@ -512,60 +669,91 @@ sealed class GenreProfile
 		{
 			SwingChance = 0f,   // machine-straight; the old 0–0.02 band was ~3 ms and claimed a feel it never had
 			BpmMin = 90, BpmMax = 160, FastBpmMin = 170, FastBpmMax = 210,
-			TempoFloor = 70, TempoCeil = 225,
 			ChordBars = 2, RideLean = 0.65f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 4, 2 },
-			Form = SongForm.Metal,
+			FastChance = 0.28f,   // thrash is a mode; the groove-metal band is the ordinary one
+			Forms = new[] { SongForm.Metal, SongForm.MetalB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.MetalScales, ScaleWeights = Harmony.MetalScaleWeights,
 			Progressions = Harmony.MetalProgressions,
 			Voicings = Harmony.MetalVoicings, VoicingWeights = Harmony.MetalVoicingWeights,
 			BassPatterns = Harmony.MetalBass,
-			CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
+			// The tightest lockup on the roster, and the only one that was ever deliberate: metal's
+				// bass doubles the riff. It stays a RELATION rather than a role parameter (see
+				// RiffBassChance), so what this sets is how the gallop itself is arranged.
+				BassRole = new( CellClass.Sixteenths, kick: 0.85f, complement: 0.05f, seam: 0.35f ),
+				CompRole = new( CellClass.Sixteenths, kick: 0.45f, complement: 0.25f, seam: 0.45f ),
+				MutateRate = 0.55f,
+				CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
 			CompOrnament = CompFigure.MetalTremolo,
-			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2 },
+			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2, 2 },
 			// The one genre whose fill really is the wall. It is also the genre that showed the
 			// density model up: past ~13.4/bar a flat scale had nothing left to give, so what metal
 			// asks for above rock arrives as sixteenth ornament (see FillChances).
 			FillHits = 14f, FillShapes = new[] { 2, 5, 2, 1 },
 			Toms = TomTune.Wide, CrashRideFrom = 0.80f,
-			Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
+			// The only genre whose tune is written at the sixteenth, and the one that rests least:
+				// metal's vocal sits ON the riff rather than in the gaps a riff leaves.
+				Tune = new TuneVocab( new[] { 2, 5, 1, 5, 2, 2 }, rest: 0.16f, leap: 0.35f,
+					answers: new[] { 3, 2, 2, 2, 3 } ),
+				Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
 			RiffBassChance = 0.75f,
 			AccentDown = 1f, AccentBack = 1f, AccentOff = 0.95f,    // deliberately flat: it's a wall
 			Mix = new MixProfile( 0.45f, 1f, 1.05f, 0.85f, 1.05f ), // dry, mid-scooped
 		},
-		// ── punk — 90s SKATE PUNK: always hot, a chord per bar so the loop IS the hypermeasure ──
+		// ── punk — 90s SKATE PUNK: fast, a chord per bar so the loop IS the hypermeasure ──
 		// Era: NOFX / Bad Religion / Rancid, the melodic-hardcore end of the decade rather than
 		// 1977 or pop-punk radio.
 		//
 		// Anchors (2026-08-02): NOFX "Linoleum" 198, Bad Religion "American Jesus" 181, Rancid
 		// "Roots Radicals" 162 — counted where the snare falls on 2 and 4, which at these tempos is
 		// also the only reading that is punk (the halves, 81–99, are the tempos these songs get
-		// reported at when a detector locks onto the backbeat instead of the pulse). The top of the
-		// band was already right; the FLOOR was not, and 165 excluded the slowest of the three
-		// outright. 160–200. The published punk range (150–180) remains the umbrella and skate punk
-		// still lives at the top of it and past it.
+		// reported at when a detector locks onto the backbeat instead of the pulse).
+		//
+		// IT USED TO BE THE ONE GENRE WITH NO ORDINARY BAND: AlwaysFast, with both bands set equal
+		// at 160–200. That put the whole genre at or above the top of the published punk umbrella
+		// (150–180) and made its FAST end the median, so a middling punk song came back at 180. The
+		// three anchors already said which was which and one band could not express it — Rancid at
+		// 162 is an ordinary punk song and NOFX at 198 is a fast one — so they belong in different
+		// bands. 150–180 and 175–200, with FastChance deciding.
+		//
+		// THE FLOOR DOES NOT GO LOWER, and it is already under the slowest anchor. "This feels too
+		// fast" is not always answered by a slower tempo: a great deal of punk plays HALF TIME, the
+		// backbeat halving while the tempo does not, and this genre used Part.Feel nowhere at all,
+		// so it could only ever run flat out for its whole length. That is a form problem wearing a
+		// tempo problem's clothes; dragging the band further under its own anchors to compensate
+		// would trade a measurement for a symptom. Both punk forms take the gear change now.
 		new()
 		{
 			SwingChance = 0f,   // machine-straight
-			BpmMin = 160, BpmMax = 200, FastBpmMin = 160, FastBpmMax = 200, AlwaysFast = true,
-			TempoFloor = 130, TempoCeil = 225,
+			BpmMin = 150, BpmMax = 180, FastBpmMin = 175, FastBpmMax = 200,
 			ChordBars = 1, RideLean = 0.20f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 5, 1 },
-			Form = SongForm.Punk,
+			FastChance = 0.40f,   // the fast genre, and the one that leans hardest on its top band
+			Forms = new[] { SongForm.Punk, SongForm.PunkB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.PunkScales, ScaleWeights = Harmony.PunkScaleWeights,
 			Progressions = Harmony.PunkProgressions,
 			Voicings = Harmony.PunkVoicings, VoicingWeights = Harmony.PunkVoicingWeights,
 			BassPatterns = Harmony.PunkBass,
-			CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
+			// Downstrokes are on the beat and nowhere else — that is the technique, and the cell
+				// class is what stops the arranger syncopating a genre whose whole idea is that it
+				// does not. The least mutated of the six for the same reason.
+				BassRole = new( CellClass.Eighths, kick: 0.55f, complement: 0.10f, seam: 0.40f ),
+				CompRole = new( CellClass.Downbeats, kick: 0.35f, complement: 0.20f, seam: 0.40f ),
+				MutateRate = 0.40f,
+				CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
 			CompOrnament = CompFigure.PunkTurnaround,
-			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2 },
+			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2, 2 },
 			// Busy, but at punk's tempo a bar of fill is over in a second: the pickup is the shape
 			// that reads there, because there is no room for anything longer to develop.
 			FillHits = 13f, FillShapes = new[] { 3, 4, 3, 1 },
 			Toms = TomTune.Fixed, CrashRideFrom = 0.85f,
-			Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
+			// Shouted: quarters and halves, the fewest notes on the roster, and the most rests —
+				// a skate-punk hook is four words held over a wall of eighths, not a melisma.
+				Tune = new TuneVocab( new[] { 1, 3, 1, 6, 2, 4 }, rest: 0.26f, leap: 0.20f,
+					answers: new[] { 5, 3, 1, 1, 1 } ),
+				Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
 			RiffBassChance = 0.35f,
 			// Punk's offbeat is as loud as its downbeat — the relentless eighth has no dynamic in
 			// it, which is the measurement disagreeing with the 0.9 this genre used to assume.
@@ -588,7 +776,7 @@ sealed class GenreProfile
 		// from too — and 92 under a four-on-the-floor kick is not a pop single, it is a pop single
 		// running slow. Two anchors that share a groove do not move a band that both grooves read;
 		// they describe how far under the band that ONE groove goes, and the genre already reaches
-		// there through TempoScale (TempoFloor 84, comfortably past both). Coupling the band to the
+		// there whenever its half-time groove is drawn. Coupling the band to the
 		// groove would fix it exactly, and is not worth a mechanism that only pop would ever use.
 		// The published pop range (100–130) and the dance anchors agree with the floor as it is.
 		//
@@ -598,16 +786,22 @@ sealed class GenreProfile
 		{
 			SwingChance = 0f,   // quantised by construction — the grid is the genre
 			BpmMin = 100, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
-			TempoFloor = 84, TempoCeil = 152,
 			ChordBars = 1, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Fall, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.Pop,
+			FastChance = 0.22f,   // a dance-tempo single is the exception on 90s/00s radio
+			Forms = new[] { SongForm.Pop, SongForm.PopB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.PopScales, ScaleWeights = Harmony.PopScaleWeights,
 			Progressions = Harmony.PopProgressions,
 			Voicings = Harmony.PopVoicings, VoicingWeights = Harmony.PopVoicingWeights,
 			BassPatterns = Harmony.PopBass,
-			CompFigures = CompFigure.Pop, Comp = CompStyle.Pad,
+			// The pad is a held bed and barely arranges at all; the ARP is where pop's movement is,
+				// and it is the voice that has to stay out of the vocal's way.
+				BassRole = new( CellClass.Eighths, kick: 0.80f, complement: 0.10f, seam: 0.30f ),
+				CompRole = new( CellClass.Eighths, kick: 0.20f, complement: 0.35f, seam: 0.25f ),
+				KeysRole = new( CellClass.Sixteenths, kick: 0.05f, complement: 0.80f, seam: 0.20f ),
+				MutateRate = 0.50f,
+				CompFigures = CompFigure.Pop, Comp = CompStyle.Pad,
 			KeysFigures = CompFigure.PopArp, Keys = KeysStyle.Arp,
 			KeysOrnament = CompFigure.PopArpRun,
 			Grooves = DrumGroove.Pop, GrooveWeights = new[] { 3, 2 },
@@ -615,7 +809,12 @@ sealed class GenreProfile
 			// more often than it is a drummer going round the kit.
 			FillHits = 8.5f, FillShapes = new[] { 3, 1, 4, 3 },
 			Toms = TomTune.Fixed,
-			Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
+			// The DOTTED EIGHTH is the pop signature — a hook that pulls against the four-on-the-floor
+				// instead of sitting on it — and the new-tail answer is what a chorus does: same line,
+				// different landing.
+				Tune = new TuneVocab( new[] { 1, 4, 2, 5, 2, 3 }, rest: 0.26f, leap: 0.22f,
+					answers: new[] { 3, 4, 2, 1, 1 } ),
+				Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			// The widest gap between what was assumed and what was measured, and the one to
 			// revisit first: a programmed pop kit puts its off-beat hats far under the pulse.
 			AccentDown = 0.92f, AccentBack = 1.02f, AccentOff = 0.57f,
@@ -645,20 +844,18 @@ sealed class GenreProfile
 		return swung ? SwingMin + t * (SwingMax - SwingMin) : 0f;
 	}
 
-	/// <summary>This song's tempo, drawn from the genre's band (its uptempo band when
-	/// <paramref name="fast"/>) and then scaled by the listener's TEMPO knob. The band is the
-	/// genre's; the knob is the preference riding on top, so a song can be pushed or dragged
-	/// without a country song ever ending up at metal's tempo.
+	/// <summary>This song's tempo, drawn from the genre's band — its uptempo band when
+	/// <paramref name="fast"/>, and nothing else reaches it.
 	///
-	/// The knob SATURATES at the genre's own <see cref="TempoFloor"/>/<see cref="TempoCeil"/>
-	/// rather than at one shared 40–300. A single symmetric 0.70–1.45 multiplier cannot be right
-	/// for six bands at once: its ends were ska 268, metal 290 and country 67, so the ends of the
-	/// slider were unplayable everywhere and only its middle was usable.</summary>
-	public int DrawBpm( Rng rng, bool fast, float tempoScale )
+	/// THERE IS NOTHING RIDING ON TOP OF IT. A TempoFloor/TempoCeil pair used to sit here bounding
+	/// the listener's TEMPO knob per genre; with the knob retired they bounded nothing — the drawn
+	/// band was always inside them by construction — so they were twelve numbers that could only
+	/// ever be a no-op. The band IS the answer now.</summary>
+	public int DrawBpm( Rng rng, bool fast )
 	{
 		int lo = fast ? FastBpmMin : BpmMin, hi = fast ? FastBpmMax : BpmMax;
 		int bpm = lo + rng.Int( Math.Max( 1, hi - lo + 1 ) );
-		return Math.Clamp( (int)MathF.Round( bpm * tempoScale ), TempoFloor, TempoCeil );
+		return bpm;
 	}
 
 	/// <summary>This song's groove, drawn from the genre's own table — one weighted draw, never

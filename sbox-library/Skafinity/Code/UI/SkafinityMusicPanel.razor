@@ -183,14 +183,20 @@
 			}
 		</div>
 
-		<div class="divider"></div>
-		<div class="label" style="@LabelStyle">GLOBAL</div>
-		<div class="vibe-grid">
-			@foreach ( var f in GlobalRows( genre ) )
-			{
-				<div class="vibe">@Knob( f, cfg, f.Name )</div>
-			}
-		</div>
+		@* Only when there IS a global knob. They have all been retired to reserved wire slots
+		   (tempo to GenreProfile, width and reverb to house config), and a divider plus a heading
+		   over an empty grid reads as a panel that failed to draw something. *@
+		@if ( GlobalRows( genre ).Any() )
+		{
+			<div class="divider"></div>
+			<div class="label" style="@LabelStyle">GLOBAL</div>
+			<div class="vibe-grid">
+				@foreach ( var f in GlobalRows( genre ) )
+				{
+					<div class="vibe">@Knob( f, cfg, f.Name )</div>
+				}
+			</div>
+		}
 
 		@if ( _msg != null )
 		{

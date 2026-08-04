@@ -53,7 +53,9 @@ public sealed partial class MusicGen
 		// kit busyness so a busy vibe gets a busier bass.
 		float ornChance = _c.BassTriplets * 0.5f + _c.DrumBusy * 0.05f;
 
-		foreach ( var h in _bassPat.Slice( barTick, to, _sectionTick, _feel ) )
+		var line = _bassPat.Slice( barTick, to, _sectionTick, _feel );
+		Trace?.Add( TraceVoice.Bass, line );
+		foreach ( var h in line )
 		{
 			int midi;
 			if ( h.Value == Harmony.Approach )
@@ -122,6 +124,7 @@ public sealed partial class MusicGen
 		foreach ( var h in _riffOnsets )
 		{
 			if ( h.SpanTicks < Timing.TicksPerEighth / 2 && h.Value != CompFigure.Ring ) continue;
+			Trace?.Add( TraceVoice.Bass, h.Tick );
 			var vc = Roll( ex, root, prev, exprRng );
 			prev = root;
 			EmitBass( _time.TickToSample( h.Tick ), _time.SpanSamples( h.Tick, h.SpanTicks * 0.95 ),

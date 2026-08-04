@@ -61,6 +61,24 @@ sealed class Rng
 	/// to "how many entries" (and to the no-two-genres-share-more-than-one cap the engine test
 	/// enforces). A real weighted draw separates them, and costs the same single value out of
 	/// the song stream, so a genre's draw count still cannot depend on its tables.</summary>
+	/// <summary>The INDEX of a weighted draw — one <see cref="Next"/>, like
+	/// <see cref="PickWeighted"/>, for callers whose table is a parallel array rather than the
+	/// thing being picked (the melody's note lengths against a genre's weights over them).</summary>
+	public int WeightedIndex( int[] weights )
+	{
+		if ( weights == null || weights.Length == 0 ) return 0;
+		int total = 0;
+		foreach ( var w in weights ) total += Math.Max( 0, w );
+		if ( total <= 0 ) return Int( weights.Length );
+		float r = Next() * total;
+		for ( int i = 0; i < weights.Length; i++ )
+		{
+			r -= Math.Max( 0, weights[i] );
+			if ( r < 0f ) return i;
+		}
+		return weights.Length - 1;
+	}
+
 	public T PickWeighted<T>( T[] arr, int[] weights )
 	{
 		if ( arr == null || arr.Length == 0 ) return default;

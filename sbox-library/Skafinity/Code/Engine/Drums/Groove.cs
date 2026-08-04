@@ -196,6 +196,36 @@ sealed class DrumGroove
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
 			GhostRate = 0.3f, CrashOnOne = 0.5f,
 		},
+		new()
+		{
+			Name = "two-step",
+			// The same beat punk gets, and deliberately the same: bum-tis-bumbum-tis is played in
+			// both genres and inventing a heavier variant for metal would be answering a question
+			// nobody asked. What separates the two here is everything around it — tempo, kit, the
+			// ghost rate below, and the riff on top.
+			//
+			//         1   e   &   a   2   e   &   a
+			//   kick  K   .   .   .   K   K   .   .
+			//   snare .   .   S   .   .   .   S   .
+			//
+			// A separate OBJECT because no two genres may share a groove (the suite asserts it),
+			// which is a rule about tables accidentally converging rather than about two genres
+			// never playing the same rhythm.
+			//
+			// WEIGHTED BEHIND EACH GENRE'S OWN GROOVE, on purpose. This one was added because a
+			// listener said it was missing, and the check on that kind of change is not whether the
+			// reason was good — it was, the beat really was absent from both tables — but whether
+			// the WEIGHT came from the same evidence. It did not: joint-top billing was a choice,
+			// and it pushed "eighth drive", which this file calls the punk engine, from 60% of punk
+			// songs to 37%. A genre's signature stays its most common groove and a new arrival
+			// earns its share; ~29% is present without displacing anything.
+			Kick = S( 0, R, R, R, 0, 0, R, R,
+			          0, R, R, R, 0, 0, R, R ),
+			Snare = S( R, R, 0, R, R, R, 0, R,
+			           R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0.25f, CrashOnOne = 0.5f,
+		},
 	};
 
 	// ── Punk ──
@@ -219,12 +249,41 @@ sealed class DrumGroove
 		new()
 		{
 			Name = "d-beat",
+			// Early punk, and it stays as it is. Notations of the d-beat vary in where the kick's
+			// offbeats sit and this is a legitimate one; it is also NOT the sixteenth gallop the
+			// "two-step" entry below carries, which is the beat this table was actually missing.
 			Kick = E( 0, R, R, 0, R, 0, R, R,
 			          0, R, R, 0, R, 0, R, R ),
 			Snare = E( R, R, 0, R, R, R, 0, R,
 			           R, R, 0, R, R, R, 0, Ghost ),
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
 			GhostRate = 0.5f, CrashOnOne = 0.5f,
+		},
+		new()
+		{
+			Name = "two-step",
+			// THE PUNK ENGINE'S OTHER GEAR: kick on the beat, snare on the "&", and the kick
+			// doubled at the SIXTEENTH going into every other beat —
+			//
+			//         1   e   &   a   2   e   &   a
+			//   kick  K   .   .   .   K   K   .   .
+			//   snare .   .   S   .   .   .   S   .
+			//
+			// — repeating twice a bar. Drummers call it the two-step or the skank beat; it is not
+			// the d-beat (that keeps its snare on 2 and 4, and has its own entry above).
+			//
+			// IT IS A 2-BEAT CELL AND THAT IS THE WHOLE POINT. The same figure written over four
+			// beats — kick, snare, doubled kick on 3, snare — is the identical pattern counted at
+			// half the rate, and at this genre's tempo that puts the double every 1.4 s instead of
+			// every 0.7 s. It reads as an ordinary rock beat rather than as punk. This engine has
+			// been caught by exactly that ambiguity before (see the ska tempo block in
+			// GenreProfile): a rhythm means nothing until you say which pulse it is counted against.
+			Kick = S( 0, R, R, R, 0, 0, R, R,
+			          0, R, R, R, 0, 0, R, R ),
+			Snare = S( R, R, 0, R, R, R, 0, R,
+			           R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0.35f, CrashOnOne = 0.4f,
 		},
 	};
 
@@ -327,7 +386,15 @@ public sealed partial class MusicGen
 		// tables were written and nothing ever read it, so no crash landed on any downbeat in the
 		// engine — only at the end of a fill and the end of a song. It is one draw, on the one bar
 		// it can apply to, so it costs the same from every section's stream.
-		if ( barTick == _sectionTick && noise.Chance( _groove.CrashOnOne ) )
+		// NOT ON THE SONG'S OWN FIRST BAR. A crash PUNCTUATES a transition — it is the drummer
+		// marking the seam between one section and the next, and every other place this fires has
+		// one. Bar 1 of the intro has nothing behind it to mark, so what lands there is three
+		// seconds of cymbal wash over the sparsest section in the song, belonging to no groove and
+		// answering nothing that was played. It reads as a cymbal that was already ringing when the
+		// song started, which is exactly what it is.
+		//
+		// The roll still happens, so a genre's draw count does not depend on which bar it is on.
+		if ( barTick == _sectionTick && noise.Chance( _groove.CrashOnOne ) && barTick > 0 )
 			RenderCrashCym( _time.TickToSample( barTick ),
 				_c.CrashVol * KitGain( barTick, 1f, 0.5f ), _crashBright, dark: false );
 
@@ -346,6 +413,7 @@ public sealed partial class MusicGen
 		{
 			var h = play[i];
 			if ( h.Tick >= to ) break;
+			Trace?.Add( TraceVoice.Cymbal, h.Tick );
 			int at = _time.TickToSample( h.Tick );
 			int next = i + 1 < play.Count ? _time.TickToSample( play[i + 1].Tick ) : int.MaxValue;
 			int cell = h.Value;
@@ -402,7 +470,9 @@ public sealed partial class MusicGen
 		// waveform at the identical level sixteen times a bar — which is what machine-gunning is.
 		// Its depth is under the cymbal hand's and near the fill's: the kick is the floor of the
 		// groove and should breathe least.
-		foreach ( var h in _groove.Kick.Slice( barTick, to, _sectionTick, _feel ) )
+		var kicks = _groove.Kick.Slice( barTick, to, _sectionTick, _feel );
+		Trace?.Add( TraceVoice.Kick, kicks );
+		foreach ( var h in kicks )
 			RenderKick( _time.TickToSample( h.Tick ), noise, KitGain( h.Tick, h.Vel, 0.30f ),
 				_kickTone, 0f );
 
@@ -421,6 +491,7 @@ public sealed partial class MusicGen
 			// The groove's own ghost notes thin out with the section rather than hammering a
 			// verse as hard as a chorus.
 			if ( ghost && !noise.Chance( 0.35f + 0.65f * _energy ) ) continue;
+			Trace?.Add( TraceVoice.Snare, h.Tick );
 			RenderSnare( _time.TickToSample( h.Tick ), noise, ghost );
 		}
 

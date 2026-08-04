@@ -114,7 +114,11 @@ public static class VibeCodec
 		// the end of this block.
 		null,
 		null,
-		F( "TEMPO BIAS", 0f, 1f, false, c => c.FastChance, ( c, v ) => c.FastChance = v ),
+		// RESERVED — was TEMPO BIAS, how often a song took its genre's uptempo band. A global
+		// slider over that is the same mistake the swing slider was: a reroll could hand any
+		// genre a 100% fast bias, and how often a genre runs hot is something the genre IS.
+		// It lives in GenreProfile.FastChance now, beside SwingChance, for the same reason.
+		null,
 		// RESERVED — was SWING, now per-genre character (GenreProfile). Kept as an empty slot so
 		// every later global and the whole instrument grid stay at their existing wire positions
 		// and previously shared vibes still decode. A future global knob can claim it.
@@ -124,11 +128,32 @@ public static class VibeCodec
 		// where a timbre value belongs. Kept as an empty slot so every later global and the whole
 		// instrument grid stay at their existing wire positions.
 		null,
-		F( "STEREO WIDTH", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
-		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
+		// RESERVED — was STEREO WIDTH. The width the mix is TUNED for is 100%; the slider could
+		// only ever narrow it, so its whole travel was degrees of worse. It is not deleted, it is
+		// house config (AdvancedFields) — how wide to run is a playback-environment decision (a
+		// game piping this through a positional source, a listener on laptop speakers) rather than
+		// a musical one, and that is exactly what AdvancedFields is for.
+		null,
+		// RESERVED — was REVERB. How much room a song sits in is per-song CHARACTER, drawn from a
+		// band the way tempo and swing are (MusicGen.ReverbMin/Max), times the genre's own trim.
+		// A listener's slider over it could reach bone dry and could reach swimming, and neither is
+		// a thing any of these genres is. What survives as house config is a SCALE over the draw.
+		null,
 		// Appended, so every position above keeps the place it has always had. The range is 15
 		// steps of 0.05 so the neutral 1.0 lands exactly on a level rather than a rounding of one.
-		F( "TEMPO", 0.70f, 1.45f, false, c => c.TempoScale, ( c, v ) => c.TempoScale = v ),
+		// RESERVED — was TEMPO, a 0.70-1.45 multiplier over whatever the genre drew.
+		//
+		// Its history is the argument against it. It began as absolute TEMPO MIN / TEMPO MAX
+		// (the two reserved slots above), became a multiplier because an absolute band cannot be
+		// right for six genres at once, then grew per-genre saturation because the multiplier's
+		// ends were unplayable everywhere. Each fix was real and none of them reached the actual
+		// problem: the top of the slider is past what the music is, so the knob spent its upper
+		// half making songs faster than the genre means. A ska song came back at 208 bpm — inside
+		// its own saturation, drawn from a band whose top is 190, and simply too fast.
+		//
+		// A tempo band is anchored on records (see GenreProfile). A knob that overrides it is a
+		// listener preference beating a measurement, and there is nothing left to narrow.
+		null,
 	};
 
 	// ── Advanced / tuning-only knobs ──
@@ -142,6 +167,10 @@ public static class VibeCodec
 	public static readonly Field[] AdvancedFields =
 	{
 		F( "KitPresence", 0f, 4f, false, c => c.KitPresence, ( c, v ) => c.KitPresence = v ),
+		// The stereo image, and the house's scale over each song's drawn reverb. Both were vibe
+		// sliders; both are environment rather than music. 1 = as designed.
+		F( "PanAmount", 0f, 1f, false, c => c.PanAmount, ( c, v ) => c.PanAmount = v ),
+		F( "MasterReverb", 0f, 2f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
 		// How far each genre's own mix profile (GenreProfile.Mix) is taken. 1 = as designed,
 		// 0 = every genre through one neutral mix. The SHAPE of a genre's mix is character and
 		// lives in the profile; what the house retunes at runtime is how far to push it.
