@@ -777,8 +777,11 @@ of its own peak **43% of the time**. Two readings, and they answer different que
 0.95 in a single +10 dB step to stop the ride being buried, and its own commit message flagged the
 result as worth watching. It was: 0.30 measured +1.4 dB over the rest of the mix (the buried it was
 aimed at) and 0.95 measured +6.9 dB. "Can I hear it?" and "is it now the loudest thing in its band?"
-are both real questions and ear-tuning one answers neither of the other. It sits at 0.55 (+3.65 dB,
-21% occupancy). **Shortening the ring was tried first and is the wrong lever** — it bought 1 dB
+are both real questions and ear-tuning one answers neither of the other. **It sits at 0.45**; the
++3.65 dB / 21% figures were measured at 0.55, before the bow's strike bump moved to 4200 Hz and the
+level came down with it, and they have not been re-measured since. What that move is worth is a
+band reading rather than a level: on the song, over the rest of the mix, the ride went +4.74 →
++1.98 dB at 1–3 kHz while only +7.03 → +5.54 dB at 6–14 kHz. **Shortening the ring was tried first and is the wrong lever** — it bought 1 dB
 against the level's 3.3 and left the ride still on top, which is what "suspect the pattern before
 the timbre" looks like when the answer is actually neither.
 
