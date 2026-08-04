@@ -152,14 +152,18 @@ public sealed partial class MusicGen
 		// How the song lands. Every song used to end on the same fixed pad, whatever the genre.
 		_ending = rng.PickWeighted( prof.Endings, prof.EndingWeights );
 
-		// The song's TUNE — the thing a listener hums back. Drawn off its own streams, so a song
-		// having a melody shifts nothing else in the composition.
-		DrawTunes( beatsPerBar * Timing.TicksPerBeat );
-
 		// Swing is the genre's own feel, drawn per song from its band exactly the way tempo is —
 		// not a knob, so a reroll can never hand metal a shuffle. Ska-punk and country may instead
 		// draw a genuine 2:1 triplet shuffle, which is a different feel rather than more swing.
+		//
+		// DRAWN BEFORE THE TUNE, because the tune has to know. Under a shuffle the beat's own
+		// subdivision is the triplet, and a melody written in straight sixteenths against that is
+		// not syncopation, it is two grids at once — see Melody.Draw.
 		float swing = prof.DrawSwing( rng, _fast );
+
+		// The song's TUNE — the thing a listener hums back. Drawn off its own streams, so a song
+		// having a melody shifts nothing else in the composition.
+		DrawTunes( beatsPerBar * Timing.TicksPerBeat, swing > 0f );
 		double secPerEighth = 60.0 / bpm / 2.0;
 		int spe = (int)Math.Round( _sr * secPerEighth );
 

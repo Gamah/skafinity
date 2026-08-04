@@ -118,7 +118,14 @@ static class Melody
 	/// <param name="move">How much this line moves relative to the genre's own table: 1 for a
 	/// chorus, less for the sparser verse tune. It leans the length draw toward the long end rather
 	/// than being a second density knob sitting beside the weights.</param>
-	public static Pattern Draw( Rng rng, int bars, int barTicks, in TuneVocab v, float move = 1f )
+	/// <param name="swung">True where the song swings or shuffles. THE SIXTEENTH COMES OUT OF THE
+	/// MENU: under a shuffle the beat's own subdivision IS the triplet, and Timing's warp puts a
+	/// straight sixteenth at a third of the beat while the band's eighth-based figures sit on the
+	/// beat and at two thirds. That is not syncopation, it is two grids at once, and it reads as
+	/// the lead pushing against a band it does not line up with. A shuffled genre's melody moves in
+	/// eighths and the shuffle does the subdividing.</param>
+	public static Pattern Draw( Rng rng, int bars, int barTicks, in TuneVocab v, float move = 1f,
+		bool swung = false )
 	{
 		int phraseTicks = barTicks * Math.Max( 1, bars / 2 );
 		var ticks = new List<int>();
@@ -130,6 +137,9 @@ static class Melody
 		for ( int i = 0; i < weights.Length; i++ )
 		{
 			float w = v.LengthWeights[i] * (i < LongFrom ? move : 2f - move);
+			// Anything that does not divide the eighth: the sixteenth AND the dotted eighth, which
+			// lands mid-eighth for the same reason and was the half of this that was easy to miss.
+			if ( swung && Lengths[i] % Timing.TicksPerEighth != 0 ) w = 0f;
 			weights[i] = Math.Max( 0, (int)MathF.Round( w * 8f ) );
 		}
 
@@ -288,7 +298,7 @@ public sealed partial class MusicGen
 	/// <summary>Draw the song's tunes — one for choruses, a sparser one for verses. Every genre
 	/// gets both: "riff-led" does not mean melody-free, and metal verses with no tune left four
 	/// and eight bar holes where the lead simply did not play.</summary>
-	void DrawTunes( int barTicks )
+	void DrawTunes( int barTicks, bool swung )
 	{
 		// The vocabulary is the GENRE's (GenreProfile.Tune). It used to be a switch on _prof.Lead
 		// right here, which is the `if ( _genre == … )` smell one level removed: two genres sharing
@@ -321,10 +331,10 @@ public sealed partial class MusicGen
 		// not tell them apart. Nothing here should ever grow into machinery that forces two genres
 		// to diverge — the collision rate is something `--stats` reports, not something the engine
 		// enforces.
-		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:chorus" ), cycle, barTicks, _prof.Tune );
+		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:chorus" ), cycle, barTicks, _prof.Tune, 1f, swung );
 		// The verse tune is the same vocabulary, sung with fewer notes in it — same song,
 		// different words.
-		_verseTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:verse" ), cycle, barTicks, _prof.Tune, 0.8f );
+		_verseTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:verse" ), cycle, barTicks, _prof.Tune, 0.8f, swung );
 	}
 
 	/// <summary>Play one bar of the section's tune.

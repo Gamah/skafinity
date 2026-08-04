@@ -544,7 +544,7 @@ sealed class GenreProfile
 			Toms = TomTune.Fourths,
 			// The horn line: eighth-led and busy, phrased in short answers. Ska's tune is the section
 				// singing over an offbeat bed, so it leans on the eighth and does not sit on long notes.
-				Tune = new TuneVocab( new[] { 2, 6, 2, 4, 1, 1 }, rest: 0.12f, leap: 0.20f,
+				Tune = new TuneVocab( new[] { 1, 4, 1, 6, 2, 2 }, rest: 0.20f, leap: 0.20f,
 					answers: new[] { 4, 3, 2, 1, 1 } ),
 				Lead = LeadStyle.HornLine, LeadPhraseBars = 2, LeadSilence = 0.15f,
 			AccentDown = 0.95f, AccentBack = 1.05f, AccentOff = 1.1f, // the offbeat is still the loud one
@@ -596,7 +596,7 @@ sealed class GenreProfile
 			Toms = TomTune.Fourths, CrashRideFrom = 0.90f,
 			// Alt-rock: quarters and eighths with room between them, and enough of an inverted
 				// answer to keep a vocal from being one shape restated a step down.
-				Tune = new TuneVocab( new[] { 1, 4, 2, 5, 2, 2 }, rest: 0.18f, leap: 0.20f,
+				Tune = new TuneVocab( new[] { 1, 3, 1, 6, 3, 3 }, rest: 0.24f, leap: 0.20f,
 					answers: new[] { 4, 3, 2, 1, 2 } ),
 				Lead = LeadStyle.Bluesy, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			AccentDown = 0.99f, AccentBack = 1.16f, AccentOff = 0.82f,   // measured, 6521 bars
@@ -647,7 +647,7 @@ sealed class GenreProfile
 			Toms = TomTune.Thirds,
 			// Nashville: long held notes with a sixteenth lick between them, and the most
 				// conservative answer set on the roster — a country hook restates and resolves.
-				Tune = new TuneVocab( new[] { 2, 4, 1, 5, 2, 2 }, rest: 0.20f, leap: 0.25f,
+				Tune = new TuneVocab( new[] { 1, 3, 1, 6, 3, 3 }, rest: 0.26f, leap: 0.25f,
 					answers: new[] { 5, 3, 1, 1, 1 } ),
 				Lead = LeadStyle.DoubleStop, LeadPhraseBars = 2, LeadSilence = 0.25f,
 			// Boom AND chick carry weight — and the measurement says both carry MORE than this
@@ -704,7 +704,7 @@ sealed class GenreProfile
 			Toms = TomTune.Wide, CrashRideFrom = 0.80f,
 			// The only genre whose tune is written at the sixteenth, and the one that rests least:
 				// metal's vocal sits ON the riff rather than in the gaps a riff leaves.
-				Tune = new TuneVocab( new[] { 5, 6, 1, 3, 1, 1 }, rest: 0.08f, leap: 0.35f,
+				Tune = new TuneVocab( new[] { 2, 5, 1, 5, 2, 2 }, rest: 0.16f, leap: 0.35f,
 					answers: new[] { 3, 2, 2, 2, 3 } ),
 				Lead = LeadStyle.Shred, LeadPhraseBars = 2, LeadSilence = 0.12f,
 			RiffBassChance = 0.75f,
@@ -750,7 +750,7 @@ sealed class GenreProfile
 			Toms = TomTune.Fixed, CrashRideFrom = 0.85f,
 			// Shouted: quarters and halves, the fewest notes on the roster, and the most rests —
 				// a skate-punk hook is four words held over a wall of eighths, not a melisma.
-				Tune = new TuneVocab( new[] { 1, 4, 1, 6, 1, 3 }, rest: 0.22f, leap: 0.20f,
+				Tune = new TuneVocab( new[] { 1, 3, 1, 6, 2, 4 }, rest: 0.26f, leap: 0.20f,
 					answers: new[] { 5, 3, 1, 1, 1 } ),
 				Lead = LeadStyle.Unison, LeadPhraseBars = 2, LeadSilence = 0.65f,
 			RiffBassChance = 0.35f,
@@ -811,7 +811,7 @@ sealed class GenreProfile
 			// The DOTTED EIGHTH is the pop signature — a hook that pulls against the four-on-the-floor
 				// instead of sitting on it — and the new-tail answer is what a chorus does: same line,
 				// different landing.
-				Tune = new TuneVocab( new[] { 2, 5, 3, 4, 2, 2 }, rest: 0.20f, leap: 0.22f,
+				Tune = new TuneVocab( new[] { 1, 4, 2, 5, 2, 3 }, rest: 0.26f, leap: 0.22f,
 					answers: new[] { 3, 4, 2, 1, 1 } ),
 				Lead = LeadStyle.Hook, LeadPhraseBars = 2, LeadSilence = 0.20f,
 			// The widest gap between what was assumed and what was measured, and the one to

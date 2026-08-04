@@ -327,7 +327,15 @@ public sealed partial class MusicGen
 		// tables were written and nothing ever read it, so no crash landed on any downbeat in the
 		// engine — only at the end of a fill and the end of a song. It is one draw, on the one bar
 		// it can apply to, so it costs the same from every section's stream.
-		if ( barTick == _sectionTick && noise.Chance( _groove.CrashOnOne ) )
+		// NOT ON THE SONG'S OWN FIRST BAR. A crash PUNCTUATES a transition — it is the drummer
+		// marking the seam between one section and the next, and every other place this fires has
+		// one. Bar 1 of the intro has nothing behind it to mark, so what lands there is three
+		// seconds of cymbal wash over the sparsest section in the song, belonging to no groove and
+		// answering nothing that was played. It reads as a cymbal that was already ringing when the
+		// song started, which is exactly what it is.
+		//
+		// The roll still happens, so a genre's draw count does not depend on which bar it is on.
+		if ( barTick == _sectionTick && noise.Chance( _groove.CrashOnOne ) && barTick > 0 )
 			RenderCrashCym( _time.TickToSample( barTick ),
 				_c.CrashVol * KitGain( barTick, 1f, 0.5f ), _crashBright, dark: false );
 

@@ -1438,6 +1438,24 @@ static class Program
 		Check( "a leap is a third, a fourth or a fifth — not always a third",
 			sizes.Contains( 2 ) && sizes.Contains( 3 ) && sizes.Contains( 4 ), string.Join( " ", sizes ) );
 
+		// UNDER A SHUFFLE THE TUNE MOVES IN EIGHTHS. The beat's own subdivision is already the
+		// triplet, and Timing's warp puts a straight sixteenth at a third of the beat while the
+		// band's eighth-based figures sit on the beat and at two thirds — two grids at once, which
+		// reads as the lead pushing against a band it does not line up with.
+		bool swungOnGrid = true, straightUsesSixteenths = false;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int i = 0; i < 40; i++ )
+			{
+				foreach ( var h in Melody.Draw( new Rng( $"swung:{g}:{i}" ), 4, bar,
+					GenreProfile.For( g ).Tune, 1f, swung: true ).Slice( 0, 4 * bar ) )
+					swungOnGrid &= h.Tick % Timing.TicksPerEighth == 0;
+				foreach ( var h in Melody.Draw( new Rng( $"straight:{g}:{i}" ), 4, bar,
+					GenreProfile.For( g ).Tune ).Slice( 0, 4 * bar ) )
+					straightUsesSixteenths |= h.Tick % Timing.TicksPerEighth != 0;
+			}
+		Check( "a shuffled song's tune stays on the eighth grid", swungOnGrid );
+		Check( "…and a straight one still subdivides it", straightUsesSixteenths );
+
 		// The answer is DRAWN now. It used to be the call minus one degree, 100% of the time, in
 		// every genre — half of every tune in the engine was a mechanical transform of the other
 		// half. Measured as the rate rather than by classifying each answer, because two operators
