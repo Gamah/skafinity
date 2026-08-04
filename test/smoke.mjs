@@ -67,7 +67,11 @@ check('ska is globals + 7 instruments × 4', skaCount === GLOBALS + 7 * 4, `${sk
 check('rock is globals + 5 instruments × 4', rockCount === GLOBALS + 5 * 4, `${rockCount}`);
 check('country is globals + 5 instruments × 4', E.VibeFieldCount(2) === GLOBALS + 5 * 4, `${E.VibeFieldCount(2)}`);
 check('metal is globals + 4 instruments × 4', E.VibeFieldCount(3) === GLOBALS + 4 * 4, `${E.VibeFieldCount(3)}`);
-check('every genre shares the same global block', GLOBALS > 0, `${GLOBALS}`);
+// The global block may legitimately be EMPTY — every global knob has now been retired to a
+// reserved slot (tempo to GenreProfile, width and reverb to house config), so what has to hold
+// is that every genre agrees on its size, which is what the four checks above assert. A `> 0`
+// here was asserting that the block still had something in it, which was never the contract.
+check('the global block is a consistent size across genres', GLOBALS >= 0, `${GLOBALS}`);
 
 // The wire is genre char + global block + instrument grid. Its length tracks the WIRE, which can
 // hold reserved slots a retired knob left behind, so it is >= the count of live UI knobs rather
@@ -91,14 +95,15 @@ check('rock Encode(Decode) is stable', E.EncodeVibe(E.DecodeVibe(rockVibe, cfg))
 // fields carry voice/column metadata for the UI matrix
 check('a field reports a voice', (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldVoice(0, i) === 'DRUMS') return true; })() === true);
 
-// Move a knob and confirm it round-trips through the vibe string. The knob is picked BY SHAPE
-// rather than by name — the first continuous global — because naming one couples this test to a
-// knob surviving. It was `TEMPO`, and TEMPO has since been retired to a reserved wire slot.
+// Move a knob and confirm it round-trips through the vibe string. Picked BY SHAPE rather than by
+// name — the first continuous knob, global or not — because naming one couples this test to that
+// knob surviving. It was `TEMPO`, which is now a reserved slot; and it was then "the first
+// continuous GLOBAL", which stopped existing when the last global was retired.
 const knob = (() => {
   for (let i = 0; i < skaCount; i++)
-    if (E.VibeFieldVoice(0, i) === '' && !E.VibeFieldIsInt(0, i) && E.VibeFieldChoices(0, i).length === 0) return i;
+    if (!E.VibeFieldIsInt(0, i) && E.VibeFieldChoices(0, i).length === 0) return i;
 })();
-check('there is a continuous global knob to test', knob !== undefined);
+check('there is a continuous knob to test', knob !== undefined);
 const cfg2 = E.SetVibeField(cfg, knob, 0.25);
 const norm = E.GetVibeNorm(cfg2, knob);
 check('SetVibeField/GetVibeNorm round-trip', Math.abs(norm - 0.25) < 0.04, `${norm}`);

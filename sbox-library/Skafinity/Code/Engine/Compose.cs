@@ -94,6 +94,9 @@ public sealed partial class MusicGen
 		// rest route the lead to a guitar in RenderLeadNote).
 		_lead = PickInstrument( rng );
 		_leadPan = (rng.Next() * 2f - 1f) * _c.PanAmount;
+		// NOTE the ceiling: a genre's Mix.Width above 1 cannot be reached at the design width, so
+		// pop's 1.2 lands at 1.0 like everyone else. The RELATIVE widths still hold (country 0.85
+		// sits inside pop's), which is what the profile is for.
 		_widthScale = Math.Clamp( _c.PanAmount * prof.Mix.Width * _c.GenreMix, 0f, 1f );
 		_drumPan = DrumPan * _widthScale;
 		_bassPat = _songBass = rng.Pick( prof.BassPatterns );
@@ -120,6 +123,10 @@ public sealed partial class MusicGen
 		// Every song can do both — each SECTION rolls its own choice against this preference.
 		_ridePref = prof.DrawRidePref( rng );
 		// Which side the two crashes sit on (±25%); flips per song so the stereo image varies.
+		// How much room this song sits in — per-song character drawn from a band, the way tempo and
+		// swing are, and then trimmed by the genre's own profile in Master(). A fixed value made
+		// every song of a genre sit in the identical space.
+		_reverbWet = ReverbMin + rng.Next() * (ReverbMax - ReverbMin);
 		_crashBrightLeft = rng.Chance( 0.5f );
 		// THE KIT IS SET UP ONCE, the way a drummer sets one up: three toms tuned in the genre's
 		// intervals from the song's own key, and the rack on one side or the other. Drawn from

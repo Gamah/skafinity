@@ -139,9 +139,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	[Property, Group( "Feel" ), Range( 0f, 12f )] public float MelodyVibrato { get; set; } = 5.0f;
 
 	// ── Stereo ──
-	[Property, Group( "Stereo" ), Range( 0f, 1f )] public float PanAmount { get; set; } = 1.0f;
 	/// <summary>Master reverb send — the GLOBAL "REVERB" vibe knob's resting value.</summary>
-	[Property, Group( "Stereo" ), Range( 0f, 1f )] public float MasterReverb { get; set; } = 0.5f;
 
 	// ── Lead instrument (RNG picks one per tag, weighted; Force overrides) ──
 	[Property, Group( "Instrument" ), Range( 0f, 4f )] public float TrumpetWeight { get; set; } = 1.0f;
@@ -539,8 +537,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		MelodyRestChance = MelodyRestChance,
 		MelodyLeapChance = MelodyLeapChance,
 		MelodyVibrato = MelodyVibrato,
-		PanAmount = PanAmount,
-		MasterReverb = MasterReverb,
 		TrumpetWeight = TrumpetWeight,
 		SaxWeight = SaxWeight,
 		OrganWeight = OrganWeight,
@@ -579,7 +575,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		h.Add( GhostSnareChance ); h.Add( FillChance );
 		h.Add( DrumBusy ); h.Add( DrumTone ); h.Add( DrumDrive ); h.Add( TripletChance ); h.Add( BassTriplets );
 		h.Add( MelodyRestChance ); h.Add( MelodyLeapChance ); h.Add( MelodyVibrato );
-		h.Add( PanAmount );
 		h.Add( TrumpetWeight ); h.Add( SaxWeight ); h.Add( OrganWeight ); h.Add( TromboneWeight );
 		h.Add( ForceInstrument );
 		h.Add( HornSectionChance ); h.Add( HornDensity );

@@ -444,6 +444,10 @@ public sealed partial class MusicGen
 	internal PlanTrace Trace;
 	bool _ride;              // per-SECTION: ride cymbal drives the eighth pulse instead of closed hats (set in RenderSection from _ridePref)
 	float _ridePref;         // per-song lean toward riding the ride vs the hats; each section rolls its own _ride against this
+	/// <summary>The band a song's reverb wet is drawn from. Not 0..1: bone dry and swimming are
+	/// both reachable there and neither is a thing any of these genres is.</summary>
+	internal const float ReverbMin = 0.15f, ReverbMax = 0.75f;
+	float _reverbWet = 0.5f; // this song's room, drawn per song (see ComposePlan)
 	bool _crashBrightLeft;   // per-song: which side the kit's two crashes sit on (bright crash left ⇄ dark crash right, or flipped)
 	bool _crashRide;         // per-SECTION: the cymbal hand is on a crash rather than the ride (GenreProfile.CrashRideFrom)
 	int _footCells;          // per-SECTION: the hi-hat pedal's own figure as an 8-bit eighth mask (measured — see FootOccupancy)

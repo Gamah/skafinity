@@ -96,9 +96,11 @@ public sealed partial class MusicGen
 		public float MasterDrive = 1.1f;
 		public float MasterPeak = 0.95f;
 
-		// Master room reverb — a touch of stereo space so the mix reads with depth
-		// instead of dry/"16-bit". Wet = blend, Decay = tail length (0..1).
-		public float MasterReverb = 0.5f;
+		// Master room reverb. The WET is drawn per song (MusicGen.ReverbMin/Max) and trimmed by the
+		// genre's own mix profile; this is the house SCALE over that, not the wet itself — house
+		// config rather than a vibe slider, because bone dry and swimming are both reachable on a
+		// slider and neither is a thing any of these genres is. 1 = as drawn. Decay = tail (0..1).
+		public float MasterReverb = 1.0f;
 		public float ReverbDecay = 0.5f;
 
 		// Feel
@@ -114,7 +116,7 @@ public sealed partial class MusicGen
 		public float MelodyLeapChance = 0.18f;
 		public float MelodyVibrato = 5.0f;
 
-		// STEREO WIDTH (vibe slider): master 0..1 stereo amount. Scales the lead/horn placement
+		// Stereo width (HOUSE CONFIG, not a vibe slider): master 0..1 stereo amount. Scales the lead/horn placement
 		// AND the drum pan + double-tracking spread/decorrelation (see _widthScale). 1 = full
 		// design width (the "100%" the rest of the mix is tuned for); 0 = mono.
 		public float PanAmount = 1.0f;

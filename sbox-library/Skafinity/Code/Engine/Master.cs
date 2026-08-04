@@ -47,7 +47,7 @@ public sealed partial class MusicGen
 	// top; the trim moves what "0.5" means for this genre.
 	void ApplyReverb()
 	{
-		float wet = Math.Clamp( _c.MasterReverb * MixTrim( _prof.Mix.Reverb ), 0f, 1f );
+		float wet = Math.Clamp( _reverbWet * _c.MasterReverb * MixTrim( _prof.Mix.Reverb ), 0f, 1f );
 		if ( wet <= 0.0001f ) return;
 		// Tail length. The top of this used to be 0.98, which over combs 25–34 ms long is a ~9
 		// second decay — long past a room and into a delay line whose repeats smear every chord
