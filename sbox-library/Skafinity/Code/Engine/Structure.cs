@@ -61,6 +61,12 @@ readonly struct Part
 		TempoMul = tempoMul; KeyShift = keyShift; Hemiola = hemiola;
 		BarBeats = barBeats;
 	}
+
+	/// <summary>The same section with a detail changed — what the per-song form draw works with.
+	/// Everything a form variant AUTHORS (its energy contour, its feel changes, where the hemiola
+	/// falls) travels through unchanged; only length and the key lift are drawn.</summary>
+	public Part With( int bars, int keyShift ) =>
+		new( Type, bars, VerseIndex, Energy, Feel, TempoMul, keyShift, Hemiola, BarBeats );
 }
 
 /// <summary>
@@ -133,6 +139,21 @@ static class SongForm
 		new( Section.Ending,    4, energy: Lift ),
 	};
 
+	// The alternate: no pre-chorus at all, so the verse drops straight into the chorus, and the
+	// half-time bridge moves later. Same genre, different arc — a third-wave record does both.
+	public static readonly Part[] SkaPunkB =
+	{
+		new( Section.Intro,   4, energy: Low, tempoMul: 0.98f ),
+		new( Section.Verse,   8, 0, energy: Mid ),
+		new( Section.Chorus,  8, energy: Full ),
+		new( Section.Verse,   8, 1, energy: Mid, hemiola: true ),
+		new( Section.Chorus,  8, energy: Full ),
+		new( Section.Verse,   8, 2, energy: Mid ),
+		new( Section.Bridge,  8, energy: Low + 0.05f, feel: 0.5f ),
+		new( Section.Chorus,  8, energy: Full ),
+		new( Section.Ending,  4, energy: Lift ),
+	};
+
 	// Rock — verse / pre-chorus / chorus, with the solo where a rock song puts it: after the
 	// second chorus, before the last one. The pre-chorus is the transitional section, so it is the
 	// one that regroups into a hemiola on the way into the chorus.
@@ -146,6 +167,21 @@ static class SongForm
 		new( Section.PreChorus, 4, energy: Lift, hemiola: true ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Solo,      8, energy: Lift ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Ending,    4, energy: Lift ),
+	};
+
+	// The alternate: no solo, and the bridge does the lifting instead — the other half of the
+	// alt-rock playbook, where the third section is a drop rather than a guitar break.
+	public static readonly Part[] RockB =
+	{
+		new( Section.Intro,     4, energy: Low, tempoMul: 0.97f ),
+		new( Section.Verse,     8, 0, energy: Mid ),
+		new( Section.PreChorus, 4, energy: Lift ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Verse,     8, 1, energy: Mid ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Bridge,    8, energy: Low + 0.1f, hemiola: true ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Ending,    4, energy: Lift ),
 	};
@@ -164,6 +200,21 @@ static class SongForm
 		new( Section.Ending, 4, energy: Lift ),
 	};
 
+	// The alternate: three verses and no solo — the storytelling shape, which is as country as the
+	// solo one and is what the genre does when the words are the point.
+	public static readonly Part[] CountryB =
+	{
+		new( Section.Intro,     4, energy: Low, tempoMul: 0.96f ),
+		new( Section.Verse,     8, 0, energy: Mid ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Verse,     8, 1, energy: Mid ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Verse,     8, 2, energy: Mid, hemiola: true ),
+		new( Section.PreChorus, 4, energy: Lift ),
+		new( Section.Chorus,    8, energy: Full, keyShift: 2 ),
+		new( Section.Ending,    4, energy: Lift ),
+	};
+
 	// Metal — the breakdown is the form's whole argument: everything drops to half time and the
 	// energy falls away, then the solo climbs back out of it into the final chorus.
 	public static readonly Part[] Metal =
@@ -175,6 +226,21 @@ static class SongForm
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Breakdown, 8, energy: Low, feel: 0.5f, tempoMul: 0.98f ),
 		new( Section.Solo,      8, energy: Lift ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Ending,    4, energy: Full ),
+	};
+
+	// The alternate: the breakdown moves to the last possible moment, straight into the final
+	// chorus with no solo to climb back out through. The other way a metal record is built.
+	public static readonly Part[] MetalB =
+	{
+		new( Section.Intro,     4, energy: Low, tempoMul: 0.94f ),
+		new( Section.Verse,     8, 0, energy: Mid ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Solo,      8, energy: Lift ),
+		new( Section.Verse,     8, 1, energy: Mid ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.Breakdown, 8, energy: Low, feel: 0.5f, tempoMul: 0.98f ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Ending,    4, energy: Full ),
 	};
@@ -193,6 +259,19 @@ static class SongForm
 		new( Section.Ending, 4, energy: Full ),
 	};
 
+	// The alternate: no bridge at all — verse, chorus, verse, chorus, chorus, out. The shortest
+	// form on the roster, which is the point of it.
+	public static readonly Part[] PunkB =
+	{
+		new( Section.Intro,  4, energy: Mid, tempoMul: 1f ),
+		new( Section.Verse,  8, 0, energy: Lift ),
+		new( Section.Chorus, 8, energy: Full ),
+		new( Section.Verse,  8, 1, energy: Lift, hemiola: true ),
+		new( Section.Chorus, 8, energy: Full ),
+		new( Section.Chorus, 8, energy: Full ),
+		new( Section.Ending, 4, energy: Full ),
+	};
+
 	// Pop — the modern shape: pre-chorus into every chorus, a half-time "drop" bridge, and the
 	// last chorus lifted a tone. The four-chord loop already IS the hypermeasure here
 	// (GenreProfile.ChordBars = 1), so the form is what varies rather than the harmony.
@@ -206,6 +285,21 @@ static class SongForm
 		new( Section.PreChorus, 4, energy: Lift ),
 		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Breakdown, 4, energy: Low, feel: 0.5f ),
+		new( Section.Chorus,    8, energy: Full, keyShift: 2 ),
+		new( Section.Ending,    4, energy: Lift ),
+	};
+	// The alternate: no drop, and a post-chorus instead — the second pre-chorus lands after the
+	// chorus rather than before it, which is where a lot of the decade's singles put their hook.
+	public static readonly Part[] PopB =
+	{
+		new( Section.Intro,     4, energy: Low ),
+		new( Section.Verse,     8, 0, energy: Mid ),
+		new( Section.PreChorus, 4, energy: Lift ),
+		new( Section.Chorus,    8, energy: Full ),
+		new( Section.PreChorus, 4, energy: Lift ),
+		new( Section.Verse,     8, 1, energy: Mid ),
+		new( Section.PreChorus, 4, energy: Lift, hemiola: true ),
+		new( Section.Chorus,    8, energy: Full ),
 		new( Section.Chorus,    8, energy: Full, keyShift: 2 ),
 		new( Section.Ending,    4, energy: Lift ),
 	};
@@ -229,12 +323,69 @@ public sealed partial class MusicGen
 	/// ritard stretches the last bars, so the tail is scaled to match it (see ComposePlan).</summary>
 	public static float RingOutSeconds => RingOutTail * (1f + (float)RitardAmount);
 
-	/// <summary>The genre's section map — its form, not a shared list. Non-lead voices are seeded
-	/// by section TYPE so every chorus plays identical backing; the lead folds in the verse index
-	/// so it evolves; the section-end fill is seeded by absolute index so no two fills repeat.
+	/// <summary>
+	/// THIS SONG's form: one of the genre's authored variants, with its details drawn.
+	///
+	/// It has to be built ONCE and cached (<see cref="_form"/>), because five places used to
+	/// re-derive it — the composer, and four diagnostics. That was harmless while the answer was a
+	/// constant; the moment it varies per song, a diagnostic that re-derives it is a bar ruler
+	/// disagreeing with the song it is measuring, and `--score` and `--grid` go quietly wrong
+	/// exactly when they are most needed.
+	///
+	/// Randomising a form outright would be the wrong fix and is not what happens here. A form is
+	/// genre identity, which is why it lives in <see cref="GenreProfile"/>, and punk with a
+	/// sixteen-bar solo is not punk. Two mechanisms instead: a FAMILY of authored variants, and
+	/// details drawn over whichever one was chosen.
+	///
+	/// Non-lead voices are seeded by section TYPE so every chorus plays identical backing; the lead
+	/// folds in the verse index so it evolves; the section-end fill is seeded by absolute index so
+	/// no two fills repeat.
 	/// </summary>
-	internal static List<Part> BuildStructure( int genre ) =>
-		new( GenreProfile.For( genre ).Form );
+	/// <remarks>STATIC, and takes its profile: drawing a form needs no song, and the suite's
+	/// invariants over it are arithmetic. Left as an instance method they cost a composed song
+	/// each, which put 35 seconds on a 25-second harness for checks that render nothing.</remarks>
+	internal static List<Part> DrawForm( GenreProfile prof, Rng rng )
+	{
+		var variant = rng.PickWeighted( prof.Forms, prof.FormWeights );
+		bool lift = rng.Chance( prof.KeyLiftChance );
+		int verseBars = prof.VerseBars[rng.WeightedIndex( prof.VerseBarWeights )];
+		bool twice = rng.Chance( prof.DoubleFinalChorusChance );
+		bool cut = rng.Chance( prof.TruncateFinalVerseChance );
+
+		int lastVerse = -1, lastChorus = -1;
+		for ( int i = 0; i < variant.Length; i++ )
+		{
+			if ( variant[i].Type == Section.Verse ) lastVerse = i;
+			if ( variant[i].Type == Section.Chorus ) lastChorus = i;
+		}
+
+		var parts = new List<Part>();
+		for ( int i = 0; i < variant.Length; i++ )
+		{
+			var p = variant[i];
+			// The roll is taken for EVERY section, optional or not, so how many values a form costs
+			// is the form's length rather than how many optional sections it happens to carry.
+			bool drop = rng.Chance( prof.OptionalDropChance ) && Optional( p.Type );
+			if ( drop ) continue;
+
+			int bars = p.Type == Section.Verse ? verseBars : p.Bars;
+			// A truncated final verse still has to be a multiple of four: the hypermeasure is why
+			// the ending is four bars and not two, and it does not stop applying here.
+			if ( cut && i == lastVerse ) bars = Math.Max( 4, bars - 4 );
+			int shift = lift ? p.KeyShift : 0;
+			parts.Add( p.With( bars, shift ) );
+			// The final chorus comes round twice as a REPEATED SECTION, not a longer one — every
+			// chorus must still agree about its length.
+			if ( twice && i == lastChorus ) parts.Add( p.With( p.Bars, shift ) );
+		}
+		return parts;
+	}
+
+	/// <summary>The sections a song may do without. Which one a genre has is most of what
+	/// distinguishes the six forms from each other, so dropping one is a song that does without
+	/// rather than a genre that does.</summary>
+	static bool Optional( Section s ) =>
+		s is Section.PreChorus or Section.Bridge or Section.Solo or Section.Breakdown;
 
 	/// <summary>The section's RNG key — what makes every chorus play the same backing.</summary>
 	internal static string SectionKey( Section s ) => s switch

@@ -193,8 +193,48 @@ sealed class GenreProfile
 	public bool HornLead { get; init; }
 
 	// ── Form ──
-	/// <summary>The genre's section map (see <see cref="SongForm"/>).</summary>
-	public Part[] Form { get; init; }
+	/// <summary>The genre's FAMILY of section maps (see <see cref="SongForm"/>), drawn per song.
+	///
+	/// A family rather than one map, and AUTHORED rather than randomised: a form is genre identity,
+	/// which is why it lives here at all, and punk with a sixteen-bar solo is not punk. What varies
+	/// freely is the details below; what varies between variants is an arc somebody wrote down.
+	///
+	/// The form used to be exactly one map per genre — so over 500 songs the tune had 500 states,
+	/// punk's whole rhythm section had 12, and the form had ONE. Every ska-punk song was the same
+	/// nine sections and sixty bars with the hemiola on the second verse and the half-time bridge
+	/// in the same place, forever, and length varied only with tempo.</summary>
+	public Part[][] Forms { get; init; }
+	public int[] FormWeights { get; init; }
+
+	/// <summary>How long a VERSE runs, drawn per song. Only the verse: a chorus's length is part of
+	/// what every chorus has to agree about, and the ending is four bars because the hypermeasure
+	/// says so.
+	///
+	/// The constraint to hold when choosing these is the TUNE's length — it is the harmonic cycle,
+	/// so a twelve-bar verse over an eight-bar tune restates it mid-phrase. That is not new (an
+	/// eight-bar section over a six-bar tune already does it) and RenderTune's anchor pull-back
+	/// handles the short side, but it is why 8 and 16 carry most of the weight.</summary>
+	public int[] VerseBars { get; init; } = { 8, 12, 16 };
+	public int[] VerseBarWeights { get; init; } = { 7, 2, 3 };
+
+	/// <summary>Chance an OPTIONAL section (pre-chorus, bridge, solo, breakdown) is dropped from
+	/// this song. Which optional section a genre has is most of what distinguishes the six forms
+	/// from each other, so this stays low: it is a song that does without, not a genre that does.
+	/// </summary>
+	public float OptionalDropChance { get; init; } = 0.20f;
+
+	/// <summary>Chance the form's key lift actually happens. Country and pop modulated up a tone
+	/// for the final chorus EVERY SINGLE SONG, which is a device wearing out.</summary>
+	public float KeyLiftChance { get; init; } = 0.65f;
+
+	/// <summary>Chance the final chorus comes round twice. It is a repeated SECTION rather than a
+	/// longer one, so every chorus still agrees about its length — which is the invariant, and
+	/// doubling the bar count would have broken it.</summary>
+	public float DoubleFinalChorusChance { get; init; } = 0.25f;
+
+	/// <summary>Chance the last verse is cut short by four bars on the way into what follows.
+	/// </summary>
+	public float TruncateFinalVerseChance { get; init; } = 0.15f;
 
 	// ── Harmony ──
 	/// <summary>The harmony tables this genre draws from — one weighted draw each, so a genre's
@@ -458,7 +498,7 @@ sealed class GenreProfile
 			ChordBars = 2, RideLean = 0.20f, HornLead = true,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.SkaPunk,
+			Forms = new[] { SongForm.SkaPunk, SongForm.SkaPunkB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.SkaPunkScales, ScaleWeights = Harmony.SkaPunkScaleWeights,
 			Progressions = Harmony.SkaPunkProgressions,
 			Voicings = Harmony.SkaPunkVoicings, VoicingWeights = Harmony.SkaPunkVoicingWeights,
@@ -518,7 +558,7 @@ sealed class GenreProfile
 			ChordBars = 2, RideLean = 0.55f,
 			Endings = new[] { EndingStyle.Ring, EndingStyle.StopHit, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.Rock,
+			Forms = new[] { SongForm.Rock, SongForm.RockB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.RockScales, ScaleWeights = Harmony.RockScaleWeights,
 			Progressions = Harmony.RockProgressions,
 			Voicings = Harmony.RockVoicings, VoicingWeights = Harmony.RockVoicingWeights,
@@ -566,7 +606,7 @@ sealed class GenreProfile
 			ChordBars = 2, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Cadence, EndingStyle.Ring, EndingStyle.Fall },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.Country,
+			Forms = new[] { SongForm.Country, SongForm.CountryB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.CountryScales, ScaleWeights = Harmony.CountryScaleWeights,
 			Progressions = Harmony.CountryProgressions,
 			Voicings = Harmony.CountryVoicings, VoicingWeights = Harmony.CountryVoicingWeights,
@@ -624,7 +664,7 @@ sealed class GenreProfile
 			ChordBars = 2, RideLean = 0.65f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 4, 2 },
-			Form = SongForm.Metal,
+			Forms = new[] { SongForm.Metal, SongForm.MetalB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.MetalScales, ScaleWeights = Harmony.MetalScaleWeights,
 			Progressions = Harmony.MetalProgressions,
 			Voicings = Harmony.MetalVoicings, VoicingWeights = Harmony.MetalVoicingWeights,
@@ -671,7 +711,7 @@ sealed class GenreProfile
 			ChordBars = 1, RideLean = 0.20f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 5, 1 },
-			Form = SongForm.Punk,
+			Forms = new[] { SongForm.Punk, SongForm.PunkB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.PunkScales, ScaleWeights = Harmony.PunkScaleWeights,
 			Progressions = Harmony.PunkProgressions,
 			Voicings = Harmony.PunkVoicings, VoicingWeights = Harmony.PunkVoicingWeights,
@@ -730,7 +770,7 @@ sealed class GenreProfile
 			ChordBars = 1, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Fall, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
-			Form = SongForm.Pop,
+			Forms = new[] { SongForm.Pop, SongForm.PopB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.PopScales, ScaleWeights = Harmony.PopScaleWeights,
 			Progressions = Harmony.PopProgressions,
 			Voicings = Harmony.PopVoicings, VoicingWeights = Harmony.PopVoicingWeights,

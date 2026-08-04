@@ -176,7 +176,11 @@ public sealed partial class MusicGen
 
 		// Lay out the structure first — the time base is built over the song's full tick span,
 		// so it has to know how long the song is, and the sections carry the tempo curve.
-		var structure = BuildStructure( _genre );
+		// THE FORM IS DRAWN ONCE AND CACHED. Off its own stream, so a form that varies costs the
+		// song stream nothing and its draw-count rule holds unchanged; and cached because four
+		// diagnostics read it back to build bar rulers, and a ruler derived from a second draw is a
+		// ruler for a different song.
+		var structure = _form = DrawForm( _prof, new Rng( $"{_tag}:form" ) );
 		_sectionStart = new int[structure.Count];
 		int totalTicks = 0;
 		for ( int si = 0; si < structure.Count; si++ )

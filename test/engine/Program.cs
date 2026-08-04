@@ -847,12 +847,12 @@ static class Program
 			// Reachable: the threshold must sit at or below the loudest energy any of its own
 			// sections actually reach, or the loud comp is dead code.
 			float peak = 0f;
-			foreach ( var part in p.Form ) peak = Math.Max( peak, part.Energy );
+			foreach ( var part in AllParts( p ) ) peak = Math.Max( peak, part.Energy );
 			Check( $"genre {g} actually reaches its loud threshold", peak >= p.LoudFrom,
 				$"peak energy {peak:0.00} vs LoudFrom {p.LoudFrom:0.00}" );
 			// And it must NOT be reached by every section, or the quiet comp is the dead one.
 			float trough = 1f;
-			foreach ( var part in p.Form ) trough = Math.Min( trough, part.Energy );
+			foreach ( var part in AllParts( p ) ) trough = Math.Min( trough, part.Energy );
 			Check( $"genre {g} still has quiet sections", trough < p.LoudFrom );
 		}
 		Check( "some genre has a loud comp", loudGenres > 0, $"{loudGenres} of {VibeCodec.GenreCount}" );
@@ -867,7 +867,7 @@ static class Program
 		{
 			var p = GenreProfile.For( g );
 			float peak = 0f;
-			foreach ( var part in p.Form ) peak = Math.Max( peak, part.Energy );
+			foreach ( var part in AllParts( p ) ) peak = Math.Max( peak, part.Energy );
 			if ( p.CrashRideFrom > 1f )
 			{
 				optedOut++;
@@ -883,7 +883,7 @@ static class Program
 					$"peak energy {peak:0.00} vs CrashRideFrom {p.CrashRideFrom:0.00}" );
 				// A crash-ride is a lift, so it must not be every section either.
 				float trough = 1f;
-				foreach ( var part in p.Form ) trough = Math.Min( trough, part.Energy );
+				foreach ( var part in AllParts( p ) ) trough = Math.Min( trough, part.Energy );
 				Check( $"genre {g} does not crash-ride the whole song", trough < p.CrashRideFrom );
 			}
 		}
@@ -1165,12 +1165,71 @@ static class Program
 		return MusicGen.GenerateSamples( "knob:0", cfg, out _ );
 	}
 
+	/// <summary>Every section of every one of a genre's authored form variants. A genre's form is a
+	/// FAMILY now, so a property that has to hold of "the form" has to hold of all of them —
+	/// checking the first would leave the others able to break it silently.</summary>
+	static IEnumerable<Part> AllParts( GenreProfile p )
+	{
+		foreach ( var variant in p.Forms )
+			foreach ( var part in variant ) yield return part;
+	}
+
+	/// <summary>What a DRAWN form must still be. Unlike the sweep these are cheap and structural,
+	/// and they are exactly the shape of assertion the rest of this section already carries — a
+	/// form that varies per song is a form that can now be wrong per song.</summary>
+	static void DrawnFormTests()
+	{
+		int songs = 0;
+		var shapes = new HashSet<string>();
+		bool hyper = true, chorusAgrees = true, endsResolved = true, enough = true, banded = true;
+		string why = null;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int n = 0; n < 40; n++ )
+			{
+				var form = MusicGen.DrawForm( GenreProfile.For( g ), new Rng( $"form:{n}:form" ) );
+				songs++;
+				var sig = new StringBuilder();
+				int bars = 0, choruses = 0, verses = 0;
+				string chorus = null;
+				foreach ( var p in form )
+				{
+					// The hypermeasure. It is why the ending is four bars and not two, and a drawn
+					// length does not get to stop honouring it.
+					if ( p.Bars % 4 != 0 ) { hyper = false; why ??= $"genre {g} {p.Type} {p.Bars} bars"; }
+					bars += p.Bars;
+					if ( p.Type == Section.Verse ) verses++;
+					if ( p.Type == Section.Chorus )
+					{
+						choruses++;
+						// KeyShift is exempt — the final-chorus lift is the point of it.
+						string c = $"{p.Bars}/{p.Energy}/{p.Feel}/{p.TempoMul}";
+						if ( chorus == null ) chorus = c; else if ( chorus != c ) chorusAgrees = false;
+					}
+					sig.Append( p.Type ).Append( p.Bars ).Append( p.KeyShift ).Append( ' ' );
+				}
+				endsResolved &= form[^1].Type == Section.Ending && form[^1].Bars == 4;
+				enough &= choruses >= 2 && verses >= 1;
+				banded &= bars >= 32 && bars <= 140;
+				shapes.Add( $"{g}:{sig}" );
+			}
+
+		Check( "every section of a drawn form is a multiple of 4 bars", hyper, why );
+		Check( "every chorus of a song matches every other in bars, energy, feel and tempo", chorusAgrees );
+		Check( "a song ends on a 4-bar Ending", endsResolved );
+		Check( "a song has at least 2 choruses and a verse", enough );
+		Check( "a song's total length stays inside a band", banded );
+		// …and the whole point: the form is not one state any more.
+		Check( "a genre's form is not one fixed list", shapes.Count > GenreProfile.Count * 4,
+			$"{shapes.Count} distinct forms over {songs} songs" );
+	}
+
 	static void StructureTests()
 	{
+		DrawnFormTests();
 		var forms = new List<string>();
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 		{
-			var parts = MusicGen.BuildStructure( g );
+			var parts = new List<Part>( GenreProfile.For( g ).Forms[0] );
 			Check( $"genre {g} structure is non-empty", parts.Count > 0 );
 
 			int bars = 0;
@@ -1224,7 +1283,7 @@ static class Program
 		// The new section types have to be reachable, or they are decoration in an enum.
 		var types = new HashSet<Section>();
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in MusicGen.BuildStructure( g ) ) types.Add( p.Type );
+			foreach ( var p in AllParts( GenreProfile.For( g ) ) ) types.Add( p.Type );
 		Check( "the new section types are used by some genre",
 			types.Contains( Section.PreChorus ) && types.Contains( Section.Bridge )
 			&& types.Contains( Section.Solo ) && types.Contains( Section.Breakdown ) );
@@ -1244,7 +1303,7 @@ static class Program
 		// how long the song runs. (Metal's breakdown, pop's drop, ska-punk's bridge.)
 		bool halfTime = false, feelUnderTune = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in MusicGen.BuildStructure( g ) )
+			foreach ( var p in AllParts( GenreProfile.For( g ) ) )
 			{
 				halfTime |= p.Feel < 1f;
 				// Feel is the RHYTHM SECTION's rate and the tune is exempt, so half time is a
@@ -1261,7 +1320,7 @@ static class Program
 		// the hemiola is the metric device that survives, because it re-converges.
 		bool lift = false, hemiola = false;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			foreach ( var p in MusicGen.BuildStructure( g ) )
+			foreach ( var p in AllParts( GenreProfile.For( g ) ) )
 			{
 				lift |= p.KeyShift != 0;
 				hemiola |= p.Hemiola;
@@ -2043,7 +2102,9 @@ static class Program
 		// The ruler: bar lines in ticks, and which section each bar belongs to.
 		var ruler = MusicGen.BeginPlan( $"{tag}:{n}", Base() );
 		var barTicks = ruler.BarTickLines();
-		var structure = MusicGen.BuildStructure( ruler.Genre );
+		// The SONG's form, not a second derivation of the genre's: a form varies per song now, and
+		// a ruler built from another draw is a ruler for a different song.
+		var structure = ruler.Form;
 		var barSection = new (string Name, int Chord)[barTicks.Length];
 		int bi = 0;
 		foreach ( var part in structure )

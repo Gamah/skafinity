@@ -129,7 +129,7 @@ public sealed partial class MusicGen
 		sb.AppendLine( $"ending    {_ending}" );
 		sb.AppendLine( $"ska bits  horns {_hasHorns}, organ {_organBubble}, lead voice {_lead}" );
 		sb.AppendLine( "form" );
-		var structure = BuildStructure( _genre );
+		var structure = _form;
 		for ( int i = 0; i < structure.Count; i++ )
 		{
 			var p = structure[i];
@@ -178,7 +178,7 @@ public sealed partial class MusicGen
 		starts.Sort();
 
 		var bars = new List<int>();
-		var structure = BuildStructure( _genre );
+		var structure = _form;
 		int tick = 0;
 		foreach ( var part in structure )
 			for ( int bar = 0; bar < part.Bars; bar++ )
@@ -212,7 +212,7 @@ public sealed partial class MusicGen
 	/// <summary>THIS SONG's form. One accessor rather than five call sites re-deriving it: a form
 	/// that varies per song must be the same list everywhere, or the diagnostics' bar rulers
 	/// disagree with the song that was rendered.</summary>
-	internal IReadOnlyList<Part> Form => BuildStructure( _genre );
+	internal IReadOnlyList<Part> Form => _form;
 
 	/// <summary>Every audible note as (sample start, frequency), in composition order. The
 	/// per-voice score behind the <c>--score</c> diagnostic: solo a voice, read what it actually
@@ -231,7 +231,7 @@ public sealed partial class MusicGen
 	{
 		var bars = new List<int>();
 		int tick = 0;
-		foreach ( var part in BuildStructure( _genre ) )
+		foreach ( var part in _form )
 			for ( int bar = 0; bar < part.Bars; bar++ )
 			{
 				bars.Add( tick );
@@ -243,7 +243,7 @@ public sealed partial class MusicGen
 	internal int[] GridSamples()
 	{
 		var grid = new List<int>();
-		var structure = BuildStructure( _genre );
+		var structure = _form;
 		int tick = 0;
 		const int step = 1;
 		foreach ( var part in structure )
@@ -479,6 +479,10 @@ public sealed partial class MusicGen
 	// ── per-SECTION state ──
 	// Set once per section in RenderSection; every voice reads these instead of asking "am I in
 	// a verse?" (see Part). This is what makes a chorus a chorus rather than a repeat.
+	// THIS SONG's form, drawn once in ComposePlan and read everywhere. Five places used to derive
+	// it from the genre alone; that was harmless while the answer was a constant and is a ruler for
+	// a different song the moment it varies (see DrawForm).
+	List<Part> _form = new();
 	int[] _sectionStart = Array.Empty<int>(); // first tick of each section
 	int _sectionTick;        // the current section's first tick — patterns loop from here
 	int _sectionTicks;       // its length in ticks — a section shorter than the tune sings the
