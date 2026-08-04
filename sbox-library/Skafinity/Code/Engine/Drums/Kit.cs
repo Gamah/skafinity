@@ -600,7 +600,10 @@ readonly struct CymbalBands
 	// watch firing: measured in the >2.5 kHz band, where nothing else in a ska arrangement lives,
 	// 0.95 puts the ride +6.9 dB over the ENTIRE REST OF THE MIX and holds that band within 12 dB
 	// of its own peak 43% of the time. 0.30 was +1.4 dB and 12.8%, which is the buried the boost
-	// was aimed at; 0.55 is +3.65 dB and 21.3% — present without being the arrangement.
+	// was aimed at; 0.55 was +3.65 dB and 21.3% — present without being the arrangement. IT IS 0.45
+	// NOW and those two figures describe the 0.55 it was: the bow's strike bump moved to 4200 Hz
+	// and the level came down with it, which on the song read +4.74 -> +1.98 dB at 1-3 kHz against
+	// +7.03 -> +5.54 at 6-14 kHz. Nothing has re-measured the duty cycle at 0.45.
 	//
 	// The lesson is about the measurement, not the number: a level set by ear against ONE
 	// balance ("can I hear the ride?") has no way to notice the other one ("is the ride now the
