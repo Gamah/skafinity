@@ -916,43 +916,20 @@ static class Program
 			bool inBand = true;
 			for ( int i = 0; i < 200; i++ )
 			{
-				int bpm = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), false, 1f );
+				int bpm = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), false );
 				inBand &= bpm >= p.BpmMin && bpm <= p.BpmMax;
-				int fast = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), true, 1f );
+				int fast = p.DrawBpm( new Rng( $"bpm:{g}:{i}" ), true );
 				inBand &= fast >= p.FastBpmMin && fast <= p.FastBpmMax;
 			}
 			Check( $"genre {g} draws inside its tempo band", inBand );
 
-			// The knob's saturation points. A single symmetric 0.70–1.45 multiplier put the ends of
-			// the slider outside every genre at once (ska 268, metal 290, country 67), so each genre
-			// says where it stops being itself and the knob keeps its full travel in the UI.
-			Check( $"genre {g} saturation contains its own bands",
-				p.TempoFloor <= p.BpmMin && p.TempoCeil >= p.FastBpmMax,
-				$"{p.TempoFloor}–{p.TempoCeil} vs {p.BpmMin}–{p.FastBpmMax}" );
-
-			bool playable = true;
-			for ( int i = 0; i < 200; i++ )
-				foreach ( var scale in new[] { 0.70f, 0.85f, 1f, 1.2f, 1.45f } )
-				{
-					int b = p.DrawBpm( new Rng( $"knob:{g}:{i}" ), i % 2 == 0, scale );
-					playable &= b >= p.TempoFloor && b <= p.TempoCeil;
-				}
-			Check( $"genre {g} stays playable across the whole TEMPO knob", playable );
+			// How often it runs hot is the GENRE's, like its swing. A 0 or a 1 here would be a
+			// genre with only one band, which is what punk's AlwaysFast was and why it went.
+			Check( $"genre {g} sometimes takes its uptempo band, and not always",
+				p.FastChance > 0.05f && p.FastChance < 0.95f, $"{p.FastChance:0.00}" );
 
 			Check( $"genre {g} has a harmonic rhythm of at least a bar", p.ChordBars >= 1 );
 		}
-
-		// …and the saturation is not vacuous: the knob's ends must actually be clamped somewhere,
-		// or these are six numbers that do nothing.
-		bool everSaturates = false;
-		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-		{
-			var p = GenreProfile.For( g );
-			for ( int i = 0; i < 50; i++ )
-				everSaturates |= p.DrawBpm( new Rng( $"sat:{g}:{i}" ), true, 1.45f ) == p.TempoCeil
-					|| p.DrawBpm( new Rng( $"sat:{g}:{i}" ), false, 0.70f ) == p.TempoFloor;
-		}
-		Check( "the TEMPO knob saturates at the genre's bound", everSaturates );
 
 		// The whole point of the row: the bands must actually separate the genres. Punk and
 		// country are the two extremes, and nothing in between may collapse them all into one
@@ -964,9 +941,14 @@ static class Program
 			bands.Add( (GenreProfile.For( g ).BpmMin, GenreProfile.For( g ).BpmMax) );
 		Check( "genres do not share one tempo band", bands.Count >= 4, $"{bands.Count} distinct bands" );
 
-		// The TEMPO knob rides on top of the band rather than replacing it.
-		Check( "the tempo knob pushes the drawn tempo",
-			ska.DrawBpm( new Rng( "t" ), false, 1.4f ) > ska.DrawBpm( new Rng( "t" ), false, 0.7f ) );
+		// TEMPO IS THE GENRE'S AND NOTHING RIDES ON TOP OF IT. There is deliberately no check that
+		// a knob moves it, because there is no knob: the ends of that slider were past what the
+		// music is (a ska song came back at 208), and a listener preference overriding a band that
+		// is anchored on records is a preference beating a measurement.
+		bool uptempoSeparates = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			uptempoSeparates &= GenreProfile.For( g ).FastBpmMax > GenreProfile.For( g ).BpmMax;
+		Check( "every genre's uptempo band reaches past its ordinary one", uptempoSeparates );
 
 		// ── grooves ──
 		// Rock, country AND punk used to fall through to one shared `default` backbeat. Each genre
@@ -1116,7 +1098,7 @@ static class Program
 		// harness — and it rendered three of these settings twice over, because the pair checks
 		// and the per-instrument sweep each asked for their own copy.
 		int hornOff = 0, hornOn = 1, bubbleOff = 2, bubbleOn = 3;
-		int trumpet = 4, trombone = 7, byWeight = 8, slow = 9, quick = 10;
+		int trumpet = 4, trombone = 7, byWeight = 8;
 		var settings = new Action<MusicGen.Config>[]
 		{
 			c => c.HornSectionChance = 0f,
@@ -1133,12 +1115,10 @@ static class Program
 				c.TrumpetWeight = c.SaxWeight = c.OrganWeight = 0f;
 				c.TromboneWeight = 1f;
 			},
-			c => c.TempoScale = 0.70f,
-			c => c.TempoScale = 1.45f,
 		};
 		var song = new short[settings.Length][];
 		System.Threading.Tasks.Parallel.For( 0, settings.Length,
-			i => song[i] = Knob( i >= slow ? 1 : 0, settings[i] ) );
+			i => song[i] = Knob( 0, settings[i] ) );
 
 		Check( "the HORN SECTION knob changes the song", !SameSamples( song[hornOff], song[hornOn] ) );
 		Check( "the ORGAN BUBBLE knob changes the song", !SameSamples( song[bubbleOff], song[bubbleOn] ) );
@@ -1157,9 +1137,9 @@ static class Program
 		Check( "the lead weights pick the same instrument as forcing it",
 			SameSamples( song[trombone], song[byWeight] ) );
 
-		// The TEMPO knob is the replacement for the retired absolute band: slower must mean a
-		// longer song, and it must be the same song.
-		Check( "the TEMPO knob changes how long a song runs", song[slow].Length > song[quick].Length );
+		// There is no TEMPO knob to check any more — see the reserved slots in VibeCodec. A song's
+		// length now follows its genre's band and its drawn form, both of which have their own
+		// checks; nothing a listener sets reaches either.
 	}
 
 	/// <summary>One short song, rendered at a low sample rate (these checks look at whether the
@@ -1677,7 +1657,6 @@ static class Program
 		for ( int i = 0; i < 200; i++ )
 		{
 			var c = Rolled( "tempo", i, 0 );
-			tempoSane &= c.TempoScale >= 0.5f && c.TempoScale <= 2f;
 		}
 		Check( "a rolled tempo scale stays musical", tempoSane );
 

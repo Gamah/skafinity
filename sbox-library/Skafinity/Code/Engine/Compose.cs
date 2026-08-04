@@ -61,10 +61,11 @@ public sealed partial class MusicGen
 		_hornLead = prof.HornLead;
 		var rng = new Rng( _tag.ToLowerInvariant() );
 
-		// TEMPO BIAS — punk always runs hot (it's the fast genre); the roll still consumes one
-		// draw so every genre pulls the same number of values here.
-		_fast = rng.Chance( _c.FastChance ) || prof.AlwaysFast;
-		int bpm = _bpm = prof.DrawBpm( rng, _fast, _c.TempoScale );
+		// Whether this song takes the genre's uptempo band. The genre's own odds now (see
+		// GenreProfile.FastChance) rather than a knob's — one draw either way, so the draw count
+		// still cannot depend on the genre.
+		_fast = rng.Chance( prof.FastChance );
+		int bpm = _bpm = prof.DrawBpm( rng, _fast );
 		_scale = rng.PickWeighted( prof.Scales, prof.ScaleWeights );
 		_prog = rng.Pick( prof.Progressions );
 		// The song's chord vocabulary — a triad, a 7th, a sus, a bare power chord. Every chordal

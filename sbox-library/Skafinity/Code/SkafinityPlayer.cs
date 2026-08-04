@@ -83,10 +83,10 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 
 	// ── Tempo ──
 	// The tempo BAND belongs to the genre (Engine/GenreProfile.cs), not to a property here.
-	// TempoScale pushes or drags whatever the genre drew; FastChance is how often a song takes
-	// the genre's uptempo band instead of its main one.
-	[Property, Group( "Tempo" ), Range( 0.7f, 1.45f )] public float TempoScale { get; set; } = 1.0f;
-	[Property, Group( "Tempo" ), Range( 0f, 1f )] public float FastChance { get; set; } = 0.30f;
+	// TEMPO IS THE GENRE'S AND NOTHING ELSE REACHES IT. Two [Property] knobs used to sit here
+	// mirroring Config.TempoScale / Config.FastChance; both are gone (see VibeCodec's reserved
+	// slots for why), and a host property that overrides an anchored tempo band is exactly the
+	// drift this file's own header warns about.
 
 	// ── Mix ──
 	// These are the PLAYER's overlay on the engine's own defaults, so a value here that isn't 1.0
@@ -502,8 +502,6 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	MusicGen.Config BuildKnobConfig() => new()
 	{
 		SampleRate = SampleRate,
-		TempoScale = TempoScale,
-		FastChance = FastChance,
 		BassVol = BassVol,
 		SkankVol = SkankVol,
 		OrganVol = OrganVol,
@@ -570,7 +568,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	int ConfigHash()
 	{
 		var h = new HashCode();
-		h.Add( SampleRate ); h.Add( TempoScale ); h.Add( FastChance );
+		h.Add( SampleRate );
 		h.Add( BassVol ); h.Add( SkankVol ); h.Add( OrganVol ); h.Add( MelodyVol ); h.Add( HornVol );
 		h.Add( KickVol ); h.Add( SnareVol ); h.Add( TomVol ); h.Add( HatVol ); h.Add( CrashVol ); h.Add( DrumVol );
 		h.Add( Detune ); h.Add( BassCutoff ); h.Add( SkankCutoff ); h.Add( SkankHighpass ); h.Add( SkankChop );

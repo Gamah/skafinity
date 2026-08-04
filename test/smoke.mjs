@@ -91,13 +91,18 @@ check('rock Encode(Decode) is stable', E.EncodeVibe(E.DecodeVibe(rockVibe, cfg))
 // fields carry voice/column metadata for the UI matrix
 check('a field reports a voice', (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldVoice(0, i) === 'DRUMS') return true; })() === true);
 
-// move a knob, confirm it round-trips through the vibe string
-const tempo = (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldName(0, i) === 'TEMPO') return i; })();
-check('the TEMPO knob is in the field list', tempo !== undefined);
-const cfg2 = E.SetVibeField(cfg, tempo, 0.25);
-const norm = E.GetVibeNorm(cfg2, tempo);
+// Move a knob and confirm it round-trips through the vibe string. The knob is picked BY SHAPE
+// rather than by name — the first continuous global — because naming one couples this test to a
+// knob surviving. It was `TEMPO`, and TEMPO has since been retired to a reserved wire slot.
+const knob = (() => {
+  for (let i = 0; i < skaCount; i++)
+    if (E.VibeFieldVoice(0, i) === '' && !E.VibeFieldIsInt(0, i) && E.VibeFieldChoices(0, i).length === 0) return i;
+})();
+check('there is a continuous global knob to test', knob !== undefined);
+const cfg2 = E.SetVibeField(cfg, knob, 0.25);
+const norm = E.GetVibeNorm(cfg2, knob);
 check('SetVibeField/GetVibeNorm round-trip', Math.abs(norm - 0.25) < 0.04, `${norm}`);
-check('VibeDisplay renders the value', /^\d+%$/.test(E.VibeDisplay(cfg2, tempo)), E.VibeDisplay(cfg2, tempo));
+check('VibeDisplay renders a value', E.VibeDisplay(cfg2, knob).length > 0, E.VibeDisplay(cfg2, knob));
 
 // ── generation ──
 // A song's LENGTH is drawn now (GenreProfile.Forms + the details over them), so this is a

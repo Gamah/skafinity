@@ -162,24 +162,14 @@ sealed class GenreProfile
 	public int FastBpmMin { get; init; }
 	public int FastBpmMax { get; init; }
 
-	/// <summary>Always draw from the fast band — the genre has no laid-back mode.</summary>
-	public bool AlwaysFast { get; init; }
+	/// <summary>How often a song takes the genre's UPTEMPO band instead of its ordinary one.
+	///
+	/// A genre's, not a listener's, for exactly the reason <see cref="SwingChance"/> is: how often
+	/// this music runs hot is something it IS, and a global slider over it let a reroll hand any
+	/// genre a 100% fast bias. It replaces both the TEMPO BIAS knob and the AlwaysFast flag — the
+	/// flag was a 1.0 that could not be written as one.</summary>
+	public float FastChance { get; init; } = 0.30f;
 
-	/// <summary>Where the listener's TEMPO knob SATURATES for this genre — the slowest and fastest
-	/// this music is still itself.
-	///
-	/// The knob is one global 0.70–1.45 multiplier over whatever the genre drew, and a symmetric
-	/// range chosen against no band in particular put its ends outside every genre at once: ska
-	/// 268, metal 290 and punk 290 at the top, metal 63 and country 67 at the bottom. None of
-	/// those are tempos these genres are, so the usable part of the slider was its middle.
-	///
-	/// Narrowing the knob would have been one number, but it takes headroom off punk and ska that
-	/// they can genuinely use. The band is the genre's and the knob is the preference riding on
-	/// top — so the knob keeps its full travel in the UI and each genre stops where it stops
-	/// being itself. These are ceilings for the KNOB: the drawn band must sit inside them, so at
-	/// neutral nothing is ever clamped.</summary>
-	public int TempoFloor { get; init; }
-	public int TempoCeil { get; init; }
 
 	/// <summary>Bars per chord — the harmonic rhythm. 2 is the reggae/rock norm; 1 makes the
 	/// four-chord loop itself the four-bar hypermeasure, which is what punk and pop do.</summary>
@@ -513,10 +503,10 @@ sealed class GenreProfile
 			// before it means anything. 206 is a fast ska song, so it belongs at the CEILING; the
 			// ordinary band sits well under it and the knob is what reaches up there.
 			BpmMin = 138, BpmMax = 172, FastBpmMin = 165, FastBpmMax = 190,
-			TempoFloor = 118, TempoCeil = 210,
 			ChordBars = 2, RideLean = 0.20f, HornLead = true,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
+			FastChance = 0.35f,   // the third wave is a fast music; a third of its songs sit at the top
 			Forms = new[] { SongForm.SkaPunk, SongForm.SkaPunkB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.SkaPunkScales, ScaleWeights = Harmony.SkaPunkScaleWeights,
 			Progressions = Harmony.SkaPunkProgressions,
@@ -573,10 +563,10 @@ sealed class GenreProfile
 			// late by the SAME amount, which is a groove. Human feel is DrumPush and Expression.
 			SwingChance = 0.25f, SwingMin = 0.10f, SwingMax = 0.16f,
 			BpmMin = 95, BpmMax = 140, FastBpmMin = 145, FastBpmMax = 172,
-			TempoFloor = 80, TempoCeil = 185,
 			ChordBars = 2, RideLean = 0.55f,
 			Endings = new[] { EndingStyle.Ring, EndingStyle.StopHit, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
+			FastChance = 0.22f,   // alt-rock is mid-tempo — Everlong is the exception, not the median
 			Forms = new[] { SongForm.Rock, SongForm.RockB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.RockScales, ScaleWeights = Harmony.RockScaleWeights,
 			Progressions = Harmony.RockProgressions,
@@ -621,10 +611,10 @@ sealed class GenreProfile
 			// The genre that kept the shuffle. Straight country is real country, so this is not 1.
 			SwingChance = 0.45f, SwingMin = 0.10f, SwingMax = 0.18f, ShuffleChance = 0.18f,
 			BpmMin = 95, BpmMax = 130, FastBpmMin = 130, FastBpmMax = 150,
-			TempoFloor = 78, TempoCeil = 162,
 			ChordBars = 2, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Cadence, EndingStyle.Ring, EndingStyle.Fall },
 			EndingWeights = new[] { 3, 2, 1 },
+			FastChance = 0.18f,   // the two-step is a mode country visits, not one it lives in
 			Forms = new[] { SongForm.Country, SongForm.CountryB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.CountryScales, ScaleWeights = Harmony.CountryScaleWeights,
 			Progressions = Harmony.CountryProgressions,
@@ -679,10 +669,10 @@ sealed class GenreProfile
 		{
 			SwingChance = 0f,   // machine-straight; the old 0–0.02 band was ~3 ms and claimed a feel it never had
 			BpmMin = 90, BpmMax = 160, FastBpmMin = 170, FastBpmMax = 210,
-			TempoFloor = 70, TempoCeil = 225,
 			ChordBars = 2, RideLean = 0.65f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 4, 2 },
+			FastChance = 0.28f,   // thrash is a mode; the groove-metal band is the ordinary one
 			Forms = new[] { SongForm.Metal, SongForm.MetalB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.MetalScales, ScaleWeights = Harmony.MetalScaleWeights,
 			Progressions = Harmony.MetalProgressions,
@@ -711,25 +701,36 @@ sealed class GenreProfile
 			AccentDown = 1f, AccentBack = 1f, AccentOff = 0.95f,    // deliberately flat: it's a wall
 			Mix = new MixProfile( 0.45f, 1f, 1.05f, 0.85f, 1.05f ), // dry, mid-scooped
 		},
-		// ── punk — 90s SKATE PUNK: always hot, a chord per bar so the loop IS the hypermeasure ──
+		// ── punk — 90s SKATE PUNK: fast, a chord per bar so the loop IS the hypermeasure ──
 		// Era: NOFX / Bad Religion / Rancid, the melodic-hardcore end of the decade rather than
 		// 1977 or pop-punk radio.
 		//
 		// Anchors (2026-08-02): NOFX "Linoleum" 198, Bad Religion "American Jesus" 181, Rancid
 		// "Roots Radicals" 162 — counted where the snare falls on 2 and 4, which at these tempos is
 		// also the only reading that is punk (the halves, 81–99, are the tempos these songs get
-		// reported at when a detector locks onto the backbeat instead of the pulse). The top of the
-		// band was already right; the FLOOR was not, and 165 excluded the slowest of the three
-		// outright. 160–200. The published punk range (150–180) remains the umbrella and skate punk
-		// still lives at the top of it and past it.
+		// reported at when a detector locks onto the backbeat instead of the pulse).
+		//
+		// IT USED TO BE THE ONE GENRE WITH NO ORDINARY BAND: AlwaysFast, with both bands set equal
+		// at 160–200. That put the whole genre at or above the top of the published punk umbrella
+		// (150–180) and made its FAST end the median, so a middling punk song came back at 180. The
+		// three anchors already said which was which and one band could not express it — Rancid at
+		// 162 is an ordinary punk song and NOFX at 198 is a fast one — so they belong in different
+		// bands. 150–180 and 175–200, with FastChance deciding.
+		//
+		// THE FLOOR DOES NOT GO LOWER, and it is already under the slowest anchor. "This feels too
+		// fast" is not always answered by a slower tempo: a great deal of punk plays HALF TIME, the
+		// backbeat halving while the tempo does not, and this genre used Part.Feel nowhere at all,
+		// so it could only ever run flat out for its whole length. That is a form problem wearing a
+		// tempo problem's clothes; dragging the band further under its own anchors to compensate
+		// would trade a measurement for a symptom. Both punk forms take the gear change now.
 		new()
 		{
 			SwingChance = 0f,   // machine-straight
 			BpmMin = 150, BpmMax = 180, FastBpmMin = 175, FastBpmMax = 200,
-			TempoFloor = 130, TempoCeil = 225,
 			ChordBars = 1, RideLean = 0.20f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },
 			EndingWeights = new[] { 5, 1 },
+			FastChance = 0.40f,   // the fast genre, and the one that leans hardest on its top band
 			Forms = new[] { SongForm.Punk, SongForm.PunkB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.PunkScales, ScaleWeights = Harmony.PunkScaleWeights,
 			Progressions = Harmony.PunkProgressions,
@@ -775,7 +776,7 @@ sealed class GenreProfile
 		// from too — and 92 under a four-on-the-floor kick is not a pop single, it is a pop single
 		// running slow. Two anchors that share a groove do not move a band that both grooves read;
 		// they describe how far under the band that ONE groove goes, and the genre already reaches
-		// there through TempoScale (TempoFloor 84, comfortably past both). Coupling the band to the
+		// there whenever its half-time groove is drawn. Coupling the band to the
 		// groove would fix it exactly, and is not worth a mechanism that only pop would ever use.
 		// The published pop range (100–130) and the dance anchors agree with the floor as it is.
 		//
@@ -785,10 +786,10 @@ sealed class GenreProfile
 		{
 			SwingChance = 0f,   // quantised by construction — the grid is the genre
 			BpmMin = 100, BpmMax = 128, FastBpmMin = 124, FastBpmMax = 140,
-			TempoFloor = 84, TempoCeil = 152,
 			ChordBars = 1, RideLean = 0.30f,
 			Endings = new[] { EndingStyle.Fall, EndingStyle.Ring, EndingStyle.Cadence },
 			EndingWeights = new[] { 3, 2, 1 },
+			FastChance = 0.22f,   // a dance-tempo single is the exception on 90s/00s radio
 			Forms = new[] { SongForm.Pop, SongForm.PopB }, FormWeights = new[] { 3, 2 },
 			Scales = Harmony.PopScales, ScaleWeights = Harmony.PopScaleWeights,
 			Progressions = Harmony.PopProgressions,
@@ -843,20 +844,18 @@ sealed class GenreProfile
 		return swung ? SwingMin + t * (SwingMax - SwingMin) : 0f;
 	}
 
-	/// <summary>This song's tempo, drawn from the genre's band (its uptempo band when
-	/// <paramref name="fast"/>) and then scaled by the listener's TEMPO knob. The band is the
-	/// genre's; the knob is the preference riding on top, so a song can be pushed or dragged
-	/// without a country song ever ending up at metal's tempo.
+	/// <summary>This song's tempo, drawn from the genre's band — its uptempo band when
+	/// <paramref name="fast"/>, and nothing else reaches it.
 	///
-	/// The knob SATURATES at the genre's own <see cref="TempoFloor"/>/<see cref="TempoCeil"/>
-	/// rather than at one shared 40–300. A single symmetric 0.70–1.45 multiplier cannot be right
-	/// for six bands at once: its ends were ska 268, metal 290 and country 67, so the ends of the
-	/// slider were unplayable everywhere and only its middle was usable.</summary>
-	public int DrawBpm( Rng rng, bool fast, float tempoScale )
+	/// THERE IS NOTHING RIDING ON TOP OF IT. A TempoFloor/TempoCeil pair used to sit here bounding
+	/// the listener's TEMPO knob per genre; with the knob retired they bounded nothing — the drawn
+	/// band was always inside them by construction — so they were twelve numbers that could only
+	/// ever be a no-op. The band IS the answer now.</summary>
+	public int DrawBpm( Rng rng, bool fast )
 	{
 		int lo = fast ? FastBpmMin : BpmMin, hi = fast ? FastBpmMax : BpmMax;
 		int bpm = lo + rng.Int( Math.Max( 1, hi - lo + 1 ) );
-		return Math.Clamp( (int)MathF.Round( bpm * tempoScale ), TempoFloor, TempoCeil );
+		return bpm;
 	}
 
 	/// <summary>This song's groove, drawn from the genre's own table — one weighted draw, never

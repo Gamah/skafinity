@@ -114,7 +114,11 @@ public static class VibeCodec
 		// the end of this block.
 		null,
 		null,
-		F( "TEMPO BIAS", 0f, 1f, false, c => c.FastChance, ( c, v ) => c.FastChance = v ),
+		// RESERVED — was TEMPO BIAS, how often a song took its genre's uptempo band. A global
+		// slider over that is the same mistake the swing slider was: a reroll could hand any
+		// genre a 100% fast bias, and how often a genre runs hot is something the genre IS.
+		// It lives in GenreProfile.FastChance now, beside SwingChance, for the same reason.
+		null,
 		// RESERVED — was SWING, now per-genre character (GenreProfile). Kept as an empty slot so
 		// every later global and the whole instrument grid stay at their existing wire positions
 		// and previously shared vibes still decode. A future global knob can claim it.
@@ -128,7 +132,19 @@ public static class VibeCodec
 		F( "REVERB", 0f, 1f, false, c => c.MasterReverb, ( c, v ) => c.MasterReverb = v ),
 		// Appended, so every position above keeps the place it has always had. The range is 15
 		// steps of 0.05 so the neutral 1.0 lands exactly on a level rather than a rounding of one.
-		F( "TEMPO", 0.70f, 1.45f, false, c => c.TempoScale, ( c, v ) => c.TempoScale = v ),
+		// RESERVED — was TEMPO, a 0.70-1.45 multiplier over whatever the genre drew.
+		//
+		// Its history is the argument against it. It began as absolute TEMPO MIN / TEMPO MAX
+		// (the two reserved slots above), became a multiplier because an absolute band cannot be
+		// right for six genres at once, then grew per-genre saturation because the multiplier's
+		// ends were unplayable everywhere. Each fix was real and none of them reached the actual
+		// problem: the top of the slider is past what the music is, so the knob spent its upper
+		// half making songs faster than the genre means. A ska song came back at 208 bpm — inside
+		// its own saturation, drawn from a band whose top is 190, and simply too fast.
+		//
+		// A tempo band is anchored on records (see GenreProfile). A knob that overrides it is a
+		// listener preference beating a measurement, and there is nothing left to narrow.
+		null,
 	};
 
 	// ── Advanced / tuning-only knobs ──

@@ -655,9 +655,11 @@ function setGenre(g) {
   if (playing) startSequence();
 }
 
-// A throwaway roll (the manual 🎲): fresh genre + every non-volume knob. The rules — which
-// knobs are rollable, that per-instrument volumes stay out, that the tempo range gets put back
-// in order — live in the engine (VibeCodec.Roll), so this side never restates them.
+// A throwaway roll (the manual 🎲): fresh genre + every non-volume knob. The rules — which knobs
+// are rollable, and that per-instrument volumes stay out — live in the engine (VibeCodec.Roll),
+// so this side never restates them. That is also why retiring a knob needs nothing here: the
+// editor is built from the engine's field list, and a retired knob becomes a reserved null that
+// Fields() simply does not return.
 function randomizedCfg(base, randomizeGenre = true) { return mod.rollVibe(base, randomizeGenre); }
 // Randomize the live cfg in place (manual 🎲 reroll). Callers handle UI/hash/restart.
 function randomizeVibeCfg() { cfg = randomizedCfg(cfg); vibe = mod.encodeVibe(cfg); }

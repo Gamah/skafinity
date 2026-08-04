@@ -94,19 +94,16 @@ public sealed partial class MusicGen
 	internal string Explain()
 	{
 		var sb = new System.Text.StringBuilder();
-		// The genre's saturation points ride along, because the TEMPO knob's ends clamp there —
-		// a swept knob that stops moving the tempo is the knob working, not the seed misreading.
-		// The DRAWN tempo, not the first section's. They differ by that section's TempoMul, and the
-		// drawn one is the number every tempo decision reads — the band, the knob's saturation and
-		// whether the guitar may play thirty-seconds.
+		// The genre's own bands ride along, so a tempo can be read against what the genre plays
+		// rather than in isolation. The DRAWN tempo, not the first section's. They differ by that section's TempoMul, and the
+		// drawn one is the number every tempo decision reads.
 		// Swing reads as STRAIGHT rather than "0.00": a song either swings or it does not, and a
 		// number that can be zero invited reading a very small one as "swings a little" — which is
 		// exactly the mistake the SwingChance draw exists to make unrepresentable.
 		sb.AppendLine( $"tempo     {_bpm} bpm{(_fast ? " (uptempo band)" : "")}, "
 			+ $"{(_time.Swing <= 0f ? "straight" : $"swing {_time.Swing:0.00}")}"
 			+ $"{(_time.Swing >= _prof.ShuffleMin && _prof.ShuffleChance > 0 ? " — SHUFFLE" : "")}"
-			+ $" [genre plays {_prof.TempoFloor}–{_prof.TempoCeil}"
-			+ $"{(_bpm <= _prof.TempoFloor || _bpm >= _prof.TempoCeil ? ", KNOB SATURATED" : "")}]" );
+			+ $" [genre plays {_prof.BpmMin}–{_prof.BpmMax}, uptempo {_prof.FastBpmMin}–{_prof.FastBpmMax}]" );
 		sb.AppendLine( $"key       root midi {_rootMidi}, scale [{string.Join( " ", _scale )}]" );
 		sb.AppendLine( $"changes   [{string.Join( " ", _prog )}] at {_chordBars} bar(s)/chord, voicing [{string.Join( " ", _voicing )}]" );
 		sb.AppendLine( _susVoice >= 0
