@@ -1647,8 +1647,93 @@ static class Program
 	/// <summary>The arrangement has to survive contact with the renderer. Velocity, section energy
 	/// and the tempo curve all scale levels and lengths, so these are the crude checks that catch
 	/// a song that came out silent, clipped, or the wrong length entirely.</summary>
+	/// <summary>What the arranger must never break.
+	///
+	/// Plan-only and cheap — no render — so it sits at the top of the expensive section rather than
+	/// adding to it. The three claims are the ones the whole phase rests on: a genre's technique
+	/// stays on the cells it lives on, every chorus still agrees, and the arranger actually does
+	/// something. The FOURTH claim — that the parts do not all converge onto one rhythm — is not
+	/// assertable on a handful of songs and lives in `--stats` instead, where it is a matrix over
+	/// hundreds.</summary>
+	static void ArrangerTests()
+	{
+		// The allowed cell class IS the genre's technique. Asserted on the mechanism, because the
+		// authored figures deliberately step outside their own class here and there (ska's push on
+		// the "and of 4" lands on a beat) — what must hold is that the arranger never INVENTS an
+		// out-of-class onset, not that a genre's own gestures are pure.
+		var sk = new Skeleton( 0, 8 * 4 * Timing.TicksPerBeat, 4 * Timing.TicksPerBeat );
+		bool offbeatsOffbeat = true, downbeatsOnBeat = true, eighthsEven = true, sixteenthsAll = true;
+		for ( int c = 0; c < sk.BarCells; c++ )
+		{
+			if ( sk.Allows( CellClass.Offbeats, c ) != (c % 4 == 2) ) offbeatsOffbeat = false;
+			if ( sk.Allows( CellClass.Downbeats, c ) != (c % 4 == 0) ) downbeatsOnBeat = false;
+			if ( sk.Allows( CellClass.Eighths, c ) != (c % 2 == 0) ) eighthsEven = false;
+			if ( !sk.Allows( CellClass.Sixteenths, c ) ) sixteenthsAll = false;
+		}
+		Check( "a skank may only be arranged onto the offbeats", offbeatsOffbeat );
+		Check( "a downstroke may only be arranged onto the beat", downbeatsOnBeat );
+		Check( "an eighth-class voice may not be arranged onto a sixteenth", eighthsEven );
+		Check( "a sixteenth-class voice may go anywhere", sixteenthsAll );
+
+		// Every chorus agrees. The arranger caches the song's chorus parts the first time a chorus
+		// is rendered, so this is structural — but it is the song's IDENTITY guarantee, and a
+		// structural guarantee with no check on it is one refactor from being a coincidence.
+		// Read off the TRACE, so what is checked is what the choruses actually played rather than
+		// what the plan intended them to. One plan per song: this section is the suite's most
+		// expensive and a second plan per song would only be re-testing determinism, which the
+		// determinism section already owns.
+		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int n = 0; n < 4; n++ )
+			{
+				var cfg = new MusicGen.Config { Genre = g, SampleRate = 8000 };
+				var trace = new PlanTrace();
+				var song = MusicGen.BeginPlan( $"arr:{n}", cfg, trace );
+				songs++;
+
+				// The comp's onsets, relative to each chorus's own first tick. Every chorus must
+				// hand back the same list — that is what makes a chorus a chorus.
+				var comp = trace.Of( TraceVoice.Comp );
+				List<int> firstChorus = null;
+				int tick = 0;
+				foreach ( var part in song.Form )
+				{
+					int len = MusicGen.SectionTicks( part, 4 );
+					if ( part.Type == Section.Chorus )
+					{
+						var rel = new List<int>();
+						foreach ( int t in comp ) if ( t >= tick && t < tick + len ) rel.Add( t - tick );
+						if ( firstChorus == null ) firstChorus = rel;
+						else { chorusPairs++; if ( string.Join( ",", firstChorus ) == string.Join( ",", rel ) ) chorusMatched++; }
+					}
+					tick += len;
+				}
+
+				// …and the song's part is not simply an authored figure handed back. Counted rather
+				// than asserted per song: quoting is a legitimate outcome of the draw.
+				bool authored = false;
+				foreach ( var p in GenreProfile.For( g ).CompFigures )
+					authored |= FigureSig( p ) == FigureSig( song.SongParts.Comp );
+				if ( !authored ) moved++;
+			}
+		Check( "every chorus of a song plays the same arranged part", chorusPairs > 0 && chorusMatched == chorusPairs,
+			$"{chorusMatched} of {chorusPairs} chorus pairs" );
+		Check( "the arranger works on the song's own part rather than quoting a table",
+			moved > songs / 4, $"{moved} of {songs} songs moved off the authored figure" );
+	}
+
+	static string FigureSig( Pattern p )
+	{
+		if ( p == null ) return "-";
+		var sb = new StringBuilder().Append( p.LengthTicks ).Append( ':' );
+		for ( int i = 0; i < p.Count; i++ )
+			sb.Append( p.TickAt( i ) ).Append( '/' ).Append( p.ValueAt( i ) ).Append( ',' );
+		return sb.ToString();
+	}
+
 	static void ArrangementTests()
 	{
+		ArrangerTests();
 		// This is the expensive section: every measurement below is a rendered song, and there are
 		// four of them per genre. The genres are independent and every Rng is per-instance, so the
 		// RENDERING fans out across the machine and the ASSERTIONS run after it, in genre order —

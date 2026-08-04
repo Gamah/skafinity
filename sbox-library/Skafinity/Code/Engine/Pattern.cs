@@ -66,6 +66,7 @@ sealed class Pattern
 	public int TickAt( int i ) => _tick[i];
 	public int ValueAt( int i ) => _value[i];
 	public int SpanAt( int i ) => _span[i];
+	public float VelAt( int i ) => _vel[i];
 
 	/// <summary>Onsets, in ticks from the pattern's own start. Must be sorted and inside
 	/// <paramref name="lengthTicks"/>.</summary>

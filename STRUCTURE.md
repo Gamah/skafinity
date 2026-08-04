@@ -562,6 +562,56 @@ that plays more notes is louder as well as busier** and the balances are measure
 
 Re-bless.
 
+### What landed, and the two places this document's design contradicted itself
+
+| genre | rhythm sections in 500 songs | table ceiling |
+|---|---|---|
+| Ska-Punk | 30 → **228** | 30 |
+| Rock | 48 → **479** | 48 |
+| Country | 32 → **356** | 32 |
+| Metal | 18 → **271** | 18 |
+| Punk | 12 → **106** | 12 |
+| Pop | 24 → **338** | 24 |
+
+Cohesion moved 0–2 points on every genre (bass→kick 25/44/40/60/43/50 → 26/46/41/60/43/52;
+comp→snare 14/26/50/14/63/10 → 14/26/50/15/64/15), the worst cell in the whole pairwise matrix
+moved 8 points, and nothing collapsed toward the diagonal. **Ska's comp→snare is unmoved at 14%**,
+which is the tell this phase was told to watch. `--grid` is clean (0% of any voice over 25 ms off
+grid) and `--levels` has every comp 2.6–7.9 dB under its kit, because `DensityTrim` already
+absorbs a figure that gained an onset.
+
+**"Choruses quote verbatim" and "distinct states go up" cannot both mean what they say.** If a
+chorus quotes the TABLE, the song's own rhythm section is one entry out of a table of three and
+the ceiling this phase exists to break is exactly where it was — and the choruses are most of what
+a listener hears as the song. The reading that works: **the choruses quote EACH OTHER.** The chorus
+is arranged once, cached as the song's part, and every later chorus replays that line. The identity
+guarantee is untouched and the ceiling is gone. It also has to arrange the LOUD figure, or genre 0
+— whose chorus is punk downstrokes rather than a skank — keeps the one part a listener remembers
+coming straight out of a table of two.
+
+**The measurement had the same problem.** Distinct states was counted on figure OBJECT IDENTITY,
+which answers exactly the right question while a figure can only ever be an entry in a static
+table, and answers nothing at all once a song can arrange one — every arranged figure is a fresh
+object whether or not it differs. It is hashed on CONTENT now. Counting the whole song's onsets
+instead was tried and is worse than useless: it reads ~500 of 500 both before and after, because
+the non-chorus figures already varied per song, so it measures how many songs there are.
+
+### Where this diverges from the shape the document sketched
+
+The document has each voice reading the skeleton and its role instead of looping its figure. What
+landed instead is that the arranger **replaces the section's figures with arranged versions of
+themselves**, and every voice goes on slicing the figure it was handed, unchanged.
+
+Same outcome — a section's part is figure × mutation × skeleton — for a fraction of the surface,
+and it avoids putting the arranger's rules in six places where all six could disagree about what
+the section is. That is the same argument `PlanTrace` makes about not re-deriving the plan, and it
+is why `Engine/Voices/*.cs` is untouched by this phase.
+
+`_riffOnsets` therefore stays, which the document names as the sanctioned fallback. Retiring it
+would mean the bass reading the *planned* comp line, and the planned line is not the played one
+until the per-bar precedence (hemiola, then loud, then the flourish) has run — so retiring it
+means re-deriving that precedence, which is the one thing this branch has twice decided not to do.
+
 ---
 
 ## Phase 4 — the form family

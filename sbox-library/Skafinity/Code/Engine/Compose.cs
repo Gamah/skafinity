@@ -51,6 +51,7 @@ public sealed partial class MusicGen
 	void ComposePlan( string tag )
 	{
 		_events.Clear();
+		_chorusArranged = false;
 		int beatsPerBar = 4;   // 4/4 today; Timing carries it so voices never assume
 		_tag = string.IsNullOrEmpty( tag ) ? "rotaliate" : tag;
 		_genre = Math.Clamp( _c.Genre, 0, GenreProfile.Count - 1 );
@@ -349,6 +350,19 @@ public sealed partial class MusicGen
 		_footCells = 0;
 		for ( int i = 0; i < 8; i++ )
 			if ( footRng.Chance( FootOccupancy[i] ) ) _footCells |= 1 << i;
+
+		// ── the arrangement ──
+		// One authority writes every part of this section against one skeleton, in one pass, off
+		// its own stream (so the song stream's draw count is untouched and its rule holds
+		// unchanged). Everything it needs exists by now: the section's state is published, the
+		// figures are drawn, the groove is a set of Patterns and the tune is a Pattern.
+		//
+		// It replaces _bassPat / _compFig / _keysFig with ARRANGED versions of themselves, which is
+		// why nothing downstream changed: a voice still slices the figure it was handed. Rewriting
+		// each voice to read the skeleton directly would have put the arranger's rules in six
+		// places and left every one of them able to disagree about what the section is — the same
+		// argument PlanTrace makes about re-deriving the plan.
+		PlanArrangement( part, sectionTick, beatsPerBar * Timing.TicksPerBeat, tune, bk );
 
 
 		bool isIntro = part.Type == Section.Intro;

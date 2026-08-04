@@ -286,6 +286,39 @@ sealed class GenreProfile
 	/// and metal gesture and it makes a ska verse sound like a mistake.</summary>
 	public float CrashRideFrom { get; init; } = 1.01f;
 
+	// ── Arrangement ──
+	// How each part behaves against the section's skeleton (see Arrange.cs). These say HOW a voice
+	// arranges itself and never WHAT it plays — the figure is still the genre's own authored
+	// gesture, and the allowed CELL CLASS is what keeps ska's skank offbeat by rule rather than by
+	// table. Exactly the line this file already draws everywhere else.
+
+	/// <summary>The bass's role. Its <see cref="ArrangeRole.Kick"/> is how hard this genre's bass
+	/// locks to the kick — the number that was previously an accident of two tables agreeing.
+	/// </summary>
+	public ArrangeRole BassRole { get; init; } = new( CellClass.Eighths, 0.6f, 0.1f, 0.3f );
+
+	/// <summary>The main chordal voice's role. Its <see cref="ArrangeRole.Complement"/> is how hard
+	/// it avoids cells the tune and the bass have already taken — a comp is a BED, and a bed that
+	/// lands on every vocal syllable is a second vocal.</summary>
+	public ArrangeRole CompRole { get; init; } = new( CellClass.Eighths, 0.2f, 0.5f, 0.3f );
+
+	/// <summary>The role the main chordal voice takes where the section is LOUD enough that the
+	/// genre changes technique (see <see cref="LoudComp"/>). Null falls back to
+	/// <see cref="CompRole"/>; a genre whose loud technique lives on different cells than its quiet
+	/// one has to say so, or its choruses get arranged against the wrong class — third-wave ska's
+	/// chorus is punk downstrokes on the beat, not a skank, and the chorus is the most recognisable
+	/// thing in the genre.</summary>
+	public ArrangeRole? LoudCompRole { get; init; }
+
+	/// <summary>The second chordal voice's role, where the genre has one. It is arranged last and
+	/// so sees everything, which is what lets it answer rather than double.</summary>
+	public ArrangeRole KeysRole { get; init; } = new( CellClass.Eighths, 0.1f, 0.7f, 0.2f );
+
+	/// <summary>How often a NON-CHORUS section works on its figure rather than quoting it. A
+	/// chorus always quotes: every chorus must agree, which is what makes a chorus a chorus.
+	/// </summary>
+	public float MutateRate { get; init; } = 0.6f;
+
 	/// <summary>What kind of TUNE this genre writes (see <see cref="TuneVocab"/>). Distinct from
 	/// <see cref="Lead"/>, which is what the lead instrument does when it improvises instead.
 	/// </summary>
@@ -430,7 +463,15 @@ sealed class GenreProfile
 			Progressions = Harmony.SkaPunkProgressions,
 			Voicings = Harmony.SkaPunkVoicings, VoicingWeights = Harmony.SkaPunkVoicingWeights,
 			BassPatterns = Harmony.SkaPunkBass,
-			CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
+			// The skank is OFFBEAT by rule: the arranger may move a chop, never onto a downbeat.
+				// Ska's bass walks its own line rather than following the kick, which is why its
+				// bass->kick agreement is the lowest on the roster and is meant to be.
+				BassRole = new( CellClass.Eighths, kick: 0.35f, complement: 0.25f, seam: 0.35f ),
+				CompRole = new( CellClass.Offbeats, kick: 0.05f, complement: 0.45f, seam: 0.30f ),
+				// The chorus is punk's downstroke over ska's harmony, and it is on the BEAT.
+				LoudCompRole = new( CellClass.Downbeats, kick: 0.40f, complement: 0.20f, seam: 0.40f ),
+				MutateRate = 0.55f,
+				CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
 			CompOrnament = CompFigure.SkaPunkFlick,
 			// The dynamic that IS third-wave ska: the skank stops for the chorus and the same voice
 			// plays power chords through a driven amp. LoudComp reuses punk's downstroke because the
@@ -482,7 +523,13 @@ sealed class GenreProfile
 			Progressions = Harmony.RockProgressions,
 			Voicings = Harmony.RockVoicings, VoicingWeights = Harmony.RockVoicingWeights,
 			BassPatterns = Harmony.RockBass,
-			CompFigures = CompFigure.Rock, Comp = CompStyle.Riff,
+			// A riff and a bass that mostly move together, with the organ answering the gaps both
+				// of them leave — which is what the Charleston comp is for.
+				BassRole = new( CellClass.Eighths, kick: 0.65f, complement: 0.15f, seam: 0.40f ),
+				CompRole = new( CellClass.Eighths, kick: 0.30f, complement: 0.40f, seam: 0.40f ),
+				KeysRole = new( CellClass.Eighths, kick: 0.05f, complement: 0.75f, seam: 0.20f ),
+				MutateRate = 0.65f,
+				CompFigures = CompFigure.Rock, Comp = CompStyle.Riff,
 			CompOrnament = CompFigure.RockPickup,
 			KeysFigures = CompFigure.RockKeys, Keys = KeysStyle.Stabs,
 			Grooves = DrumGroove.Rock, GrooveWeights = new[] { 3, 2 },
@@ -524,7 +571,14 @@ sealed class GenreProfile
 			Progressions = Harmony.CountryProgressions,
 			Voicings = Harmony.CountryVoicings, VoicingWeights = Harmony.CountryVoicingWeights,
 			BassPatterns = Harmony.CountryBass,
-			CompFigures = CompFigure.Country, Comp = CompStyle.BoomChick,
+			// BOOM AND CHICK ARE THE SAME RULE STATED TWICE: the bass takes the beats and the
+				// guitar takes the "and", so the two are locked by being each other's complement
+				// rather than by playing together. The cell classes carry it.
+				BassRole = new( CellClass.Downbeats, kick: 0.75f, complement: 0.20f, seam: 0.35f ),
+				CompRole = new( CellClass.Offbeats, kick: 0.05f, complement: 0.40f, seam: 0.30f ),
+				KeysRole = new( CellClass.Eighths, kick: 0.05f, complement: 0.70f, seam: 0.25f ),
+				MutateRate = 0.60f,
+				CompFigures = CompFigure.Country, Comp = CompStyle.BoomChick,
 			CompOrnament = CompFigure.CountryPickOff,
 			KeysFigures = CompFigure.CountryKeys, Keys = KeysStyle.HonkyTonk,
 			Grooves = DrumGroove.Country, GrooveWeights = new[] { 3, 2 },
@@ -575,7 +629,13 @@ sealed class GenreProfile
 			Progressions = Harmony.MetalProgressions,
 			Voicings = Harmony.MetalVoicings, VoicingWeights = Harmony.MetalVoicingWeights,
 			BassPatterns = Harmony.MetalBass,
-			CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
+			// The tightest lockup on the roster, and the only one that was ever deliberate: metal's
+				// bass doubles the riff. It stays a RELATION rather than a role parameter (see
+				// RiffBassChance), so what this sets is how the gallop itself is arranged.
+				BassRole = new( CellClass.Sixteenths, kick: 0.85f, complement: 0.05f, seam: 0.35f ),
+				CompRole = new( CellClass.Sixteenths, kick: 0.45f, complement: 0.25f, seam: 0.45f ),
+				MutateRate = 0.55f,
+				CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
 			CompOrnament = CompFigure.MetalTremolo,
 			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2 },
 			// The one genre whose fill really is the wall. It is also the genre that showed the
@@ -616,7 +676,13 @@ sealed class GenreProfile
 			Progressions = Harmony.PunkProgressions,
 			Voicings = Harmony.PunkVoicings, VoicingWeights = Harmony.PunkVoicingWeights,
 			BassPatterns = Harmony.PunkBass,
-			CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
+			// Downstrokes are on the beat and nowhere else — that is the technique, and the cell
+				// class is what stops the arranger syncopating a genre whose whole idea is that it
+				// does not. The least mutated of the six for the same reason.
+				BassRole = new( CellClass.Eighths, kick: 0.55f, complement: 0.10f, seam: 0.40f ),
+				CompRole = new( CellClass.Downbeats, kick: 0.35f, complement: 0.20f, seam: 0.40f ),
+				MutateRate = 0.40f,
+				CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
 			CompOrnament = CompFigure.PunkTurnaround,
 			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2 },
 			// Busy, but at punk's tempo a bar of fill is over in a second: the pickup is the shape
@@ -669,7 +735,13 @@ sealed class GenreProfile
 			Progressions = Harmony.PopProgressions,
 			Voicings = Harmony.PopVoicings, VoicingWeights = Harmony.PopVoicingWeights,
 			BassPatterns = Harmony.PopBass,
-			CompFigures = CompFigure.Pop, Comp = CompStyle.Pad,
+			// The pad is a held bed and barely arranges at all; the ARP is where pop's movement is,
+				// and it is the voice that has to stay out of the vocal's way.
+				BassRole = new( CellClass.Eighths, kick: 0.80f, complement: 0.10f, seam: 0.30f ),
+				CompRole = new( CellClass.Eighths, kick: 0.20f, complement: 0.35f, seam: 0.25f ),
+				KeysRole = new( CellClass.Sixteenths, kick: 0.05f, complement: 0.80f, seam: 0.20f ),
+				MutateRate = 0.50f,
+				CompFigures = CompFigure.Pop, Comp = CompStyle.Pad,
 			KeysFigures = CompFigure.PopArp, Keys = KeysStyle.Arp,
 			KeysOrnament = CompFigure.PopArpRun,
 			Grooves = DrumGroove.Pop, GrooveWeights = new[] { 3, 2 },

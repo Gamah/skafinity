@@ -52,6 +52,7 @@ static class Stats
 		public string Form;                 // the form's signature
 		public int Bars;
 		public HashSet<int>[] Onsets;       // per TraceVoice, the distinct ticks it played
+		public string Played;               // what the rhythm section ACTUALLY played, as ticks
 		public int[] TuneTicks, TuneDegrees, TuneSpans;   // the CHORUS tune, as authored
 		public int TuneLength;
 	}
@@ -91,6 +92,16 @@ static class Stats
 		var onsets = new HashSet<int>[AllVoices.Length];
 		for ( int v = 0; v < AllVoices.Length; v++ ) onsets[v] = new HashSet<int>( trace.Of( AllVoices[v] ) );
 
+		// What the rhythm section actually PLAYED, over the whole song, as onset ticks. The figure
+		// triple below it is the table ceiling; this is the realised part, and the two stopped being
+		// the same thing the moment a section could work on its figure rather than quote it.
+		var played = new StringBuilder();
+		foreach ( var v in new[] { TraceVoice.Bass, TraceVoice.Comp, TraceVoice.Keys } )
+		{
+			foreach ( int t in trace.Of( v ) ) played.Append( t ).Append( ',' );
+			played.Append( '|' );
+		}
+
 		var (comp, keys, bass, groove) = g.SongParts;
 		var (chorus, _) = g.Tunes;
 
@@ -105,7 +116,7 @@ static class Stats
 		var s = new Song
 		{
 			Comp = comp, Keys = keys, Bass = bass, Groove = groove,
-			Form = form.ToString(), Bars = bars, Onsets = onsets,
+			Form = form.ToString(), Bars = bars, Onsets = onsets, Played = played.ToString(),
 			TuneLength = chorus?.LengthTicks ?? 0,
 		};
 		if ( chorus != null )
@@ -131,16 +142,33 @@ static class Stats
 	// a draw that happened to collide.
 	static void RhythmSectionStates( Song[][] byGenre )
 	{
-		Console.WriteLine( "── distinct rhythm-section states (comp x keys x bass x groove figures) ──" );
+		// THE SONG'S OWN RHYTHM SECTION — what its choruses play, which is most of what a listener
+		// hears as the song. Hashed on CONTENT rather than on object identity: identity answered
+		// this exactly while a figure could only ever be an entry in a table, and stopped meaning
+		// anything the moment a song could arrange one, since every arranged figure is a fresh
+		// object whether or not it differs from the last.
+		//
+		// The table ceiling below is the number this is measured against: three comp figures times
+		// five bass patterns times two grooves is thirty songs before punk repeats itself, and no
+		// amount of seed randomness reaches past that. It is still printed because it is still the
+		// ceiling — the gap between the two lines is what the arranger bought.
+		Console.WriteLine( "── distinct rhythm sections (the song's own — chorus comp x keys x bass x groove) ──" );
 		for ( int g = 0; g < byGenre.Length; g++ )
 		{
 			var seen = new HashSet<string>();
 			foreach ( var s in byGenre[g] )
-				seen.Add( $"{Id( s.Comp )}|{Id( s.Keys )}|{Id( s.Bass )}|{s.Groove.Name}" );
+				seen.Add( $"{Sig( s.Comp )}|{Sig( s.Keys )}|{Sig( s.Bass )}|{s.Groove.Name}" );
+			Console.WriteLine( $"  {Name( g ),-9} {seen.Count,4} of {byGenre[g].Length} songs" );
+		}
+		Console.WriteLine();
+
+		Console.WriteLine( "── the authored table ceiling (comp x keys x bass x groove) ──" );
+		for ( int g = 0; g < byGenre.Length; g++ )
+		{
 			var prof = GenreProfile.For( g );
 			int keys = Math.Max( 1, prof.KeysFigures?.Length ?? 1 );
 			int ceiling = prof.CompFigures.Length * keys * prof.BassPatterns.Length * prof.Grooves.Length;
-			Console.WriteLine( $"  {Name( g ),-9} {seen.Count,4}   (table ceiling {ceiling}: "
+			Console.WriteLine( $"  {Name( g ),-9} {ceiling,4}   ("
 				+ $"{prof.CompFigures.Length} comp x {keys} keys x {prof.BassPatterns.Length} bass"
 				+ $" x {prof.Grooves.Length} groove)" );
 		}
@@ -324,10 +352,16 @@ static class Stats
 
 	static string Name( int g ) => VibeCodec.Genres[g];
 
-	// Reference identity: the figures are entries in a static table, so two songs that drew the
-	// same figure hold the same object. Comparing cells instead would merge two authored figures
-	// that happen to be equal, which is not what "how many states" is asking.
-	static int Id( Pattern p ) => p == null ? -1 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode( p );
+	/// <summary>A figure's CONTENT — its onsets and what each one plays. Two songs whose comps are
+	/// the same rhythm hash the same however they got there, which is the only reading of "how many
+	/// distinct rhythm sections" that survives figures being arranged rather than drawn.</summary>
+	static string Sig( Pattern p )
+	{
+		if ( p == null ) return "-";
+		var sb = new StringBuilder().Append( p.LengthTicks ).Append( ':' );
+		for ( int i = 0; i < p.Count; i++ ) sb.Append( p.TickAt( i ) ).Append( '/' ).Append( p.ValueAt( i ) ).Append( ',' );
+		return sb.ToString();
+	}
 
 	static void Bump( SortedDictionary<int, int> d, int k ) { d.TryGetValue( k, out int c ); d[k] = c + 1; }
 
