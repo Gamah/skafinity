@@ -1209,7 +1209,7 @@ static class Program
 				}
 				endsResolved &= form[^1].Type == Section.Ending && form[^1].Bars == 4;
 				enough &= choruses >= 2 && verses >= 1;
-				banded &= bars >= 32 && bars <= 140;
+				banded &= bars >= 32 && bars <= 112;
 				shapes.Add( $"{g}:{sig}" );
 			}
 

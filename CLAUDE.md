@@ -214,6 +214,40 @@ table says where, and it has been wrong to guess before.
   bass and a lead at 1.00/2.00.
   Double-tracking emits two takes ~9 ms apart, so adjacent near-identical rows are one note.
 
+- `-- --stats [N]` is the fourth, and it is the only one that asks about a GENRE rather than a
+  song: it sweeps N songs per genre (default 500, ~65 s) and prints how many distinct rhythm
+  sections the genre can produce, how many forms, how hard each pair of voices agrees about where
+  the beat is, and what shape every tune has. It is a DIAGNOSTIC — not in the section list, not in
+  CI, not in blessing — because the questions it answers are only visible across hundreds of songs,
+  which is exactly why they survived so long. **Run it before a change and after it, and diff.**
+
+  **It records rather than re-derives, and that is load-bearing.** Every onset it counts was
+  written down by the voice that played it (`Engine/PlanTrace.cs`, attached with
+  `MusicGen.BeginPlan( tag, cfg, trace )` and null in every ordinary render). A sweep that walked
+  the structure and re-sliced the patterns would be a second implementation of every precedence
+  rule in the composer — which figure a bar plays, whether the bass reads the riff, whether a
+  section sings a tune, how a sparse section thins its cymbal — and two implementations of that
+  drift, at which point the tool lies with a straight face. `_compOrn` cannot be re-derived outside
+  a render at all: it is rolled off the rhythm stream interleaved with that voice's own note draws.
+  The cost is that a song genuinely composes, so the sweep runs at 8 kHz — every number is a tick
+  or a count, so the rate is a straight multiplier on cost and reaches nothing else.
+
+**THE CONVERGENCE RULE, and it governs any work on how the parts fit together.** The failure mode
+of every fix in this area is the exact opposite of the defect: parts that ignore each other is
+today's problem, and **parts that all play the same rhythm is worse**, and it will not read as a
+regression on any single listen. Same for the tune — a wider vocabulary, overdone, makes every tune
+reach the same average. So the acceptance rule is always **the distinctness numbers go UP and the
+agreement numbers do not move much**, both off `--stats`, before and after. Ska's comp-on-snare
+sitting at 14% is the single sharpest tell there is: if the skank starts landing on the backbeat,
+something has overridden the genre.
+
+**A suite check that costs a composed song is a budget decision, not a free assertion.** The
+harness is render-bound and the structural checks are not — plan-only checks over 240 songs put 35
+seconds on a 25-second harness for assertions that render nothing. `MusicGen.DrawForm` is static
+and takes its profile for exactly this reason. Prefer arithmetic over the tables; where a check
+genuinely needs a composed song, one plan per song and never two (the second is re-testing
+determinism, which its own section owns).
+
 **Balancing the mix is a measurement, not a guess.** `dotnet run --project test/engine -c Release
 -- --levels` renders every genre with one voice soloed and prints its level in dB relative to that
 genre's drums. It reads `MusicGen.RawLevels()` — **pre-master**, because the master bus
@@ -972,6 +1006,47 @@ pre-chorus over an eight-bar tune otherwise stated the call and was cut off by t
 the answer arrived — a phrase interrupted by the next phrase, which is what "two ideas at once"
 sounds like from the outside.
 
+**THE CONTOUR IS NOT A RANDOM WALK, AND THREE SEPARATE THINGS KEEP IT FROM BEING ONE.** The line
+used to step or leap at random inside a `Clamp`, so 12–18% of every tune's notes sat pinned against
+the range ends and the only thing that ever brought a phrase home was the forced tonic on the last
+note — a landing with no approach to it. What is there now: **post-skip reversal** (a melody that
+leaps comes back, which is also what makes a leap read as a gesture rather than as the line
+relocating), the **melodic arch** (phrases rise then fall on average), and **tessitura**, a pull
+toward the middle of the range.
+
+**The last of those is the one that actually keeps a tune off the ends, and that is the part worth
+knowing.** Reflection instead of clamping was the obvious repair and it is only a BACKSTOP: it
+stops a line PARKING at a boundary, but a walk with no centre still spends its time out there, and
+the arch makes it worse by leaning uphill in the first half of every phrase whatever the register
+already is. Reflection alone took pinning to 5.5%; the centre pull took it to 2–4%. They are
+different jobs — one decides where the line lives, the other decides what happens when it arrives
+at an edge anyway — and a session that reads only the pinning number will conclude reflection did
+it.
+
+**The genre's tune vocabulary is `GenreProfile.Tune`, and every number in it is AUTHORED.** Note
+lengths (a weighted menu, 16th through half), how often it rests, how often it leaps, how it
+answers its own call. There is no melodic corpus in this repo the way there is a drum one, so
+unlike the accent weights and the groove placements these are design calls — **do not write them
+up as if they were measured.** A rest is an OMITTED ONSET rather than a cell: the previous note's
+span grows and `RenderTune`'s two-beat cap turns the remainder into silence, so the renderer needs
+nothing. A `Melody.Rest` CELL would be read as a degree and sung.
+
+**`Melody.DegreeMin/DegreeMax` is an authored judgement and is still open.** `-2..9` is twelve scale
+degrees, ~19 semitones in a major scale — which is a WHOLE-SONG figure doing a PHRASE's job, since
+a tune here is 2–8 bars (the large-scale pop-melody work measures range on a rolling two-bar window
+for exactly that reason). The right shape is probably two bounds: a tight span one phrase may cover
+inside a looser one the whole tune may reach. Not done, because the arch and the centre pull
+already narrow the phrase in practice and no source found gives a phrase-range figure for this
+roster's genres — a second authored number dressed as a fix is worse than the honest one.
+
+**Two genres landing on a similar tune at one seed is a FEATURE and must never be engineered away.**
+The genre is in the tune's streams so that they are not RELIABLY identical (rock and country used
+to return byte-identical melodies 53% of the time), and it is in no other stream: the song stream
+carries none, so "the same song, in another genre" — same key, same kit, same pan — still works.
+There is deliberately no suite check that two genres differ; the collision rate is something
+`--stats` reports. A preference turned into a prohibition is how a session ends up writing code to
+invent divergence nobody asked for.
+
 **A REGISTER IS A NUMBER OF OCTAVES, AND ONLY EVER THAT.** `ScaleMidi` and `VoicedTone` treat
 their base as **the tonic** and add the scale offset on top, so a base of `_rootMidi + 31` does not
 raise a part by a fifth — it spells that part **in the key a fifth up**. The part then disagrees
@@ -1039,6 +1114,54 @@ case's `_ =>` default.
 
 ---
 
+## One authority arranges the section (`Engine/Arrange.cs`)
+
+Every voice used to pick its figure from its own small authored table and no voice knew what any
+other was playing — pop's pad landed on the kick 100% of the time and ska's skank 1%, and neither
+number was decided by anyone. The tables were also a hard ceiling: the whole rhythm section was the
+product of three table sizes, so punk had **12** distinct states over 500 songs and randomness
+cannot reach past a table size.
+
+A `Skeleton` per section, on the sixteenth grid, **derived and never drawn**: the accent grid comes
+off the groove's kick and snare and the genre's measured accent weights, so **the kit stays the
+reference the arranger writes against rather than another client of it**. Plus the phrase seams,
+the tune's occupancy, and an occupancy layer that fills in as each part is placed — bass first (its
+job is to agree with the kick), then the comp (which can now see the bass and the tune), then the
+keys. That order IS the design; arranging them independently against a fixed grid gives every voice
+the same answer, which is the failure the convergence rule watches for.
+
+**The authored figures are seed material, not a ceiling.** Drop an onset that fights what is there,
+add one on an accented free cell, displace one by a cell, recombine a bar from another figure in
+the same genre's table, or quote. **Every mutation stays inside the genre's allowed `CellClass`**,
+and that is the property the whole design rests on — it is what keeps ska's skank offbeat by RULE
+rather than by table and punk's downstrokes on the beat, and it is the reason the arranger cannot
+simply write onsets wherever the accent grid is loud. A genre's identity is WHERE it plays; its
+arrangement is which of those places it uses this time.
+
+**"Every chorus agrees" and "the chorus quotes the table" are different claims, and only the first
+is true.** The chorus is arranged ONCE and cached as the song's part; every later chorus replays
+that line. Making the chorus quote the table instead would leave the song's own rhythm section as
+one entry out of three, which is the ceiling this exists to break — and the choruses are most of
+what a listener hears as the song. **The LOUD figure is arranged too** (`LoudCompRole`), or genre
+0 — whose chorus is punk downstrokes rather than a skank — keeps its most recognisable bars coming
+out of a table of two.
+
+**The voices are not clients of the skeleton.** The arranger REPLACES the section's figures with
+arranged versions of themselves and every voice goes on slicing the figure it was handed. Putting
+the arranger's rules in six renderers would let all six disagree about what the section is — the
+same argument `PlanTrace` makes about re-deriving the plan. For the same reason `_riffOnsets`
+stays: retiring it means the bass reading the *planned* comp line, and the planned line is not the
+played one until the per-bar precedence (hemiola, then loud, then the flourish) has run.
+
+**Counting states on figure object IDENTITY stopped working here.** It answered exactly the right
+question while a figure could only ever be an entry in a static table, and answers nothing once a
+song can arrange one, since every arranged figure is a fresh object whether or not it differs.
+`--stats` hashes CONTENT. Counting the whole song's onsets instead is worse than useless — it reads
+~500 of 500 both before and after, because the non-chorus figures already varied per song, so it
+measures how many songs there are.
+
+---
+
 ## Sections carry state (`Engine/Structure.cs`, `SongForm`)
 
 `BuildStructure(genre)` returns the genre's OWN form — a metal song and a pop song no longer share
@@ -1100,6 +1223,20 @@ not divide the bar genuinely drifts and comes back.
   and what a busier drummer adds is ornament). And **dynamics**: it goes through `NoteGain` like
   every other voice, which it uniquely did not before. `FillCells` fixes the per-beat draw count
   across all three grids so the TRIPLET knob cannot change how much of the stream a fill spends.
+- **A genre's form is a FAMILY, and the song's form is drawn once into `_form`.**
+  `GenreProfile.Forms` holds 2 authored variants per genre with weights; `MusicGen.DrawForm` picks
+  one and draws the details over it (verse length, whether the optional section appears, whether
+  the key lift happens, a repeated final chorus, a truncated last verse). Authored variants are
+  what keeps them all punk — **randomising a form is the wrong fix**: a form is genre identity,
+  which is why it lives in `GenreProfile` at all, and punk with a 16-bar solo is not punk.
+  **Caching is not an optimisation.** Five places used to derive the form from the genre alone —
+  the composer plus four diagnostics — which was harmless while the answer was a constant and is a
+  bar ruler for a DIFFERENT SONG the moment it varies. `--score` and `--grid` would go quietly
+  wrong exactly when they are most needed. Everything reads `_form`.
+  **A doubled final chorus is a repeated SECTION, never a longer one**, because every chorus must
+  still agree about its length; and a truncated verse still lands on a multiple of four, because
+  the hypermeasure is why the ending is 4 bars and not 2 and it does not stop applying to a drawn
+  length. The suite asserts all of that over drawn forms.
 - **Figures are drawn per SECTION, not per song.** A chorus plays the song's own figure (`_songComp`
   / `_songKeys` / `_songBass` — that is the song's identity, and every chorus must agree); other
   sections draw their own off a stream keyed by section type, so a verse contrasts while both

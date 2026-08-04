@@ -100,8 +100,12 @@ check('SetVibeField/GetVibeNorm round-trip', Math.abs(norm - 0.25) < 0.04, `${no
 check('VibeDisplay renders the value', /^\d+%$/.test(E.VibeDisplay(cfg2, tempo)), E.VibeDisplay(cfg2, tempo));
 
 // ── generation ──
+// A song's LENGTH is drawn now (GenreProfile.Forms + the details over them), so this is a
+// runaway guard rather than a description: a form is 32-112 bars and the slowest genre's band
+// bottoms out around 95 bpm, which is ~4.5 minutes at 44.1 kHz. What it still catches is a form
+// that lost its bounds or a time base that lost its tempo — not a particular song length.
 const frames = E.GenerateSong('gamah:0', cfg);
-check('GenerateSong returns a sane frame count', frames > 1_000_000 && frames < 5_000_000, `${frames}`);
+check('GenerateSong returns a sane frame count', frames > 1_000_000 && frames < 13_000_000, `${frames}`);
 check('SampleRate is 44100', E.SampleRate() === 44100, `${E.SampleRate()}`);
 
 const L = floatChannel(0), R = floatChannel(1);

@@ -3,13 +3,23 @@
 # building it. Runs on every PR, so the answer arrives before a merge rather than after a
 # deploy, and on preview/* because those branches can deploy to the live site.
 #
-# NOT on every branch push, and the reason is the bundle gate below. Re-staging
-# web/_framework is a ~2-minute AOT publish that belongs at the END of a piece of work, not
-# on every commit of it — so a feature branch's intermediate commits are EXPECTED to carry a
-# stale bundle. Failing them mailed the repo owner about a state that is not a defect, which
-# is how a gate stops being read. The gate itself is unchanged and still blocks what it was
-# written to block: nothing reaches master except through a PR, and nothing reaches the live
-# site except master or a preview/* branch, and both are checked.
+# NOT on every branch push, and NOT on a DRAFT pull request. Both exclusions are the same
+# rule and the same reason: re-staging web/_framework is a ~2-minute AOT publish that belongs
+# at the END of a piece of work, not on every commit of it — so work in progress is EXPECTED
+# to carry a stale bundle, and failing it mails the repo owner about a state that is not a
+# defect, which is how a gate stops being read.
+#
+# The draft half was the door left open when the branch-push half was closed: a PR opened
+# early to share progress re-runs CI on every push into it, so a draft PR put the gate back
+# on exactly the intermediate commits the branch-push rule had just excused. Marking a PR
+# ready is the signal that the work claims to be finished, which is when the gate is a real
+# question — and `ready_for_review` has to be listed explicitly, because the default trigger
+# types are opened/synchronize/reopened and do not include it, so a PR marked ready would
+# otherwise never be checked at all.
+#
+# The gate itself is unchanged and still blocks what it was written to block: nothing reaches
+# master except through a non-draft PR, and nothing reaches the live site except master or a
+# preview/* branch, and both are checked.
 #
 # The engine's own C# tests (`make test-engine`) are deliberately NOT here: they need the SDK,
 # they take ~25 s of pure synthesis, and they assert on composition rather than on what the
@@ -19,6 +29,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [preview/**]   # master is covered by the Pages workflow, which gates on the same check
 
@@ -27,6 +38,8 @@ permissions:
 
 jobs:
   check:
+    # A draft PR is work in progress; see the header.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
