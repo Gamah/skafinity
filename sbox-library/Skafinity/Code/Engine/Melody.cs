@@ -137,8 +137,28 @@ public sealed partial class MusicGen
 		// "the lead clashes with the backing" it sounds like. Matching the cycle means every
 		// repetition sits over the changes it was drawn for.
 		int cycle = Math.Clamp( _chordBars * _prog.Length, 2, 8 );
-		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:chorus" ), cycle, barTicks, density, leap );
-		_verseTune = Melody.Draw( new Rng( $"{_tag}:tune:verse" ), cycle, barTicks, density * 0.8f, leap );
+		// THE GENRE IS IN THE TUNE'S STREAM, and it is the only stream it is in.
+		//
+		// Without it the genre reached Draw through nothing but `density` and `leap`, so where two
+		// genres' densities were close the draws mostly agreed and the tunes came back
+		// BYTE-IDENTICAL: over 500 songs, rock and country sang the same melody 53% of the time and
+		// punk and pop 52%. Same n, different key, different kit, literally the same tune — which is
+		// most of why the roster read as one band.
+		//
+		// The SONG stream (ComposePlan's `new Rng( _tag )`) still has no genre in it, and that is a
+		// feature rather than an oversight: genre 0 and genre 3 at the same tag:n share the root
+		// note, the pan, the ride preference and the whole kit draw, so the same song in two genres
+		// is a thing the toy can do. That is worth more than the variation putting the genre there
+		// would buy, and it is why the genre goes in the TUNE streams and nowhere else.
+		//
+		// IT IS A DIFFERENT DRAW, NOT A GUARANTEED DIFFERENT TUNE, and that distinction is the
+		// point. Two genres landing on a similar melody at one seed is the toy doing what it is
+		// for; what was wrong before was that they landed there RELIABLY, off a stream that could
+		// not tell them apart. Nothing here should ever grow into machinery that forces two genres
+		// to diverge — the collision rate is something `--stats` reports, not something the engine
+		// enforces.
+		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:chorus" ), cycle, barTicks, density, leap );
+		_verseTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:verse" ), cycle, barTicks, density * 0.8f, leap );
 	}
 
 	/// <summary>Play one bar of the section's tune.

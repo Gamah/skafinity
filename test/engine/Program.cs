@@ -1317,6 +1317,14 @@ static class Program
 		int sparse = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.2f, 0.2f ).Count;
 		int busy = Melody.Draw( new Rng( "tune:c" ), 4, bar, 0.9f, 0.2f ).Count;
 		Check( "density controls how much a tune moves", busy > sparse, $"{busy} vs {sparse} notes" );
+
+		// THERE IS DELIBERATELY NO CHECK HERE THAT TWO GENRES SING DIFFERENT TUNES. The genre goes
+		// into the tune's stream so that two genres at one seed are not reliably identical, but
+		// "the same seed in another genre sounds like the same song" is a FEATURE of this toy, not
+		// a bug being suppressed — the song stream carries no genre for exactly that reason. A
+		// check here would turn a preference into a prohibition, and the next session would be
+		// writing code to force divergence that nobody asked for. The collision rate is reported by
+		// `--stats` instead, where it is a number to watch rather than a wall to hit.
 	}
 
 	// ── where a player bends ──

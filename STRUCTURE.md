@@ -300,7 +300,16 @@ _verseTune  = Melody.Draw( new Rng( $"{_tag}:tune:verse"  ), cycle, barTicks, de
 `_tag` is `"{tag}:{n}"`. The genre is not in it, and reaches `Draw` only through `density` and
 `leap` — so where two genres' densities are close the draws mostly agree and the tunes come back
 byte-identical. Put the genre in the string: `$"{_tag}:tune:{_genre}:chorus"`, same for `:verse`.
-Two lines. The cross-genre collision figures must go to ~0.
+Two lines.
+
+**It buys a different DRAW, not a guaranteed different tune, and the difference is the whole
+point.** Two genres landing on a similar melody at one seed is the toy doing what it is for — the
+song stream carries no genre precisely so that "the same song, in another genre" exists. What was
+wrong was that they landed there RELIABLY, off a stream that could not tell them apart. So the
+collision figure is a number `--stats` reports and watches; it is not a target, there is no suite
+check that two genres differ, and nothing on this branch may grow into machinery that FORCES them
+to. A preference turned into a prohibition is how the next session ends up writing code to invent
+divergence nobody asked for.
 
 **`Compose.cs:61` is deliberately NOT touched, and this is the paragraph that stops a future
 session from "fixing" it.** The song stream is `new Rng( _tag.ToLowerInvariant() )` with no genre
