@@ -660,7 +660,12 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	// window: a crossfade is long because two songs have to trade places without either being
 	// heard to stop, and nothing is being traded here. See BeginAt for what the long version did
 	// to the opening bars.
-	const float StartFadeSeconds = 0.15f;
+	// MEASURED rather than judged, on four real renders (see web/app.js, which carries the same
+	// constant and the same reasoning): dry, a song's opening strike sits +2.5 to +5.6 dB above the
+	// ring half a second later. A 2.9 s ramp returns it at -28 to -31 dB, and 0.15 s — what this
+	// was — still leaves it 14-17 dB out, i.e. audibly a cymbal that was hit before the song
+	// started. At 0.01 s the balance is the dry balance on every seed.
+	const float StartFadeSeconds = 0.012f;
 	int StartFadeFrames => Math.Max( 1, (int)(StartFadeSeconds * _sr) );
 
 	// All look-ahead buffers are interleaved stereo PCM; lengths/offsets below are in frames.

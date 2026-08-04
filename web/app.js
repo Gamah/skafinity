@@ -13,6 +13,19 @@ const LOOPS_PER_SONG = 1;
 // the next song before the current one's final chord has landed — two songs, two tempos and two
 // downbeats playing at once. It is also the first song's fade-in.
 const CROSSFADE = 3.75;
+// COMING UP FROM SILENCE IS NOT A CROSSFADE, and it must not borrow the crossfade's length. A
+// crossfade is long because two songs have to trade places without either being heard to stop;
+// at the start of a sequence there is nothing to trade with. What a multi-second ramp does to a
+// drum kit is specific rather than merely quiet: it crushes the STRIKE and lets the RING arrive
+// at full level a second later, so every cymbal in the opening bars sounds like it was hit
+// before the song started. Long enough not to click, and nothing more.
+//
+// MEASURED, on four real renders: dry, the strike sits +2.5 to +5.6 dB above the ring half a
+// second later. Through the 2.9 s crossfade it comes back at -28 to -31 dB — a 34 dB inversion,
+// which is the whole of this bug. Through 0.15 s (what SkafinityPlayer carried) it is still 14-17
+// dB out. At 0.01 s the balance is the dry balance to within a tenth of a dB on every seed, and
+// 441 samples at 44.1 kHz is an ample de-click. So this is a measurement, not a taste call.
+const START_FADE = 0.012;
 const AHEAD_COUNT = 4;        // songs kept pre-rendered
 const SCHEDULE_HORIZON = 12;  // seconds: schedule the next song once it's within this
 // Pool of generation workers. Each boots its own .NET runtime (memory cost — hence the cap),
@@ -215,7 +228,10 @@ const CURVE_OUT = powerCurve('out');
 // ── Scheduling ──
 // Schedule one song starting at startTime; returns the time the NEXT song should start
 // (overlapping this one's fade-out for an equal-power crossfade).
-function scheduleOneSong(buffer, songN, startTime) {
+// `fromSilence` is true for the first song of a sequence — a fresh start, or whatever Prev/Next
+// or a seed change lands on. Every other song's fade-in overlaps the previous song's fade-out and
+// the two sum to constant power, which is what a crossfade is.
+function scheduleOneSong(buffer, songN, startTime, fromSilence = false) {
   const src = ctx.createBufferSource();
   src.buffer = buffer;
   src.loop = false;            // structured song: play through once, then crossfade to next
@@ -229,11 +245,14 @@ function scheduleOneSong(buffer, songN, startTime) {
   //   * just under half the play time, so the fade-in and fade-out curves cannot overlap
   //     (Web Audio forbids overlapping automation curves).
   const cf = Math.max(0, Math.min(tailSeconds, CROSSFADE, songPlay / 2 - 0.05));
+  // The fade OUT is always the crossfade — the next song is coming in over it. The fade IN is
+  // only a crossfade when there is something to cross from.
+  const fi = fromSilence ? Math.min(START_FADE, cf) : cf;
 
   if (cf > 0.001) {
     // equal-power fade in; the curve's final value (1) persists as the "hold"; then fade
     // out. No setValueAtTime between them — placing one at a curve edge is an overlap error.
-    g.gain.setValueCurveAtTime(CURVE_IN, startTime, cf);
+    g.gain.setValueCurveAtTime(CURVE_IN, startTime, fi);
     g.gain.setValueCurveAtTime(CURVE_OUT, startTime + songPlay - cf, cf);
   } else {
     g.gain.setValueAtTime(1, startTime);
@@ -288,7 +307,7 @@ function pump() {
     const { buffer } = rendered.get(nextN);
     let nextStart;
     try {
-      nextStart = scheduleOneSong(buffer, nextN, nextTime);
+      nextStart = scheduleOneSong(buffer, nextN, nextTime, !firstScheduled);
     } catch (e) {
       console.error('skafinity: schedule failed', e);
       nextStart = nextTime + buffer.duration * LOOPS_PER_SONG; // still advance, don't wedge
