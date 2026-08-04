@@ -198,17 +198,23 @@ sealed class DrumGroove
 		},
 		new()
 		{
-			Name = "groove",
-			// The same backbeat punk just got, with the double tightened to a SIXTEENTH pair — the
-			// groove-metal read of it. Metal's other two grooves are both walls (a sixteenth burst
-			// and a kick on every eighth), so this is the one that leaves space, and space is what
-			// makes the walls land.
+			Name = "two-step",
+			// The same beat punk gets, and deliberately the same: bum-tis-bumbum-tis is played in
+			// both genres and inventing a heavier variant for metal would be answering a question
+			// nobody asked. What separates the two here is everything around it — tempo, kit, the
+			// ghost rate below, and the riff on top.
 			//
-			// A separate object from punk's rather than a shared one: no two genres may hold the
-			// same groove, and these genuinely differ — the eighth double is a push, the sixteenth
-			// double is a stutter.
-			Kick = S( 0, R, R, R, R, R, R, R, 0, R, 0, R, R, R, R, R ),
-			Snare = E( R, R, 0, R, R, R, 0, R ),
+			//         1   e   &   a   2   e   &   a
+			//   kick  K   .   .   .   K   K   .   .
+			//   snare .   .   S   .   .   .   S   .
+			//
+			// A separate OBJECT because no two genres may share a groove (the suite asserts it),
+			// which is a rule about tables accidentally converging rather than about two genres
+			// never playing the same rhythm.
+			Kick = S( 0, R, R, R, 0, 0, R, R,
+			          0, R, R, R, 0, 0, R, R ),
+			Snare = S( R, R, 0, R, R, R, 0, R,
+			           R, R, 0, R, R, R, 0, R ),
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
 			GhostRate = 0.25f, CrashOnOne = 0.5f,
 		},
@@ -235,6 +241,9 @@ sealed class DrumGroove
 		new()
 		{
 			Name = "d-beat",
+			// Early punk, and it stays as it is. Notations of the d-beat vary in where the kick's
+			// offbeats sit and this is a legitimate one; it is also NOT the sixteenth gallop the
+			// "two-step" entry below carries, which is the beat this table was actually missing.
 			Kick = E( 0, R, R, 0, R, 0, R, R,
 			          0, R, R, 0, R, 0, R, R ),
 			Snare = E( R, R, 0, R, R, R, 0, R,
@@ -244,18 +253,27 @@ sealed class DrumGroove
 		},
 		new()
 		{
-			Name = "backbeat",
-			// KICK, SNARE, KICK-KICK, SNARE — the plainest beat in this music and the one both this
-			// genre and metal were missing entirely. Every other groove in either table drives the
-			// kick on every beat ("eighth drive", "thrash") or every eighth, or bursts it at the
-			// sixteenth; none of them just plays a backbeat. The result was two genres that could
-			// only ever go flat out, which is the same gap the missing half-time feel was.
+			Name = "two-step",
+			// THE PUNK ENGINE'S OTHER GEAR: kick on the beat, snare on the "&", and the kick
+			// doubled at the SIXTEENTH going into every other beat —
 			//
-			// The gesture is the doubled kick pushing INTO beat 3 — the kick on 3 and on the "and"
-			// of 3 under a plain 2-and-4 snare. There is no crisp technical name for it; drummers
-			// mostly call it the basic rock beat, and the doubling is what stops it being one.
-			Kick = E( 0, R, R, R, 0, 0, R, R ),
-			Snare = E( R, R, 0, R, R, R, 0, R ),
+			//         1   e   &   a   2   e   &   a
+			//   kick  K   .   .   .   K   K   .   .
+			//   snare .   .   S   .   .   .   S   .
+			//
+			// — repeating twice a bar. Drummers call it the two-step or the skank beat; it is not
+			// the d-beat (that keeps its snare on 2 and 4, and has its own entry above).
+			//
+			// IT IS A 2-BEAT CELL AND THAT IS THE WHOLE POINT. The same figure written over four
+			// beats — kick, snare, doubled kick on 3, snare — is the identical pattern counted at
+			// half the rate, and at this genre's tempo that puts the double every 1.4 s instead of
+			// every 0.7 s. It reads as an ordinary rock beat rather than as punk. This engine has
+			// been caught by exactly that ambiguity before (see the ska tempo block in
+			// GenreProfile): a rhythm means nothing until you say which pulse it is counted against.
+			Kick = S( 0, R, R, R, 0, 0, R, R,
+			          0, R, R, R, 0, 0, R, R ),
+			Snare = S( R, R, 0, R, R, R, 0, R,
+			           R, R, 0, R, R, R, 0, R ),
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
 			GhostRate = 0.35f, CrashOnOne = 0.4f,
 		},

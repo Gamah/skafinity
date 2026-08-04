@@ -615,15 +615,20 @@ function buildVibeEditor() {
   host.append(matrix);
 
   // ── GLOBAL strip ──
-  const gl = document.createElement('div');
-  gl.className = 'glabel';
-  gl.textContent = 'GLOBAL';
-  host.append(gl);
+  // Only when there is one. Every global knob has been retired to a reserved wire slot (tempo to
+  // GenreProfile, width and reverb to house config), so this block is currently empty — and an
+  // unconditional heading over an empty grid is a section that says the UI is missing something.
+  if (globals.length) {
+    const gl = document.createElement('div');
+    gl.className = 'glabel';
+    gl.textContent = 'GLOBAL';
+    host.append(gl);
 
-  const grid = document.createElement('div');
-  grid.className = 'global-grid';
-  for (const f of globals) grid.append(buildKnob(f, f.name));
-  host.append(grid);
+    const grid = document.createElement('div');
+    grid.className = 'global-grid';
+    for (const f of globals) grid.append(buildKnob(f, f.name));
+    host.append(grid);
+  }
 }
 
 function onVibeChange(f, norm, valEl) {
