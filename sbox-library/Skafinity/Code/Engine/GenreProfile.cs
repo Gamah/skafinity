@@ -725,7 +725,7 @@ sealed class GenreProfile
 		new()
 		{
 			SwingChance = 0f,   // machine-straight
-			BpmMin = 160, BpmMax = 200, FastBpmMin = 160, FastBpmMax = 200, AlwaysFast = true,
+			BpmMin = 150, BpmMax = 180, FastBpmMin = 175, FastBpmMax = 200,
 			TempoFloor = 130, TempoCeil = 225,
 			ChordBars = 1, RideLean = 0.20f,
 			Endings = new[] { EndingStyle.StopHit, EndingStyle.Ring },

@@ -1090,7 +1090,13 @@ static class Program
 
 		// Punk is the fast genre by definition, and punk/pop take a chord per bar so their
 		// four-chord loop is the four-bar hypermeasure.
-		Check( "punk always runs hot", GenreProfile.For( 4 ).AlwaysFast );
+		// Punk is the fast genre, but it is no longer the one genre with NO ordinary band — it
+		// used to set AlwaysFast with both bands equal, which made its uptempo end the median.
+		// What has to hold is the comparative claim, not the mechanism.
+		bool punkFastest = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			if ( g != 4 ) punkFastest &= GenreProfile.For( 4 ).BpmMin > GenreProfile.For( g ).BpmMin;
+		Check( "punk has the fastest ordinary band", punkFastest );
 		Check( "punk changes chord every bar", GenreProfile.For( 4 ).ChordBars == 1 );
 		Check( "pop changes chord every bar", GenreProfile.For( 5 ).ChordBars == 1 );
 		Check( "ska holds a chord for two bars", GenreProfile.For( 0 ).ChordBars == 2 );

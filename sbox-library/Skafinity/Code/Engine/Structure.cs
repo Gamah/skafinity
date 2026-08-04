@@ -254,7 +254,11 @@ static class SongForm
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Verse,  8, 1, energy: Lift ),
 		new( Section.Chorus, 8, energy: Full ),
-		new( Section.Bridge, 4, energy: Mid, hemiola: true ),
+		// HALF TIME. A great deal of punk does this — the band drops to half the backbeat while
+		// the tempo does not move, which is what a mosh part IS, and it is the genre's only gear
+		// change. Without it a punk song can only run flat out for its whole length, and the
+		// tempo band takes the blame for what is really a form with no dynamic in it.
+		new( Section.Bridge, 4, energy: Mid, feel: 0.5f, hemiola: true ),
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Ending, 4, energy: Full ),
 	};
@@ -268,6 +272,9 @@ static class SongForm
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Verse,  8, 1, energy: Lift, hemiola: true ),
 		new( Section.Chorus, 8, energy: Full ),
+		// The same gear change, taken before the last chorus rather than in a bridge. There is no
+		// key lift here for it to undercut — which is exactly why it had to move out of Pop.
+		new( Section.Breakdown, 4, energy: Mid, feel: 0.5f ),
 		new( Section.Chorus, 8, energy: Full ),
 		new( Section.Ending, 4, energy: Full ),
 	};
@@ -275,6 +282,17 @@ static class SongForm
 	// Pop — the modern shape: pre-chorus into every chorus, a half-time "drop" bridge, and the
 	// last chorus lifted a tone. The four-chord loop already IS the hypermeasure here
 	// (GenreProfile.ChordBars = 1), so the form is what varies rather than the harmony.
+	// THE MODULATION IS DIRECT — chorus straight into chorus a tone up, with nothing in between.
+	// That is the device pop actually uses (the "truck driver's gear change"), and it works BECAUSE
+	// it is abrupt: the lift is the whole gesture.
+	//
+	// A half-time breakdown used to sit in that gap, at energy 0.30, and it is the one thing in
+	// this form that had to go. A modulation lifts a song relative to what came before it, so
+	// dropping the floor out immediately beforehand leaves it nothing to lift FROM — the band goes
+	// quiet and half-time, and then the key change arrives at a section the listener has just
+	// stopped tracking. Two good devices, one after the other, cancelling.
+	//
+	// The drop is not lost: PopB carries it, mid-song, where a pop record puts it.
 	public static readonly Part[] Pop =
 	{
 		new( Section.Intro,     4, energy: Low ),
@@ -284,19 +302,20 @@ static class SongForm
 		new( Section.Verse,     8, 1, energy: Mid ),
 		new( Section.PreChorus, 4, energy: Lift ),
 		new( Section.Chorus,    8, energy: Full ),
-		new( Section.Breakdown, 4, energy: Low, feel: 0.5f ),
 		new( Section.Chorus,    8, energy: Full, keyShift: 2 ),
 		new( Section.Ending,    4, energy: Lift ),
 	};
-	// The alternate: no drop, and a post-chorus instead — the second pre-chorus lands after the
-	// chorus rather than before it, which is where a lot of the decade's singles put their hook.
+	// The alternate: this is where pop's half-time DROP lives, and it lives MID-SONG — after the
+	// first chorus, which is where a record puts it and where it has a chorus to fall out of and a
+	// verse to build back through. The modulation at the end is direct here too, for the reason
+	// spelled out on Pop.
 	public static readonly Part[] PopB =
 	{
 		new( Section.Intro,     4, energy: Low ),
 		new( Section.Verse,     8, 0, energy: Mid ),
 		new( Section.PreChorus, 4, energy: Lift ),
 		new( Section.Chorus,    8, energy: Full ),
-		new( Section.PreChorus, 4, energy: Lift ),
+		new( Section.Breakdown, 4, energy: Low, feel: 0.5f ),
 		new( Section.Verse,     8, 1, energy: Mid ),
 		new( Section.PreChorus, 4, energy: Lift, hemiola: true ),
 		new( Section.Chorus,    8, energy: Full ),
