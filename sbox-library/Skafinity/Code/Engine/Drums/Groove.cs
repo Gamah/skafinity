@@ -196,6 +196,22 @@ sealed class DrumGroove
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
 			GhostRate = 0.3f, CrashOnOne = 0.5f,
 		},
+		new()
+		{
+			Name = "groove",
+			// The same backbeat punk just got, with the double tightened to a SIXTEENTH pair — the
+			// groove-metal read of it. Metal's other two grooves are both walls (a sixteenth burst
+			// and a kick on every eighth), so this is the one that leaves space, and space is what
+			// makes the walls land.
+			//
+			// A separate object from punk's rather than a shared one: no two genres may hold the
+			// same groove, and these genuinely differ — the eighth double is a push, the sixteenth
+			// double is a stutter.
+			Kick = S( 0, R, R, R, R, R, R, R, 0, R, 0, R, R, R, R, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0.25f, CrashOnOne = 0.5f,
+		},
 	};
 
 	// ── Punk ──
@@ -225,6 +241,23 @@ sealed class DrumGroove
 			           R, R, 0, R, R, R, 0, Ghost ),
 			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
 			GhostRate = 0.5f, CrashOnOne = 0.5f,
+		},
+		new()
+		{
+			Name = "backbeat",
+			// KICK, SNARE, KICK-KICK, SNARE — the plainest beat in this music and the one both this
+			// genre and metal were missing entirely. Every other groove in either table drives the
+			// kick on every beat ("eighth drive", "thrash") or every eighth, or bursts it at the
+			// sixteenth; none of them just plays a backbeat. The result was two genres that could
+			// only ever go flat out, which is the same gap the missing half-time feel was.
+			//
+			// The gesture is the doubled kick pushing INTO beat 3 — the kick on 3 and on the "and"
+			// of 3 under a plain 2-and-4 snare. There is no crisp technical name for it; drummers
+			// mostly call it the basic rock beat, and the doubling is what stops it being one.
+			Kick = E( 0, R, R, R, 0, 0, R, R ),
+			Snare = E( R, R, 0, R, R, R, 0, R ),
+			Cymbal = E( 0, 0, 0, 0, 0, 0, 0, 0 ),
+			GhostRate = 0.35f, CrashOnOne = 0.4f,
 		},
 	};
 
