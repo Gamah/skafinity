@@ -1006,6 +1006,26 @@ pre-chorus over an eight-bar tune otherwise stated the call and was cut off by t
 the answer arrived — a phrase interrupted by the next phrase, which is what "two ideas at once"
 sounds like from the outside.
 
+**A TUNE'S RHYTHM IS BUILT BEAT BY BEAT, AND THE ACCUMULATOR MUST RE-ANCHOR.** The note lengths
+are a weighted menu (16th, 8th, dotted 8th, quarter, dotted quarter, half — all exact at
+`TicksPerBeat = 48`), and running that menu as a free `t += len` accumulator is the single worst
+thing that has been done to this engine. A dotted eighth or a sixteenth shifts **every remaining
+note of the phrase** by a non-beat amount, permanently: the line rotates against the bar and never
+comes back, which is a 3-against-4 running for eight bars rather than a melody. It reads exactly
+as it is — the lead out of time with the band, and disjointed. The rule is the one a player reads
+off a stave: **inside a beat you may only play what fits the rest of it**, so a dotted eighth is
+followed by a sixteenth and the next beat starts on the beat. Notes still land on the "and" and on
+sixteenths; what they cannot do is drift.
+
+**And this is the case that shows what a proxy metric costs.** `--stats` reports "off the eighth
+grid %", the plan said it should "become non-zero", and it went 0% → 45%, which was recorded as a
+success. 45% is not "non-zero", it is the tune no longer relating to the beat — the number went
+the right direction for entirely the wrong reason and no other check could see it, because
+`--grid` only asks whether a voice is on the song's TICK grid and a drifting line is. It sits at
+14–32% now (metal highest, punk lowest, which is what the vocabularies say it should be). **A
+sweep number is a proxy; when one moves a long way, ask which mechanism moved it before recording
+it as the fix landing.**
+
 **THE CONTOUR IS NOT A RANDOM WALK, AND THREE SEPARATE THINGS KEEP IT FROM BEING ONE.** The line
 used to step or leap at random inside a `Clamp`, so 12–18% of every tune's notes sat pinned against
 the range ends and the only thing that ever brought a phrase home was the forced tonic on the last
@@ -1153,6 +1173,12 @@ same argument `PlanTrace` makes about re-deriving the plan. For the same reason 
 stays: retiring it means the bass reading the *planned* comp line, and the planned line is not the
 played one until the per-bar precedence (hemiola, then loud, then the flourish) has run.
 
+**An arranged figure still has to ASCEND.** `Pattern` computes each onset's span from the next
+onset, so one out-of-order tick gives a negative span clamped to 1 — every note in that figure
+becomes a one-tick blip, and nothing anywhere reports it. `Recombine` did precisely that by mapping
+a two-bar source figure's second bar back onto its first with `tick % barTicks`. The suite checks it
+now, on songs it was already planning.
+
 **Counting states on figure object IDENTITY stopped working here.** It answered exactly the right
 question while a figure could only ever be an entry in a static table, and answers nothing once a
 song can arrange one, since every arranged figure is a fresh object whether or not it differs.
@@ -1223,6 +1249,17 @@ not divide the bar genuinely drifts and comes back.
   and what a busier drummer adds is ornament). And **dynamics**: it goes through `NoteGain` like
   every other voice, which it uniquely did not before. `FillCells` fixes the per-beat draw count
   across all three grids so the TRIPLET knob cannot change how much of the stream a fill spends.
+- **SHORT SONGS ARE THE POINT, and this is where a future session will go wrong.** This is a game,
+  not a record: the toy streams endlessly while somebody plays, so the song boundary is WHERE THE
+  VARIETY ARRIVES — twice as many songs is twice as many keys, tempos, grooves and tunes, and it is
+  also less decoded PCM held by the web player. Published genre averages (punk ~2:46, pop 3:00–3:30,
+  country 3:13–4:00, thrash ~5:00) put every genre here well under its own figure **deliberately**;
+  that research is real and it answers a different question. So the drawn details SHORTEN — a
+  dropped optional section, a cut final verse — and the verse is one fixed length. The only detail
+  that lengthens is the repeated outro chorus, kept because it is idiomatic and made rare for
+  exactly this reason. If length ever does want to grow, `{ 8, 16 }` is the musically correct verse
+  set (over 90% of sections in this music are 8 or 16 bars; 12 is the blues form and belongs to
+  country and blues-rock; a 4-bar verse is not a verse).
 - **A genre's form is a FAMILY, and the song's form is drawn once into `_form`.**
   `GenreProfile.Forms` holds 2 authored variants per genre with weights; `MusicGen.DrawForm` picks
   one and draws the details over it (verse length, whether the optional section appears, whether

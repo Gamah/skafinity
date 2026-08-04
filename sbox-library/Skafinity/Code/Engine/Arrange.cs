@@ -419,15 +419,20 @@ public sealed partial class MusicGen
 			if ( ticks[i] >= from && ticks[i] < to )
 			{ ticks.RemoveAt( i ); values.RemoveAt( i ); vels.RemoveAt( i ); }
 
-		int at = 0;
-		while ( at < ticks.Count && ticks[at] < from ) at++;
+		// ONE bar of the other figure, folded onto this bar — and taken from ONE of its bars, not
+		// every bar of it collapsed together. `tick % barTicks` maps a two-bar figure's second bar
+		// back onto its first, so reading the whole thing would interleave two bars' onsets into
+		// one and hand back a list that no longer ascends.
+		int otherBar = (rng.Int( Math.Max( 1, other.LengthTicks / barTicks ) )) * barTicks;
 		for ( int i = 0; i < other.Count; i++ )
 		{
-			int t = other.TickAt( i ) % barTicks + from;
-			if ( other.TickAt( i ) >= barTicks * Math.Max( 1, other.LengthTicks / barTicks ) ) break;
+			int ot = other.TickAt( i );
+			if ( ot < otherBar || ot >= otherBar + barTicks ) continue;
+			int t = ot - otherBar + from;
 			if ( t < from || t >= to || ticks.Contains( t ) ) continue;
+			int at = 0;
+			while ( at < ticks.Count && ticks[at] < t ) at++;
 			ticks.Insert( at, t ); values.Insert( at, other.ValueAt( i ) ); vels.Insert( at, other.VelAt( i ) );
-			at++;
 		}
 	}
 }

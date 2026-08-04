@@ -144,7 +144,29 @@ static class Melody
 		var rhythm = new List<int>();
 		for ( int t = 0; t < phraseTicks; )
 		{
-			int len = Lengths[rng.WeightedIndex( weights )];
+			// THE PHRASE RE-ANCHORS TO THE BEAT, and without this the widened vocabulary is worse
+			// than the two lengths it replaced. Free-running the accumulator over the menu means a
+			// dotted eighth or a sixteenth shifts EVERY REMAINING NOTE of the phrase by a non-beat
+			// amount, permanently — the line rotates against the bar and never comes back, which is
+			// a 3-against-4 running for eight bars rather than a melody. It reads as the lead being
+			// out of time with the band, because it is.
+			//
+			// The rule is the one a player reads off a stave: inside a beat you may only play what
+			// fits the rest of it. So a dotted eighth is followed by a sixteenth, a sixteenth by
+			// whatever fills the remaining three, and the next beat starts on the beat. Notes still
+			// land on the "and" and on sixteenths — what they cannot do is drift.
+			int inBeat = t % Timing.TicksPerBeat;
+			int len;
+			if ( inBeat == 0 ) len = Lengths[rng.WeightedIndex( weights )];
+			else
+			{
+				int room = Timing.TicksPerBeat - inBeat;
+				var fits = new int[Lengths.Length];
+				bool any = false;
+				for ( int i = 0; i < Lengths.Length; i++ )
+					if ( Lengths[i] <= room ) { fits[i] = weights[i]; any |= weights[i] > 0; }
+				len = any ? Lengths[rng.WeightedIndex( fits )] : room;
+			}
 			// Never open the phrase on silence: a tune that starts by not being there has no shape
 			// for the answer to repeat.
 			if ( rhythm.Count == 0 || !rng.Chance( v.Rest ) ) rhythm.Add( t );

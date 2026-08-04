@@ -206,22 +206,37 @@ sealed class GenreProfile
 	public Part[][] Forms { get; init; }
 	public int[] FormWeights { get; init; }
 
-	/// <summary>How long a VERSE runs, drawn per song. Only the verse: a chorus's length is part of
-	/// what every chorus has to agree about, and the ending is four bars because the hypermeasure
-	/// says so.
+	/// <summary>
+	/// How long a VERSE runs. Only the verse: a chorus's length is part of what every chorus has to
+	/// agree about, and the ending is four bars because the hypermeasure says so.
 	///
-	/// The constraint to hold when choosing these is the TUNE's length — it is the harmonic cycle,
-	/// so a twelve-bar verse over an eight-bar tune restates it mid-phrase. That is not new (an
-	/// eight-bar section over a six-bar tune already does it) and RenderTune's anchor pull-back
-	/// handles the short side, but it is why 8 and 16 carry most of the weight.</summary>
-	public int[] VerseBars { get; init; } = { 8, 12, 16 };
-	public int[] VerseBarWeights { get; init; } = { 7, 2, 3 };
+	/// IT IS ONE VALUE, AND SHORT IS DELIBERATE. **This is a game, not a record.** The toy streams
+	/// endlessly while somebody plays, so the song boundary is WHERE THE VARIETY ARRIVES — a
+	/// listener who gets through twice as many songs hears twice as many keys, tempos, grooves and
+	/// tunes. Long songs spend that variety on repetition, and they cost memory, since the web
+	/// player holds several whole songs as decoded PCM.
+	///
+	/// Do not "fix" this against record lengths. Published genre averages put punk near 2:46, pop
+	/// 3:00-3:30, country 3:13-4:00 and thrash close to 5:00, and every genre here runs well under
+	/// its own figure on purpose. That research is real and it answers a different question — what
+	/// an album track runs, not what an in-game loop wants.
+	///
+	/// If length ever does want to grow, the musically correct set is { 8, 16 }: over 90% of
+	/// sections in this music are 8 or 16 bars, 12 is the blues form and belongs to country and
+	/// blues-rock rather than to pop or metal, and a 4-bar verse is not a verse. The other
+	/// constraint is the TUNE's length — it is the harmonic cycle, so a 12-bar verse over an 8-bar
+	/// tune restates it mid-phrase.</summary>
+	public int[] VerseBars { get; init; } = { 8 };
+	public int[] VerseBarWeights { get; init; } = { 1 };
 
 	/// <summary>Chance an OPTIONAL section (pre-chorus, bridge, solo, breakdown) is dropped from
 	/// this song. Which optional section a genre has is most of what distinguishes the six forms
 	/// from each other, so this stays low: it is a song that does without, not a genre that does.
-	/// </summary>
-	public float OptionalDropChance { get; init; } = 0.20f;
+	///
+	/// It is also the direction length variation is allowed to go. With the verse fixed, the drawn
+	/// details SHORTEN — a dropped section, a cut final verse — so a genre's songs spread down from
+	/// its own length rather than up from it.</summary>
+	public float OptionalDropChance { get; init; } = 0.25f;
 
 	/// <summary>Chance the form's key lift actually happens. Country and pop modulated up a tone
 	/// for the final chorus EVERY SINGLE SONG, which is a device wearing out.</summary>
@@ -229,8 +244,12 @@ sealed class GenreProfile
 
 	/// <summary>Chance the final chorus comes round twice. It is a repeated SECTION rather than a
 	/// longer one, so every chorus still agrees about its length — which is the invariant, and
-	/// doubling the bar count would have broken it.</summary>
-	public float DoubleFinalChorusChance { get; init; } = 0.25f;
+	/// doubling the bar count would have broken it.
+	///
+	/// Kept but made rare: the outro chorus is genuinely idiomatic in pop and ska-punk, and it is
+	/// also the only detail that LENGTHENS a song (see VerseBars on why that is the direction to be
+	/// sparing with).</summary>
+	public float DoubleFinalChorusChance { get; init; } = 0.10f;
 
 	/// <summary>Chance the last verse is cut short by four bars on the way into what follows.
 	/// </summary>

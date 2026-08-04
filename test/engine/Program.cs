@@ -1742,6 +1742,7 @@ static class Program
 		// expensive and a second plan per song would only be re-testing determinism, which the
 		// determinism section already owns.
 		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0;
+		bool ascends = true; string offender = null;
 		for ( int g = 0; g < GenreProfile.Count; g++ )
 			for ( int n = 0; n < 4; n++ )
 			{
@@ -1774,9 +1775,29 @@ static class Program
 				foreach ( var p in GenreProfile.For( g ).CompFigures )
 					authored |= FigureSig( p ) == FigureSig( song.SongParts.Comp );
 				if ( !authored ) moved++;
+
+				// AN ARRANGED FIGURE STILL ASCENDS. Pattern computes each onset's span from the
+				// NEXT onset, so an out-of-order tick gives a negative span clamped to 1 — every
+				// note in the figure becomes a one-tick blip and nothing anywhere reports it.
+				// Recombine did exactly that by folding a two-bar figure's second bar back onto its
+				// first. Checked here rather than in a loop of its own, because these songs are
+				// already planned and a plan is what this section is expensive for.
+				foreach ( var fig in new[] { song.SongParts.Comp, song.SongParts.Keys, song.SongParts.Bass } )
+				{
+					if ( fig == null ) continue;
+					for ( int i = 1; i < fig.Count; i++ )
+						if ( fig.TickAt( i ) <= fig.TickAt( i - 1 ) )
+						{ ascends = false; offender ??= $"genre {g} seed {n} figure index {i}"; }
+				}
 			}
 		Check( "every chorus of a song plays the same arranged part", chorusPairs > 0 && chorusMatched == chorusPairs,
 			$"{chorusMatched} of {chorusPairs} chorus pairs" );
+
+		// AN ARRANGED FIGURE STILL ASCENDS. Pattern computes each onset's span from the NEXT onset,
+		// so an out-of-order tick produces a negative span clamped to 1 — every note in the figure
+		// becomes a one-tick blip and nothing anywhere reports it. Recombine did exactly that by
+		// folding a two-bar figure's second bar back onto its first, and it cost a listen to find.
+		Check( "an arranged figure's onsets still ascend", ascends, offender );
 		Check( "the arranger works on the song's own part rather than quoting a table",
 			moved > songs / 4, $"{moved} of {songs} songs moved off the authored figure" );
 	}
