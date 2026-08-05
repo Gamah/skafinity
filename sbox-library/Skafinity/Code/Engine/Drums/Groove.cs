@@ -690,6 +690,29 @@ public sealed partial class MusicGen
 		_ => 1f,
 	};
 
+	/// <summary>
+	/// What the rest of the section is doing where this fill cell lands — the one thing a fill did
+	/// not read, on a grid that was already built for it.
+	///
+	/// A fill is the drummer's bar, but it is not played over silence: the melodic voices play
+	/// THROUGH a fill (only the kit hands over), so a fill that puts a hit on the note the tune is
+	/// landing on is two things arriving on the same beat. And the seam is what the fill is FOR —
+	/// it is crossing one, and leaning on it is the gesture.
+	///
+	/// A multiplier on a probability, so it changes nothing about how much of the stream a fill
+	/// spends: <see cref="FillCells"/>'s rule holds, and the density target still means what it
+	/// said. Deliberately gentle in both directions — a fill that dodged the tune outright would
+	/// be a fill written by the melody.
+	/// </summary>
+	float FillAgainst( int tick )
+	{
+		var sk = _skeleton;
+		if ( sk == null ) return 1f;
+		int c = sk.CellAt( tick );
+		if ( c < 0 ) return 1f;
+		return (sk.TuneOn[c] ? 0.6f : 1f) * (sk.Seam[c] ? 1.25f : 1f);
+	}
+
 	// One fill across a span. The span is whatever FillStart drew, so the same code plays a
 	// one-beat pickup and a two-bar blow-out; the terminal crash lands on the downbeat it is
 	// leading into.
@@ -732,9 +755,9 @@ public sealed partial class MusicGen
 				float r = rng.Next(), d = rng.Next();
 				if ( i >= n ) continue;
 				float p = flurry ? flurryK * FillFlurry[i] : cells[i];
-				if ( r >= Math.Clamp( p * dens, 0f, 1f ) ) continue;
-
 				int cellTick = beatTick + i * Timing.TicksPerBeat / n;
+				if ( r >= Math.Clamp( p * dens * FillAgainst( cellTick ), 0f, 1f ) ) continue;
+
 				// A tuplet divides its own span evenly; a straight cell is a grid position and
 				// shuffles with everything else the band lands on (see Timing).
 				int t = triplet
