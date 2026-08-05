@@ -221,6 +221,14 @@ table says where, and it has been wrong to guess before.
   CI, not in blessing — because the questions it answers are only visible across hundreds of songs,
   which is exactly why they survived so long. **Run it before a change and after it, and diff.**
 
+  **The kit has TWO counts and only one of them is a state.** `--stats` prints *planned* kits (the
+  kick/snare/cymbal patterns the composer handed the bar loop) and *played* kits (the onsets that
+  came out). Played was already 3.8–4.6 per song when the groove was a per-song constant, because
+  the per-bar ghost roll and the fill handover sit between the two — a stochastic ghost is not a
+  state, and reading that line as one would have declared the whole drums branch finished before it
+  started. Planned is the number that went 1.00 → 3.8–5.0. The same trap applies to anything else
+  measured "as played": ask whether the variation is a decision or a die.
+
   **It records rather than re-derives, and that is load-bearing.** Every onset it counts was
   written down by the voice that played it (`Engine/PlanTrace.cs`, attached with
   `MusicGen.BeginPlan( tag, cfg, trace )` and null in every ordinary render). A sweep that walked

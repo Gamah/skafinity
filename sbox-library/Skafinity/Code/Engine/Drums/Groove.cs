@@ -33,6 +33,17 @@ namespace Skafinity;
 ///   * <b>the accent weights are untouched and remain measured.</b> Velocity was a separate
 ///     question off the same pass and nothing about arranging placements reaches it.
 ///
+/// RESTORING THE MEASURED OCCUPANCY WAS CONSIDERED AND LOST, and this is recorded because the
+/// paragraph below is what will make a future session rediscover it. The pass read a DISTRIBUTION
+/// — what fraction of bars carry each drum at each position — and then thresholded it to binary
+/// cells, so the variance was measured and thrown away at authoring time; drawing the cells from
+/// those probabilities instead would give bar-to-bar variation that is the corpus's own rather
+/// than anyone's invention, and the near-certain positions would be a genre guard for free.
+/// (<see cref="MusicGen.FootOccupancy"/> is the one place it survives.) It lost on three counts:
+/// it caps variety at whatever the dataset's variance happens to be, it needs a fresh pass over
+/// Groove MIDI that neither this repo nor its tooling contains, and metal is not in the dataset at
+/// all. It is the fallback if free mutation ever turns out to wreck the genres, and it is scoped.
+///
 /// This distinction is <see cref="GenreProfile.FillHits"/>'s, and it is here for the reason that
 /// block gives in its own words: a sentence in this register is READ as a measurement, so leaving
 /// the header saying "where the hits fall is measured" would launder an arrangement into a
