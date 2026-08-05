@@ -379,6 +379,10 @@ public sealed partial class MusicGen
 		// places and left every one of them able to disagree about what the section is — the same
 		// argument PlanTrace makes about re-deriving the plan.
 		PlanArrangement( part, sectionTick, beatsPerBar * Timing.TicksPerBeat, tune, bk );
+		// Recorded AFTER the arrangement, so what a sweep reads is the part the section will play
+		// rather than the table entry it started from.
+		Trace?.Mark( sectionTick, _sectionTicks, beatsPerBar * Timing.TicksPerBeat, part.Type,
+			_groove.Name, _groove.Kick, _groove.Snare, _groove.Cymbal );
 
 
 		bool isIntro = part.Type == Section.Intro;

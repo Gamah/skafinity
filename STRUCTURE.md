@@ -113,6 +113,79 @@ more interesting". `--stats` has to report them per genre, before and after.
 this file before Phase 1, exactly as last time. Re-deriving a baseline later means checking out a
 pre-branch build.
 
+### Landed, and it needed one thing nobody listed
+
+The sweep counts onsets, and every onset it has is one flat list per voice with no boundaries in
+it — so *"per section"* was not a question it could ask at all. `PlanTrace` gains the section
+spans, **recorded by the composer** rather than re-walked from the form, for the reason the onsets
+themselves are: a second bar ruler is wrong exactly when the form varies per song, which it now
+does. The span carries the kit's PLAN with it (the groove's name and its three patterns as
+handed to the bar loop).
+
+**Two kit counts, and only the first is the one this branch is about.** *Planned* is those
+patterns; *played* is the onsets that came out, which carry the per-bar ghost roll and the fill
+handover on top. Played was already 3.8–4.6 per song before a line changed, and it says nothing
+about whether the kit varies — a stochastic ghost is not a state. Reading it as one would have
+declared this branch finished before it started.
+
+### The baseline — `--stats 500`, at `f97dad0`
+
+```
+── distinct kits (kick x snare x cymbal, hashed on content) ──
+  Ska-Punk  planned     2 over the sweep,  1.00 per song   played   122 / 4.43   (of 8.7 sections)
+  Rock      planned     2 over the sweep,  1.00 per song   played    34 / 3.94   (of 9.1 sections)
+  Country   planned     2 over the sweep,  1.00 per song   played  1369 / 4.63   (of 8.3 sections)
+  Metal     planned     3 over the sweep,  1.00 per song   played    35 / 3.82   (of 8.6 sections)
+  Punk      planned     3 over the sweep,  1.00 per song   played   480 / 4.01   (of 7.8 sections)
+  Pop       planned     2 over the sweep,  1.00 per song   played    29 / 4.14   (of 8.9 sections)
+
+── kit identity tells (the three the corpus pass corrected) ──
+  Ska-Punk  cym beat   90%   cym &   78%   kick &1&3    0%   snare/bar  1.7 (1.2 struck)
+  Rock      cym beat   94%   cym &   88%   kick &1&3   29%   snare/bar  2.0 (1.9 struck)
+  Country   cym beat   39%   cym &   76%   kick &1&3    0%   snare/bar  8.7 (1.9 struck)
+  Metal     cym beat   90%   cym &   79%   kick &1&3   35%   snare/bar  2.6 (2.6 struck)
+  Punk      cym beat   94%   cym &   89%   kick &1&3   14%   snare/bar  4.5 (2.4 struck)
+  Pop       cym beat   92%   cym &   87%   kick &1&3    0%   snare/bar  1.5 (1.5 struck)
+
+── per-position occupancy: fraction of bars carrying that drum there ──
+               1  e  &  a  2  e  &  a  3  e  &  a  4  e  &  a
+  Ska-Punk   kick     41  0  0  0 34  0  0  0 88  0  0  0 31  0  0  0
+             snare     3  0  0  0 79  0  0  0 57  0  0  0 31  0  0  0
+             cym      97  0 81  0 87  0 81  0 94  0 78  0 80  0 74  0
+  Rock       kick     97  0 30  0  0  0 67  0 94  0 27  0 16  0  0  0
+             snare     0  0  0  0 97  0  0  0  0  0  0  0 89  0 13  0
+             cym      97  0 91  0 97  0 91  0 94  0 88  0 89  0 83  0
+  Country    kick     97  0  0  0  0  0  0  0 94  0  0  0  0  0  0  0
+             snare    50 50 50 50 97 50 50 50 49 49 49 48 89 46 46 46
+             cym      68  0 92  0 27  0 59  0 62  0 89  0  0  0 65  0
+  Metal      kick     97  8 34  8 91 35 34 36 94  7 36  7 85 40 59 15
+             snare     0  0 27  0 64  0 27  0  7  0 26  0 60  0 48  0
+             cym      97  0 81  0 88  0 81  0 94  0 79  0 81  0 75  0
+  Punk       kick     96  0  0  0 66 28 26  0 67  0 27  0 61 26  0  0
+             snare    36  0 62  0 67  0 62  0 37  0 60  0 61  0 67  0
+             cym      97  0 92  0 97  0 92  0 94  0 88  0 89  0 84  0
+  Pop        kick     97  0  0  0 58  0 37  0 57  0  0  0 87  0  0  0
+             snare     0  0  0  0 58  0  0  0 37  0  0  0 53  0  0  0
+             cym      97  0 88 37 92  0 92 35 93  0 85 36 85  0 83 32
+
+── cohesion (% of A's onsets that land on a B) ──
+  Ska-Punk  bass->kick 26%  kick->bass  87%  comp->snare 15%  snare->comp 34%  bass->comp 53%
+  Rock      bass->kick 46%  kick->bass  75%  comp->snare 26%  snare->comp 61%  bass->comp 64%
+  Country   bass->kick 41%  kick->bass 100%  comp->snare 50%  snare->comp 18%  bass->comp 17%
+  Metal     bass->kick 55%  kick->bass  83%  comp->snare 17%  snare->comp 94%  bass->comp 98%
+  Punk      bass->kick 45%  kick->bass  89%  comp->snare 57%  snare->comp 96%  bass->comp 96%
+  Pop       bass->kick 52%  kick->bass  75%  comp->snare 15%  snare->comp 12%  bass->comp 25%
+
+── distinct rhythm sections (the song's own) ──
+  Ska-Punk 227   Rock 481   Country 351   Metal 308   Punk 133   Pop 329   (of 500)
+```
+
+Two rows of that are the tripwire in its resting state and are worth reading before touching
+anything: **country's cymbal is 39% on the beat against 76% on the "&"** (the corpus says 36/84,
+so the table is doing its job), and **rock's kick carries &1/&3 in 29% of bars** where ska,
+country and pop carry them in none at all. Punk's snare is 4.5 a bar with only 2.4 struck — the
+ghosts are the density and the strikes are the backbeat, which is why the two are counted apart.
+
 ---
 
 ## Phase 1 — the kit is arranged, per section

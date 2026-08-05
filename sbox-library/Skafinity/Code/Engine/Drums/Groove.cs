@@ -491,7 +491,7 @@ public sealed partial class MusicGen
 			// The groove's own ghost notes thin out with the section rather than hammering a
 			// verse as hard as a chorus.
 			if ( ghost && !noise.Chance( 0.35f + 0.65f * _energy ) ) continue;
-			Trace?.Add( TraceVoice.Snare, h.Tick );
+			Trace?.Add( TraceVoice.Snare, h.Tick, !ghost );
 			RenderSnare( _time.TickToSample( h.Tick ), noise, ghost );
 		}
 

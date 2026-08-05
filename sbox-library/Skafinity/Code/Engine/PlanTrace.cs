@@ -28,6 +28,35 @@ sealed class PlanTrace
 {
 	const int Voices = 7;
 
+	/// <summary>One section, as the composer laid it out. Recorded rather than re-derived for the
+	/// same reason the onsets are: a sweep that walked the form itself would be a second bar ruler,
+	/// and it would be wrong exactly when the form varies per song — which it now does.</summary>
+	public readonly struct SectionSpan
+	{
+		public readonly int Tick, Ticks, BarTicks;
+		public readonly Section Type;
+		/// <summary>The groove the section drew, and the kit patterns it will actually play — which
+		/// are the drawn ones worked on, so the two are no longer the same thing. This is the kit's
+		/// PLAN; what the trace's onsets carry is the realisation, and the ghost roll and the fill
+		/// sit between them.</summary>
+		public readonly string Groove;
+		public readonly Pattern Kick, Snare, Cymbal;
+		public SectionSpan( int tick, int ticks, int barTicks, Section type,
+			string groove, Pattern kick, Pattern snare, Pattern cymbal )
+		{
+			Tick = tick; Ticks = ticks; BarTicks = barTicks; Type = type;
+			Groove = groove; Kick = kick; Snare = snare; Cymbal = cymbal;
+		}
+	}
+
+	/// <summary>The song's sections in order. What makes a per-SECTION question askable at all —
+	/// the onsets below are one flat list per voice and carry no boundaries of their own.</summary>
+	public readonly List<SectionSpan> Sections = new();
+
+	public void Mark( int tick, int ticks, int barTicks, Section type,
+		string groove, Pattern kick, Pattern snare, Pattern cymbal )
+		=> Sections.Add( new SectionSpan( tick, ticks, barTicks, type, groove, kick, snare, cymbal ) );
+
 	readonly List<int>[] _ticks = new List<int>[Voices];
 
 	public PlanTrace()
@@ -39,6 +68,19 @@ sealed class PlanTrace
 	public List<int> Of( TraceVoice v ) => _ticks[(int)v];
 
 	public void Add( TraceVoice v, int tick ) => _ticks[(int)v].Add( tick );
+
+	/// <summary>An onset that is a STRUCK hit rather than a ghost. Ghosts are half of what a snare
+	/// plays in three of these genres, so a count that does not separate them says "punk plays a
+	/// lot of snare" where the tell is "punk STRIKES two of them and ghosts the rest".</summary>
+	public void Add( TraceVoice v, int tick, bool struck )
+	{
+		_ticks[(int)v].Add( tick );
+		if ( struck ) _struck[(int)v]++;
+	}
+
+	readonly int[] _struck = new int[Voices];
+
+	public int Struck( TraceVoice v ) => _struck[(int)v];
 
 	/// <summary>Record a bar's worth of sliced hits.</summary>
 	public void Add( TraceVoice v, List<Hit> hits )
