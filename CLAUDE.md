@@ -663,6 +663,18 @@ say what it counted, and some sources do.** Where no such source exists the band
 move: "Raining Blood" is still not an anchor, and *NSYNC's "Bye Bye Bye" (173 or 86, nothing
 deciding) is deliberately not one either.
 
+**The kit is arranged, so the groove tables are SEED MATERIAL and not what ships.** A section draws
+its own groove and its kick and snare go through the same `Arrange` every other voice does. So the
+measured placements are real and are still why the tables look the way they do, and the bar a
+listener hears is a mutation of one — the same split `FillHits` already draws row by row. What
+bounds it is the **spine** (`DrumGroove.SpineOf`), and it is a LAW rather than a per-groove list of
+protected ticks: every struck snare, and every kick on a bar's first beat. A list would be a table
+that has to be re-authored whenever a groove is added and is silently wrong when nobody does. **The
+cymbal is not arranged at all** — it is the pulse, and country's hat on the "and" is the largest
+mismatch the corpus pass found, so it is preserved by construction rather than by a rule that can
+be got wrong. The accent weights are untouched and remain measured: velocity was a separate
+question off the same pass.
+
 **The grooves and the accent weights are measured too, off a different kind of source.** There is no
 equivalent of a bpm field for where the kick falls in a train beat, so the drum tables are fitted to
 a corpus of played performances instead: Google Magenta's Groove MIDI Dataset, whose every file is
@@ -1180,7 +1192,29 @@ played one until the per-bar precedence (hemiola, then loud, then the flourish) 
 onset, so one out-of-order tick gives a negative span clamped to 1 — every note in that figure
 becomes a one-tick blip, and nothing anywhere reports it. `Recombine` did precisely that by mapping
 a two-bar source figure's second bar back onto its first with `tick % barTicks`. The suite checks it
-now, on songs it was already planning.
+now, on songs it was already planning — over the kit's patterns as well as the band's.
+
+**WHO WRITES FIRST IS A PER-SONG DRAW, AND THE SIGN OF THE KICK'S `Complement` IS THE WHOLE
+DIFFERENCE.** Three of the four things the skeleton carries — seams, metre, the tune — do not need
+the kit, which is what makes both orderings one mechanism: a **leading** kit arranges against those
+three and the band then answers its accents; a **following** kit arranges last, against what the
+band actually took. `Score` reads `Complement` as a push AWAY, which is right for every melodic
+voice and for a leading kick. A following kick is the opposite gesture — the riff is already on the
+grid and a drummer playing to it lands *with* it — so `MusicGen.KickRole()` negates it. Built with
+the same sign on both sides, the two modes came out agreeing to within a point, which is a
+mechanism that costs a draw and buys nothing; `--stats` reports cohesion **split by which mode the
+song drew**, because averaging two mechanisms describes neither. Note the honest limit: with the
+sign right they still differ by under two points on whole-song agreement, because one mutation a
+section cannot move a bulk percentage. The number is not where this shows.
+
+**Energy reaches what the kit PLAYS through `KitBias`, which shifts weight between DROP and ADD
+without changing what the draw costs** — so a quiet section is likelier to lose an onset and a loud
+one to gain one, and `DrumBusy`/`DrumTone` feed that decision rather than multiplying its output. A
+quiet section **in normal time** thins to the spine alone, and the `_feel >= 1` gate is the
+mechanism rather than a caveat: half time is already a pattern rate, so a breakdown that thinned
+twice would be a hole in the arrangement. Every `Breakdown` in every form is half time, which is
+why this fires on the INTRO — and which makes it one threshold away from being unreachable, so the
+suite asserts that it fires at all.
 
 **Counting states on figure object IDENTITY stopped working here.** It answered exactly the right
 question while a figure could only ever be an entry in a static table, and answers nothing once a
@@ -1277,7 +1311,7 @@ not divide the bar genuinely drifts and comes back.
   still agree about its length; and a truncated verse still lands on a multiple of four, because
   the hypermeasure is why the ending is 4 bars and not 2 and it does not stop applying to a drawn
   length. The suite asserts all of that over drawn forms.
-- **Figures are drawn per SECTION, not per song.** A chorus plays the song's own figure (`_songComp`
+- **Figures are drawn per SECTION, not per song — the groove included.** A chorus plays the song's own figure (`_songComp`
   / `_songKeys` / `_songBass` — that is the song's identity, and every chorus must agree); other
   sections draw their own off a stream keyed by section type, so a verse contrasts while both
   verses still match. Drawing once per song meant a two-bar figure really was everything a listener

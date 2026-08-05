@@ -18,7 +18,27 @@ namespace Skafinity;
 /// <see cref="Open"/> for the open hat / ride bell — which of the two instruments plays is the
 /// section's hats-or-ride roll, not the groove's business.
 ///
-/// WHERE THE HITS FALL IS MEASURED, the same way the accent weights in
+/// WHAT IS MEASURED IS THE TABLE, AND WHAT SHIPS IS ARRANGED FROM IT. Read this before quoting
+/// any number below. The placements were fitted to a played corpus and they are real; the engine
+/// then draws a groove per SECTION and works on its kick and snare against the section's skeleton
+/// (see <see cref="MusicGen.ArrangeKit"/>), so a bar that reaches a listener is a mutation of a
+/// measured pattern rather than the pattern itself. Three things follow and they are separable:
+///
+///   * <b>the tables are measured SEED material.</b> The placements are real, the three
+///     corrections below are still why these tables look the way they do, and the arranger never
+///     invents a gesture the genre does not have.
+///   * <b>what the engine plays is a design call</b>, bounded by the SPINE (see
+///     <see cref="SpineOf"/>) — the struck backbeat and the downbeat kick, which mutation may not
+///     reach, so a genre's identity survives being arranged.
+///   * <b>the accent weights are untouched and remain measured.</b> Velocity was a separate
+///     question off the same pass and nothing about arranging placements reaches it.
+///
+/// This distinction is <see cref="GenreProfile.FillHits"/>'s, and it is here for the reason that
+/// block gives in its own words: a sentence in this register is READ as a measurement, so leaving
+/// the header saying "where the hits fall is measured" would launder an arrangement into a
+/// citation.
+///
+/// WHERE THE TABLES' HITS FALL IS MEASURED, the same way the accent weights in
 /// <see cref="GenreProfile"/> are, off the same source: Google Magenta's Groove MIDI Dataset
 /// (CC BY 4.0; verified 2026-08-02, https://magenta.tensorflow.org/datasets/groove). Method, since
 /// neither the dataset nor the reader is in this repo: fold every note-on of every 4/4 performance
