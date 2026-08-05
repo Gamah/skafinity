@@ -203,6 +203,11 @@ public sealed partial class MusicGen
 	internal (Pattern Comp, Pattern Keys, Pattern Bass, DrumGroove Groove) SongParts =>
 		(_songComp, _songKeys, _songBass, _groove);
 
+	/// <summary>Whether this song's band wrote to the kit or the kit to the band. Cohesion is
+	/// achieved by two different mechanisms depending on the answer, so a sweep that averages the
+	/// two describes neither.</summary>
+	internal bool KitLeads => _kitLeads;
+
 	/// <summary>The song's two tunes (diagnostics — see <see cref="Melody"/>).</summary>
 	internal (Pattern Chorus, Pattern Verse) Tunes => (_chorusTune, _verseTune);
 
@@ -435,7 +440,14 @@ public sealed partial class MusicGen
 	// loud comp at all (null otherwise). Drawn once per song rather than per section on purpose:
 	// the loud sections are the choruses, and every chorus must agree — that is the song's hook.
 	Pattern _songLoud;
-	DrumGroove _groove;      // the song's groove — per-genre tables, not a shared switch default
+	DrumGroove _groove;      // the CURRENT SECTION's groove — per-genre tables, not a shared switch default
+	DrumGroove _songGroove;  // and the song's own, which every chorus plays
+	// What the kit actually plays this section: the groove's patterns, worked on by the arranger.
+	// Separate fields rather than a rebuilt DrumGroove so the groove stays the thing that was drawn
+	// and these stay the thing that is played — the same split PlanTrace records.
+	Pattern _kickFig, _snareFig;
+	Pattern _songKick, _songSnare;   // …and the song's own, which every chorus replays
+	bool _kitLeads;          // per song: does the band write to the kit, or the kit to the band
 	bool _riffBass;          // the bass reads the riff's onsets instead of playing its own pattern
 	EndingStyle _ending;     // how this song lands (see EndingStyle) — a per-song draw, not a fixed pad
 	readonly List<Hit> _riffOnsets = new(); // this bar's riff, for the bass to double

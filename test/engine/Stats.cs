@@ -62,6 +62,7 @@ static class Stats
 		public int[] KickOcc, SnareOcc, CymOcc;   // hits per sixteenth position of the bar
 		public int KitBars;                 // bars the occupancy was folded over
 		public int StruckSnares, PlayedSnares;
+		public bool KitLeads;               // did the band write to the kit, or the kit to the band
 	}
 
 	/// <summary>How many bars a kit signature folds over. Long enough for every groove in the
@@ -151,6 +152,7 @@ static class Stats
 				s.TuneSpans[i] = chorus.SpanAt( i );
 			}
 		}
+		s.KitLeads = g.KitLeads;
 		MeasureKit( trace, s );
 		return s;
 	}
@@ -395,6 +397,28 @@ static class Stats
 				+ $"   comp->snare {Agree( byGenre[g], TraceVoice.Comp, TraceVoice.Snare ),5}"
 				+ $"   snare->comp {Agree( byGenre[g], TraceVoice.Snare, TraceVoice.Comp ),5}"
 				+ $"   bass->comp {Agree( byGenre[g], TraceVoice.Bass, TraceVoice.Comp ),5}" );
+		Console.WriteLine();
+
+		// SPLIT BY WHICH MODE THE SONG DREW, because the two are not one number measured twice.
+		// Under "kit leads" cohesion is the band writing to a beat; under "kit follows" it is the
+		// drummer writing to the riff. Averaging them describes neither, and a shift in the mix of
+		// the two would read as a change in cohesion that never happened.
+		Console.WriteLine( "── the same, split by who wrote first ──" );
+		for ( int g = 0; g < byGenre.Length; g++ )
+		{
+			var leads = new List<Song>(); var follows = new List<Song>();
+			foreach ( var s in byGenre[g] ) (s.KitLeads ? leads : follows).Add( s );
+			foreach ( var (label, set) in new[] { ("kit leads ", leads), ("kit follows", follows) } )
+			{
+				if ( set.Count == 0 ) { Console.WriteLine( $"  {Name( g ),-9} {label}  —" ); continue; }
+				var songs = set.ToArray();
+				Console.WriteLine( $"  {Name( g ),-9} {label} {Pct( set.Count, byGenre[g].Length ),4}"
+					+ $"   bass->kick {Agree( songs, TraceVoice.Bass, TraceVoice.Kick ),5}"
+					+ $"   kick->bass {Agree( songs, TraceVoice.Kick, TraceVoice.Bass ),5}"
+					+ $"   comp->snare {Agree( songs, TraceVoice.Comp, TraceVoice.Snare ),5}"
+					+ $"   snare->comp {Agree( songs, TraceVoice.Snare, TraceVoice.Comp ),5}" );
+			}
+		}
 		Console.WriteLine();
 
 		Console.WriteLine( "── the full pairwise agreement matrix (rows = A, cols = B) ──" );

@@ -71,6 +71,35 @@ sealed class DrumGroove
 	/// <summary>Chance of a crash on the section's first downbeat.</summary>
 	public float CrashOnOne { get; init; } = 0.35f;
 
+	/// <summary>
+	/// THE SPINE: which of a groove's onsets ARE the genre, and so may not be dropped or moved.
+	///
+	/// This is the drums' answer to <see cref="CellClass"/>, and it is what stops arranging the kit
+	/// from eroding the three measured tells the corpus pass corrected. It is a LAW rather than a
+	/// per-groove list of ticks, because a list is a table that has to be re-authored every time a
+	/// groove is added and gets it wrong silently when nobody does:
+	///
+	///   * <b>every STRUCK snare</b>. The backbeat is where a genre puts it — 2 and 4 in most of
+	///     them, 3 alone in pop's half-time — and a rule phrased in beat numbers would be wrong for
+	///     whichever genre disagrees. The ghosts around it are the density and stay arrangeable,
+	///     which is the whole of what punk's snare has to say: strike two, ghost the rest.
+	///   * <b>every kick on a bar's first beat</b>. A groove that loses its downbeat kick is a
+	///     different groove, and <see cref="MusicGen.Drop"/>'s "never the first onset" rule only
+	///     ever protected bar one of a four-bar figure.
+	///
+	/// The cymbal has no spine here because the cymbal is not arranged at all: it is the pulse, and
+	/// country's hat on the "and" — the largest mismatch the corpus pass found — is preserved by
+	/// construction rather than by a rule that could be got wrong.
+	/// </summary>
+	public static bool[] SpineOf( Pattern p, bool kick, int barTicks )
+	{
+		if ( p == null ) return null;
+		var spine = new bool[p.Count];
+		for ( int i = 0; i < p.Count; i++ )
+			spine[i] = kick ? p.TickAt( i ) % barTicks == 0 : p.ValueAt( i ) != Ghost;
+		return spine;
+	}
+
 	const int R = Harmony.Rest;
 	static Pattern E( params int[] c ) => Pattern.Eighths( c );
 	static Pattern S( params int[] c ) => Pattern.Sixteenths( c );
@@ -470,7 +499,7 @@ public sealed partial class MusicGen
 		// waveform at the identical level sixteen times a bar — which is what machine-gunning is.
 		// Its depth is under the cymbal hand's and near the fill's: the kick is the floor of the
 		// groove and should breathe least.
-		var kicks = _groove.Kick.Slice( barTick, to, _sectionTick, _feel );
+		var kicks = _kickFig.Slice( barTick, to, _sectionTick, _feel );
 		Trace?.Add( TraceVoice.Kick, kicks );
 		foreach ( var h in kicks )
 			RenderKick( _time.TickToSample( h.Tick ), noise, KitGain( h.Tick, h.Vel, 0.30f ),
@@ -485,7 +514,7 @@ public sealed partial class MusicGen
 					RenderKick( _time.TickToSample( t ), noise, KitGain( t, 0.85f, 0.30f ),
 						_kickTone, 0f );
 
-		foreach ( var h in _groove.Snare.Slice( barTick, to, _sectionTick, _feel ) )
+		foreach ( var h in _snareFig.Slice( barTick, to, _sectionTick, _feel ) )
 		{
 			bool ghost = h.Value == DrumGroove.Ghost;
 			// The groove's own ghost notes thin out with the section rather than hammering a
