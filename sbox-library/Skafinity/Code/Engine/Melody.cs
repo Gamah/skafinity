@@ -75,6 +75,59 @@ static class Melody
 		AnswerOp.Transpose, AnswerOp.NewTail, AnswerOp.SequenceUp, AnswerOp.SequenceUp2, AnswerOp.Invert,
 	};
 
+	/// <summary>How the CONSEQUENT opens — the one decision that makes a period a period.
+	///
+	/// A period is two call/answer pairs: an antecedent that leaves the line open and a consequent
+	/// that closes it. Both pairs are built by exactly the machinery below; what varies is how much
+	/// of the antecedent's call the consequent's call keeps. That is the classical taxonomy and it
+	/// is also the whole variation budget — the answers repeat their own call's rhythm either way,
+	/// so if the consequent's call does not move, nothing in the tune's second half is new.</summary>
+	public enum PeriodShape
+	{
+		/// <summary>PARALLEL — the consequent restates the call note for note and differs only in
+		/// how it answers. The commonest period in this music, and the one that makes the tune
+		/// unmistakably one tune; it is also the least new material, which is why it is not the
+		/// only shape.</summary>
+		Parallel,
+		/// <summary>VARIED — the consequent keeps the call's rhythm and sings a fresh contour over
+		/// it. The rhythm is what a listener remembers, so this reads as the same phrase said again
+		/// differently rather than as a second idea.</summary>
+		Varied,
+		/// <summary>CONTRASTING — the consequent opens with a phrase of its own, rhythm and all.
+		/// The departure, and the only shape that puts a second rhythm in the tune.</summary>
+		Contrasting,
+	}
+
+	public static readonly PeriodShape[] Shapes =
+	{
+		PeriodShape.Parallel, PeriodShape.Varied, PeriodShape.Contrasting,
+	};
+
+	/// <summary>Authored, not measured — there is no melodic corpus in this repo (see the note on
+	/// <c>GenreProfile.Tune</c>) and this is a judgement about how much a tune may move under
+	/// itself. It is one table rather than six because nothing found says a genre has an opinion
+	/// about it; a genre that turns out to want one puts weights in <see cref="TuneVocab"/>, the
+	/// way <see cref="Answers"/> already does.</summary>
+	static readonly int[] ShapeWeights = { 4, 3, 3 };
+
+	/// <summary>Where an ANTECEDENT lands: a chord tone that is not the tonic, which is what leaves
+	/// the line open. The fifth is the half cadence proper and takes most of the weight; the third
+	/// is the softer one. Landing home here would close the tune half way through it and make the
+	/// consequent an appendix rather than an answer.</summary>
+	static readonly int[] HalfCadence = { 4, 2 };
+	static readonly int[] HalfCadenceWeights = { 3, 2 };
+
+	/// <summary>The fewest bars a phrase may be. A period is four phrases, so a tune shorter than
+	/// four of these is two phrases and no period — a one-bar "phrase" is a fragment, and four of
+	/// them is a tune that restates itself every bar, which is the defect this exists to fix
+	/// arriving from the other direction.</summary>
+	public const int MinPhraseBars = 2;
+
+	/// <summary>How many phrases a tune of <paramref name="bars"/> bars is written in: four (a
+	/// period) where they are long enough to be phrases, two (a plain call and answer) otherwise.
+	/// </summary>
+	public static int PhraseCount( int bars ) => bars >= 4 * MinPhraseBars ? 4 : 2;
+
 	/// <summary>Where a tune may open — chord tones only, weighted toward the tonic and the fifth,
 	/// with the octave reachable.</summary>
 	static readonly int[] Opens = { 0, 2, 4, 7 };
@@ -102,16 +155,28 @@ static class Melody
 	const float Centre = 0.30f;
 
 	/// <summary>
-	/// Draw a tune: <paramref name="bars"/> bars of CALL AND ANSWER. The first phrase states a
-	/// shape and leaves it open; the second repeats that rhythm and resolves it home. That
-	/// call/answer symmetry is most of what makes a line sound composed rather than generated —
-	/// a fresh random phrase every two bars never sounds like a tune however good the notes are.
+	/// Draw a tune: <paramref name="bars"/> bars built as a PERIOD where they are long enough for
+	/// one, and as a plain call and answer where they are not.
 	///
-	/// THE RHYTHM REPEAT STAYS. Varying the answer's rhythm too stops the two phrases being heard
-	/// as a question and an answer at all; the only rhythmic freedom the answer gets is where its
-	/// last notes land, and that arrives through <see cref="AnswerOp.NewTail"/> rather than through
-	/// a second rhythm draw. The 100%-tonic ending stays too — that is not a defect to be varied
-	/// away, it is what makes the thing a tune.
+	/// A call and answer is a pair of phrases — the first states a shape and leaves it open, the
+	/// second repeats that rhythm and resolves it home. That symmetry is most of what makes a line
+	/// sound composed rather than generated, and a fresh random phrase every two bars never sounds
+	/// like a tune however good the notes are.
+	///
+	/// A PERIOD IS TWO OF THOSE PAIRS AND SITS ABOVE THEM, NOT INSTEAD OF THEM. The antecedent
+	/// (call, answer) lands on a chord tone that is not the tonic and so leaves the line open; the
+	/// consequent (call, answer) opens from the antecedent — restating it, varying it, or departing
+	/// from it (<see cref="PeriodShape"/>) — and resolves home. That is what puts repetition at the
+	/// whole tune's length and variation at a phrase's, instead of the binary shape the tune had
+	/// before this: two phrases, one rhythm between them, looped to fill the section and repeated
+	/// identically at every chorus.
+	///
+	/// THE RHYTHM REPEAT STAYS, WITHIN A PAIR. Varying an answer's rhythm stops its two phrases
+	/// being heard as a question and an answer at all; the only rhythmic freedom an answer gets is
+	/// where its last notes land, and that arrives through <see cref="AnswerOp.NewTail"/> rather
+	/// than through a second rhythm draw. A new rhythm enters a tune at the CONSEQUENT'S CALL or
+	/// nowhere. The 100%-tonic ending stays too — that is not a defect to be varied away, it is
+	/// what makes the thing a tune.
 	/// </summary>
 	/// <param name="v">The genre's vocabulary — the note lengths it sings in, how often it rests,
 	/// how often it leaps, and how it answers itself.</param>
@@ -127,7 +192,8 @@ static class Melody
 	public static Pattern Draw( Rng rng, int bars, int barTicks, in TuneVocab v, float move = 1f,
 		bool swung = false )
 	{
-		int phraseTicks = barTicks * Math.Max( 1, bars / 2 );
+		int phrases = PhraseCount( bars );
+		int phraseTicks = barTicks * Math.Max( 1, bars / phrases );
 		var ticks = new List<int>();
 		var degrees = new List<int>();
 
@@ -143,14 +209,56 @@ static class Melody
 			weights[i] = Math.Max( 0, (int)MathF.Round( w * 8f ) );
 		}
 
-		// ── the call ──
-		// Rhythm first: a melody's rhythm is what gets remembered, and drawing it separately is
-		// what lets the answer repeat it exactly.
-		//
-		// A REST IS AN OMITTED ONSET, not a cell. Leaving the tick out means the previous note's
-		// SpanTicks simply grows to cover the gap, and RenderTune's two-beat length cap turns the
-		// remainder into real silence — so rests cost the renderer nothing. A Melody.Rest CELL
-		// would be read as a DEGREE by RenderTune, which has no rest arm, and sung.
+		// ── the antecedent ──
+		var callRhythm = DrawRhythm( rng, phraseTicks, weights, v );
+		var callDegrees = DrawContour( rng, callRhythm.Count, v );
+		Emit( ticks, degrees, 0, callRhythm, callDegrees );
+
+		// A HALF CADENCE IS WHAT MAKES THE CONSEQUENT NECESSARY. With a period the antecedent lands
+		// on a chord tone that is not the tonic and stays open; with only two phrases there is
+		// nothing after it, so it resolves the way it always did.
+		int open = phrases == 4 ? HalfCadence[rng.WeightedIndex( HalfCadenceWeights )] : 0;
+		Emit( ticks, degrees, phraseTicks, callRhythm, Answer( rng, callDegrees, v, open ) );
+
+		if ( phrases == 4 )
+		{
+			var shape = rng.PickWeighted( Shapes, ShapeWeights );
+			// BOTH DRAWN FOR EVERY SHAPE, so swapping one shape for another does not shift the rest
+			// of the tune's stream — the discipline PickOrNull keeps in the composer. A parallel
+			// consequent pays for a phrase it does not sing.
+			var freshRhythm = DrawRhythm( rng, phraseTicks, weights, v );
+			var conRhythm = shape == PeriodShape.Contrasting ? freshRhythm : callRhythm;
+			var freshDegrees = DrawContour( rng, conRhythm.Count, v );
+			var conDegrees = shape == PeriodShape.Parallel ? callDegrees : freshDegrees;
+
+			Emit( ticks, degrees, 2 * phraseTicks, conRhythm, conDegrees );
+			// The consequent answers with its own operator — that is what a parallel period varies,
+			// and it is the only thing it varies.
+			Emit( ticks, degrees, 3 * phraseTicks, conRhythm, Answer( rng, conDegrees, v, 0 ) );
+		}
+
+		// A held final note, so the tune breathes before it comes round again.
+		return new Pattern( bars * barTicks, ticks.ToArray(), degrees.ToArray() );
+	}
+
+	/// <summary>Append one phrase's onsets (offset to <paramref name="at"/>) and its degrees.
+	/// </summary>
+	static void Emit( List<int> ticks, List<int> degrees, int at, List<int> rhythm, List<int> pitches )
+	{
+		for ( int i = 0; i < rhythm.Count; i++ ) { ticks.Add( at + rhythm[i] ); degrees.Add( pitches[i] ); }
+	}
+
+	/// <summary>One phrase's RHYTHM — the onsets, in ticks from the phrase's own start.
+	///
+	/// Rhythm first, and separately from the pitches: a melody's rhythm is what gets remembered,
+	/// and drawing it on its own is what lets an answer repeat it exactly.
+	///
+	/// A REST IS AN OMITTED ONSET, not a cell. Leaving the tick out means the previous note's
+	/// SpanTicks simply grows to cover the gap, and RenderTune's two-beat length cap turns the
+	/// remainder into real silence — so rests cost the renderer nothing. A Melody.Rest CELL
+	/// would be read as a DEGREE by RenderTune, which has no rest arm, and sung.</summary>
+	static List<int> DrawRhythm( Rng rng, int phraseTicks, int[] weights, in TuneVocab v )
+	{
 		var rhythm = new List<int>();
 		for ( int t = 0; t < phraseTicks; )
 		{
@@ -185,21 +293,26 @@ static class Melody
 		// A call of one note is not a call. Only reachable when every cell after the first drew a
 		// rest, which is rare and still worth not shipping.
 		if ( rhythm.Count < 2 ) rhythm.Add( phraseTicks / 2 );
+		return rhythm;
+	}
 
-		// ── the contour ──
-		// Three things shape it, and none of them was here before: the arch (above), post-skip
-		// reversal (below), and reflection off the range ends instead of a clamp.
-		// A tune opens on a CHORD TONE — that much was right, and a melody that opens on the
-		// second or the seventh is a melody that starts by needing to resolve. What was wrong is
-		// that it was a flat third each between the root, the third and the fifth, forever: the
-		// tonic and the fifth are where far more tunes actually start, the octave is a real
-		// opening and was unreachable, and a uniform draw over three values is the sort of thing
-		// that shows up in a sweep as 33/33/33 and in a listen as "they all start the same way".
+	/// <summary>One phrase's CONTOUR — <paramref name="notes"/> degrees relative to the key's tonic.
+	///
+	/// Three things shape it and none of them is a random walk: the arch (see <see cref="Arch"/>),
+	/// post-skip reversal (below), and reflection off the range ends instead of a clamp.
+	///
+	/// A phrase opens on a CHORD TONE — a melody that opens on the second or the seventh is a
+	/// melody that starts by needing to resolve — weighted toward the tonic and the fifth, where
+	/// far more tunes actually start, with the octave reachable. A uniform draw over three values
+	/// is the sort of thing that shows up in a sweep as 33/33/33 and in a listen as "they all start
+	/// the same way".</summary>
+	static List<int> DrawContour( Rng rng, int notes, in TuneVocab v )
+	{
+		var degrees = new List<int>( notes );
 		int degree = Opens[rng.WeightedIndex( OpenWeights )];
 		int owed = 0;
-		for ( int i = 0; i < rhythm.Count; i++ )
+		for ( int i = 0; i < notes; i++ )
 		{
-			ticks.Add( rhythm[i] );
 			degrees.Add( degree );
 
 			bool leap = rng.Next() < v.Leap;
@@ -217,7 +330,7 @@ static class Melody
 			}
 			else
 			{
-				float u = rhythm.Count < 2 ? 0.5f : i / (float)(rhythm.Count - 1);
+				float u = notes < 2 ? 0.5f : i / (float)(notes - 1);
 				// Where in the range this note sits, −1 at the bottom and +1 at the top.
 				const float Mid = (DegreeMin + DegreeMax) / 2f, Half = (DegreeMax - DegreeMin) / 2f;
 				float pos = (degree - Mid) / Half;
@@ -227,33 +340,37 @@ static class Melody
 			if ( leap ) owed = -sign;
 			degree = Reflect( degree + sign * size );
 		}
+		return degrees;
+	}
 
-		// ── the answer ──
+	/// <summary>ANSWER a call: the same rhythm, the call's degrees put through one of the genre's
+	/// <see cref="AnswerOp"/>s, landing on <paramref name="last"/> — the tonic where this phrase
+	/// closes the tune, an open chord tone where it is an antecedent handing over to a consequent.
+	/// Every operator answers the same question and every one of them lands in the same place.
+	/// </summary>
+	static List<int> Answer( Rng rng, List<int> call, in TuneVocab v, int last )
+	{
 		var op = rng.PickWeighted( Answers, v.AnswerWeights );
 		// Drawn for every operator, so swapping one for another does not shift the rest of the
 		// tune's stream — the same discipline PickOrNull keeps in the composer.
 		int approach = rng.Chance( 0.65f ) ? 1 : -1;
-		int n = ticks.Count;
-		int first = degrees[0];
+		int n = call.Count;
+		int first = call[0];
+		var answer = new List<int>( n );
 		for ( int i = 0; i < n; i++ )
 		{
-			ticks.Add( phraseTicks + ticks[i] );
-			// A song lands on its tonic. Every operator above answers the same question and every
-			// one of them resolves in the same place.
-			if ( i == n - 1 ) { degrees.Add( 0 ); continue; }
+			if ( i == n - 1 ) { answer.Add( Reflect( last ) ); continue; }
 			int d = op switch
 			{
-				AnswerOp.NewTail => i == n - 2 ? approach : degrees[i],
-				AnswerOp.SequenceUp => degrees[i] + 1,
-				AnswerOp.SequenceUp2 => degrees[i] + 2,
-				AnswerOp.Invert => 2 * first - degrees[i],
-				_ => degrees[i] - 1,
+				AnswerOp.NewTail => i == n - 2 ? last + approach : call[i],
+				AnswerOp.SequenceUp => call[i] + 1,
+				AnswerOp.SequenceUp2 => call[i] + 2,
+				AnswerOp.Invert => 2 * first - call[i],
+				_ => call[i] - 1,
 			};
-			degrees.Add( Reflect( d ) );
+			answer.Add( Reflect( d ) );
 		}
-
-		// A held final note, so the tune breathes before it comes round again.
-		return new Pattern( bars * barTicks, ticks.ToArray(), degrees.ToArray() );
+		return answer;
 	}
 
 	/// <summary>Fold a degree back inside the singable range by REFLECTING off its ends.
@@ -283,6 +400,15 @@ public sealed partial class MusicGen
 	// sparser line — same song, different words.
 	Pattern _chorusTune, _verseTune;
 
+	// How long one PHRASE of them is. A diagnostic wanting to read a tune phrase by phrase cannot
+	// re-derive this without re-deciding the period, which is the re-implementation PlanTrace
+	// exists to avoid — so the composer writes it down.
+	int _tunePhraseTicks;
+
+	/// <summary>One phrase of the song's tunes, in ticks (diagnostics — see <see cref="Melody"/>).
+	/// </summary>
+	internal int TunePhraseTicks => _tunePhraseTicks;
+
 	/// <summary>The tune this section sings, or null where the section is not a place for one:
 	/// a solo is where the genre's lead grammar improvises, an intro is a build-in, and the
 	/// ending has already resolved.</summary>
@@ -304,13 +430,23 @@ public sealed partial class MusicGen
 		// right here, which is the `if ( _genre == … )` smell one level removed: two genres sharing
 		// a LeadStyle got the same tune vocabulary, and where their densities matched the draws
 		// agreed and the tunes came back identical.
-		// The tune is as long as the HARMONIC CYCLE — the bars it takes the progression to come
+		// The tune is a WHOLE NUMBER OF HARMONIC CYCLES — the bars it takes the progression to come
 		// round (ChordBars x the progression's length), capped at eight. A four-bar tune over an
 		// eight-bar cycle states itself twice, and the second statement lands over different
 		// chords than it was written against: same notes, different harmony, which is exactly the
 		// "the lead clashes with the backing" it sounds like. Matching the cycle means every
 		// repetition sits over the changes it was drawn for.
 		int cycle = Math.Clamp( _chordBars * _prog.Length, 2, 8 );
+		// A PERIOD NEEDS FOUR PHRASES, AND A WHOLE NUMBER OF CYCLES IS STILL ALIGNED TO THE CHANGES.
+		// The clamp above is not about length, it is about a tune's statements landing over the
+		// chords they were drawn against — and a tune of exactly two cycles does, bar for bar. So a
+		// genre whose cycle is short doubles the tune rather than being stuck with two phrases: punk
+		// and pop (ChordBars 1 x a four-chord progression) went from a 4-bar tune whose rhythmic cell
+		// was 2 bars, stated twice and looped, to an 8-bar period. Eight is the ceiling because a
+		// section is eight bars — a tune longer than the section it is sung in never finishes.
+		int bars = cycle;
+		while ( bars * 2 <= 8 ) bars *= 2;
+		_tunePhraseTicks = barTicks * bars / Melody.PhraseCount( bars );
 		// THE GENRE IS IN THE TUNE'S STREAM, and it is the only stream it is in.
 		//
 		// Without it the genre reached Draw through nothing but `density` and `leap`, so where two
@@ -331,10 +467,10 @@ public sealed partial class MusicGen
 		// not tell them apart. Nothing here should ever grow into machinery that forces two genres
 		// to diverge — the collision rate is something `--stats` reports, not something the engine
 		// enforces.
-		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:chorus" ), cycle, barTicks, _prof.Tune, 1f, swung );
+		_chorusTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:chorus" ), bars, barTicks, _prof.Tune, 1f, swung );
 		// The verse tune is the same vocabulary, sung with fewer notes in it — same song,
 		// different words.
-		_verseTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:verse" ), cycle, barTicks, _prof.Tune, 0.8f, swung );
+		_verseTune = Melody.Draw( new Rng( $"{_tag}:tune:{_genre}:verse" ), bars, barTicks, _prof.Tune, 0.8f, swung );
 	}
 
 	/// <summary>Play one bar of the section's tune.

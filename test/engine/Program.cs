@@ -1473,6 +1473,74 @@ static class Program
 		// check here would turn a preference into a prohibition, and the next session would be
 		// writing code to force divergence that nobody asked for. The collision rate is reported by
 		// `--stats` instead, where it is a number to watch rather than a wall to hit.
+
+		// ── the period ──
+		// Two phrases WAS the whole of a tune's structure: one rhythm, an answer that repeats it,
+		// and nothing above that — looped to fill the section and repeated identically at every
+		// chorus. A period is two of those pairs, an antecedent that stays open over a consequent
+		// that closes, so repetition sits at the tune's length and variation at a phrase's.
+		Check( "a tune long enough for four phrases is written as a period", Melody.PhraseCount( 8 ) == 4 );
+		Check( "…and one that is not stays a plain call and answer",
+			Melody.PhraseCount( 4 ) == 2 && Melody.PhraseCount( 2 ) == 2 );
+
+		int ph = Melody.MinPhraseBars * bar;
+		int drawn = 0, open = 0, home = 0, pairsRepeat = 0, freshRhythm = 0, freshContour = 0;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+			for ( int i = 0; i < 80; i++ )
+			{
+				var t = Melody.Draw( new Rng( $"period:{g}:{i}" ), 8, bar, GenreProfile.For( g ).Tune );
+				var p = new List<Hit>[4];
+				for ( int k = 0; k < 4; k++ ) p[k] = t.Slice( k * ph, (k + 1) * ph );
+				if ( p[0].Count == 0 || p[1].Count == 0 || p[2].Count == 0 || p[3].Count == 0 ) continue;
+				drawn++;
+				// Within a pair the answer repeats its own call's rhythm — that is the machinery the
+				// period sits ON TOP OF, and the period must not have replaced it.
+				if ( SameRhythm( p[0], p[1], ph ) && SameRhythm( p[2], p[3], ph ) ) pairsRepeat++;
+				// The antecedent leaves the line open; only the consequent lands home.
+				if ( p[1][^1].Value != 0 ) open++;
+				if ( p[3][^1].Value == 0 ) home++;
+				if ( !SameRhythm( p[0], p[2], 2 * ph ) ) freshRhythm++;
+				if ( !SameContour( p[0], p[2] ) ) freshContour++;
+			}
+		Check( "an answer still repeats its own call's rhythm, in both halves of a period",
+			drawn > 400 && pairsRepeat == drawn, $"{pairsRepeat} of {drawn}" );
+		Check( "an antecedent never lands on the tonic", open == drawn, $"{open} of {drawn}" );
+		Check( "…and the consequent always does", home == drawn, $"{home} of {drawn}" );
+		// The variation budget. A period whose consequent always restates the call is the old
+		// two-phrase tune with extra bars; one whose consequent never does is two tunes end to end.
+		Check( "a period's consequent sometimes brings a rhythm of its own",
+			freshRhythm > drawn / 10 && freshRhythm < drawn * 0.6, $"{freshRhythm} of {drawn}" );
+		Check( "…and changes its notes more often than its rhythm",
+			freshContour > freshRhythm && freshContour < drawn, $"{freshContour} of {drawn}" );
+
+		// And the songs actually get one: every genre's harmonic cycle is four or eight bars, so
+		// every genre's tune is eight — punk and pop by stating their four-chord loop twice, which
+		// still lands each phrase over the chords it was drawn against.
+		bool allPeriods = true;
+		for ( int g = 0; g < GenreProfile.Count; g++ )
+		{
+			var song = MusicGen.BeginPlan( "period", new MusicGen.Config { Genre = g, SampleRate = 8000 } );
+			var (chorus, verse) = song.Tunes;
+			allPeriods &= chorus != null && verse != null
+				&& chorus.LengthTicks == 8 * bar && verse.LengthTicks == 8 * bar;
+		}
+		Check( "every genre's song tune is long enough to be a period", allPeriods );
+	}
+
+	/// <summary>Do two phrases land on the same beats, <paramref name="apart"/> ticks apart?</summary>
+	static bool SameRhythm( List<Hit> a, List<Hit> b, int apart )
+	{
+		if ( a.Count != b.Count ) return false;
+		for ( int i = 0; i < a.Count; i++ ) if ( b[i].Tick - apart != a[i].Tick ) return false;
+		return true;
+	}
+
+	/// <summary>Do two phrases sing the same degrees?</summary>
+	static bool SameContour( List<Hit> a, List<Hit> b )
+	{
+		if ( a.Count != b.Count ) return false;
+		for ( int i = 0; i < a.Count; i++ ) if ( a[i].Value != b[i].Value ) return false;
+		return true;
 	}
 
 	// ── where a player bends ──

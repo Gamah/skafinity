@@ -123,7 +123,11 @@ public sealed partial class MusicGen
 			+ $"{(_songLoud != null ? $", loud comp {_songLoud.LengthTicks / _time.BarTicks} bar(s) as {_prof.LoudComp} from energy {_prof.LoudFrom:0.00}" : "")}"
 			+ $"{(_riffBass ? ", bass doubles the riff" : "")}" );
 		sb.AppendLine( $"tunes     chorus {(_chorusTune == null ? "—" : $"{_chorusTune.LengthTicks / _time.BarTicks} bars, {_chorusTune.Count} notes")}"
-			+ $" | verse {(_verseTune == null ? "—" : $"{_verseTune.LengthTicks / _time.BarTicks} bars, {_verseTune.Count} notes")}" );
+			+ $" | verse {(_verseTune == null ? "—" : $"{_verseTune.LengthTicks / _time.BarTicks} bars, {_verseTune.Count} notes")}"
+			// Whether the tune is a PERIOD or a plain call and answer, and how long one phrase of it
+			// is. A listening note about a melody is nearly always about how often it comes round.
+			+ $" | {(_chorusTune != null && _chorusTune.LengthTicks > 2 * _tunePhraseTicks ? "period" : "call+answer")}"
+			+ $", {_tunePhraseTicks / _time.BarTicks}-bar phrases" );
 		sb.AppendLine( $"ending    {_ending}" );
 		sb.AppendLine( $"ska bits  horns {_hasHorns}, organ {_organBubble}, lead voice {_lead}" );
 		sb.AppendLine( "form" );

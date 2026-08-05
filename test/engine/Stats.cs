@@ -54,7 +54,7 @@ static class Stats
 		public HashSet<int>[] Onsets;       // per TraceVoice, the distinct ticks it played
 		public string Played;               // what the rhythm section ACTUALLY played, as ticks
 		public int[] TuneTicks, TuneDegrees, TuneSpans;   // the CHORUS tune, as authored
-		public int TuneLength;
+		public int TuneLength, TunePhrase;
 
 		// ── the kit ──
 		public string[] SectionKits;        // one PLANNED content signature per section
@@ -138,7 +138,7 @@ static class Stats
 		{
 			Comp = comp, Keys = keys, Bass = bass, Groove = groove,
 			Form = form.ToString(), Bars = bars, Onsets = onsets, Played = played.ToString(),
-			TuneLength = chorus?.LengthTicks ?? 0,
+			TuneLength = chorus?.LengthTicks ?? 0, TunePhrase = g.TunePhraseTicks,
 		};
 		if ( chorus != null )
 		{
@@ -467,6 +467,7 @@ static class Stats
 		{
 			var songs = byGenre[g];
 			int notes = 0, offGrid = 0, pinned = 0, repeated = 0, callAnswer = 0, tunes = 0, tonic = 0;
+			int periods = 0, phraseRhythms = 0, phraseContours = 0, tuneBars = 0;
 			var lens = new SortedDictionary<int, int>();
 			var firsts = new SortedDictionary<int, int>();
 			var leaps = new SortedDictionary<int, int>();
@@ -478,9 +479,22 @@ static class Stats
 			{
 				if ( s.TuneTicks == null || s.TuneTicks.Length == 0 ) continue;
 				tunes++;
-				int half = s.TuneTicks.Length / 2;
+				// THE CALL, not the first half. They were the same thing while a tune was two
+				// phrases; a period is four, so reading "half" here would silently start measuring
+				// the antecedent and the before/after would compare two different quantities.
+				int phrase = s.TunePhrase > 0 ? s.TunePhrase : s.TuneLength / 2;
+				int call = 0;
+				while ( call < s.TuneTicks.Length && s.TuneTicks[call] < phrase ) call++;
+				if ( s.TuneLength > 2 * phrase ) periods++;
+				tuneBars += s.TuneLength / (4 * Timing.TicksPerBeat);
 				var rhythm = new StringBuilder();
 				var contour = new StringBuilder();
+				// How much of the tune is NEW material rather than a phrase already heard: the
+				// distinct rhythms and distinct contours WITHIN one tune. This is the number the
+				// period was built to move — the distinct-across-songs counts below say how many
+				// tunes the genre can write, and say nothing at all about what happens inside one.
+				var inRhythm = new HashSet<string>();
+				var inContour = new HashSet<string>();
 
 				for ( int i = 0; i < s.TuneTicks.Length; i++ )
 				{
@@ -490,8 +504,8 @@ static class Stats
 					int d = s.TuneDegrees[i];
 					if ( d <= Melody.DegreeMin || d >= Melody.DegreeMax ) pinned++;
 					if ( i > 0 && d == s.TuneDegrees[i - 1] ) repeated++;
-					if ( i > 0 && i < half ) Bump( leaps, Math.Abs( d - s.TuneDegrees[i - 1] ) );
-					if ( i < half ) { rhythm.Append( s.TuneTicks[i] ).Append( ',' ); contour.Append( d - s.TuneDegrees[0] ).Append( ',' ); }
+					if ( i > 0 && i < call ) Bump( leaps, Math.Abs( d - s.TuneDegrees[i - 1] ) );
+					if ( i < call ) { rhythm.Append( s.TuneTicks[i] ).Append( ',' ); contour.Append( d - s.TuneDegrees[0] ).Append( ',' ); }
 				}
 				Bump( firsts, s.TuneDegrees[0] );
 				if ( s.TuneDegrees[^1] == 0 ) tonic++;
@@ -499,25 +513,49 @@ static class Stats
 				contours.Add( contour.ToString() );
 				whole.Add( rhythm + "/" + contour );
 
+				for ( int p = 0; p * phrase < s.TuneLength; p++ )
+				{
+					var pr = new StringBuilder();
+					var pc = new StringBuilder();
+					int first = int.MinValue;
+					for ( int i = 0; i < s.TuneTicks.Length; i++ )
+					{
+						if ( s.TuneTicks[i] < p * phrase || s.TuneTicks[i] >= (p + 1) * phrase ) continue;
+						if ( first == int.MinValue ) first = s.TuneDegrees[i];
+						pr.Append( s.TuneTicks[i] - p * phrase ).Append( ',' );
+						pc.Append( s.TuneDegrees[i] - first ).Append( ',' );
+					}
+					if ( pr.Length == 0 ) continue;
+					inRhythm.Add( pr.ToString() );
+					inContour.Add( pc.ToString() );
+				}
+				phraseRhythms += inRhythm.Count;
+				phraseContours += inContour.Count;
+
 				// Is the answer literally the call transposed down one degree? The last note is
-				// exempt — it is forced to the tonic, and that IS the tune landing rather than a
-				// derivation.
-				bool derived = half > 1;
-				for ( int i = 0; i < half - 1 && derived; i++ )
-					derived = s.TuneDegrees[half + i] == Math.Clamp( s.TuneDegrees[i] - 1, Melody.DegreeMin, Melody.DegreeMax );
+				// exempt — it is forced to a landing, and that IS the phrase resolving rather than
+				// a derivation.
+				bool derived = call > 1 && s.TuneTicks.Length > call;
+				for ( int i = 0; i < call - 1 && derived; i++ )
+					derived = call + i < s.TuneDegrees.Length
+						&& s.TuneDegrees[call + i] == Math.Clamp( s.TuneDegrees[i] - 1, Melody.DegreeMin, Melody.DegreeMax );
 				if ( derived ) callAnswer++;
 			}
 
 			if ( tunes == 0 ) { Console.WriteLine( $"  {Name( g ),-9} no tune" ); continue; }
-			Console.WriteLine( $"  {Name( g )}  ({tunes} tunes, {notes / (double)tunes:0.0} notes each)" );
+			Console.WriteLine( $"  {Name( g )}  ({tunes} tunes, {notes / (double)tunes:0.0} notes each,"
+				+ $" {tuneBars / (double)tunes:0.0} bars long)" );
 			Console.WriteLine( $"    off the 8th grid  {Pct( offGrid, notes )}"
 				+ $"   pinned at the range ends {Pct( pinned, notes )}"
 				+ $"   repeated adjacent {Pct( repeated, notes )}" );
 			Console.WriteLine( $"    last note tonic   {Pct( tonic, tunes )}"
-				+ $"   answer = call-1 {Pct( callAnswer, tunes )}" );
+				+ $"   answer = call-1 {Pct( callAnswer, tunes )}"
+				+ $"   written as a period {Pct( periods, tunes )}" );
 			Console.WriteLine( $"    note lengths      {Hist( lens, notes )}" );
 			Console.WriteLine( $"    first degree      {Hist( firsts, tunes )}" );
 			Console.WriteLine( $"    step sizes        {Hist( leaps, Sum( leaps ) )}" );
+			Console.WriteLine( $"    within one tune   {phraseRhythms / (double)tunes:0.00} phrase rhythms,"
+				+ $" {phraseContours / (double)tunes:0.00} phrase contours" );
 			Console.WriteLine( $"    distinct          {rhythms.Count} rhythms, {contours.Count} contours, {whole.Count} tunes" );
 		}
 		Console.WriteLine();
