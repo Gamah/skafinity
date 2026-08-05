@@ -116,7 +116,8 @@ public sealed partial class MusicGen
 		for ( int c = 0; c < _vlShift.Length; c++ )
 			vl[c] = $"[{string.Join( " ", _vlShift[c] )}]";
 		sb.AppendLine( $"voicelead {string.Join( " ", vl )} (semitones per voice, per chord)" );
-		sb.AppendLine( $"groove    {_groove.Name}, ride pref {_ridePref:0.00}" );
+		sb.AppendLine( $"groove    {_songGroove.Name} (the song's — each section draws its own, below),"
+			+ $" ride pref {_ridePref:0.00}, kit {(_kitLeads ? "leads" : "follows the band")}" );
 		sb.AppendLine( $"parts     comp {_songComp.LengthTicks / _time.BarTicks} bar(s), bass {_songBass.LengthTicks / _time.BarTicks} bar(s)"
 			+ $"{(_songKeys != null ? $", keys {_songKeys.LengthTicks / _time.BarTicks} bar(s)" : "")}"
 			+ $"{(_songLoud != null ? $", loud comp {_songLoud.LengthTicks / _time.BarTicks} bar(s) as {_prof.LoudComp} from energy {_prof.LoudFrom:0.00}" : "")}"
@@ -139,7 +140,7 @@ public sealed partial class MusicGen
 				// the first thing to check when a listening note is about a cymbal, because "the
 				// ride is too loud" and "the crash is too loud" are different repairs and a section
 				// on the hats is neither.
-				+ $"  {CymbalHand( i )}" );
+				+ $"  {CymbalHand( i )}  {(i < _sections.Count ? _sections[i].Groove : "?")}" );
 		}
 		return sb.ToString();
 	}
@@ -201,7 +202,7 @@ public sealed partial class MusicGen
 	/// many different rhythm sections a genre can produce at all: they come out of tables, so it is
 	/// a table-size ceiling rather than anything randomness can reach.</summary>
 	internal (Pattern Comp, Pattern Keys, Pattern Bass, DrumGroove Groove) SongParts =>
-		(_songComp, _songKeys, _songBass, _groove);
+		(_songComp, _songKeys, _songBass, _songGroove);
 
 	/// <summary>Whether this song's band wrote to the kit or the kit to the band. Cohesion is
 	/// achieved by two different mechanisms depending on the answer, so a sweep that averages the
@@ -353,8 +354,12 @@ public sealed partial class MusicGen
 		public readonly int Start, End;
 		public readonly bool Ride, CrashRide;
 		public readonly string Type;
-		public SectionInfo( int start, int end, bool ride, bool crashRide, string type )
-		{ Start = start; End = end; Ride = ride; CrashRide = crashRide; Type = type; }
+		/// <summary>The groove this section drew. Per SECTION now, so it is no more derivable from
+		/// the genre or the seed's knobs than the cymbal hand is — and it is the other half of the
+		/// same answer when a listening note is about the drums.</summary>
+		public readonly string Groove;
+		public SectionInfo( int start, int end, bool ride, bool crashRide, string type, string groove )
+		{ Start = start; End = end; Ride = ride; CrashRide = crashRide; Type = type; Groove = groove; }
 	}
 
 	readonly List<SectionInfo> _sections = new();

@@ -375,7 +375,8 @@ public sealed partial class MusicGen
 		// a pedal figure moves nothing else in the kit, and drawn per section because that is the
 		// scale a drummer holds a figure over.
 		_sections.Add( new SectionInfo( _time.TickToSample( sectionTick ),
-			_time.TickToSample( sectionTick + _sectionTicks ), _ride, _crashRide, $"{part.Type}" ) );
+			_time.TickToSample( sectionTick + _sectionTicks ), _ride, _crashRide, $"{part.Type}",
+			_groove.Name ) );
 		var footRng = new Rng( $"{_tag}:foot:{bk}" );
 		_footCells = 0;
 		for ( int i = 0; i < 8; i++ )
