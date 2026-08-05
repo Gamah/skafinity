@@ -323,6 +323,53 @@ public sealed partial class MusicGen
 	}
 
 	/// <summary>
+	/// Where a section is quiet enough that the kit plays the SPINE and nothing else — the
+	/// downbeat kick and the struck backbeat, with every ghost and every pushed kick gone.
+	///
+	/// AND THE FEEL GATE IS THE POINT, not a caveat. Half time is a pattern RATE: it already
+	/// stretches the groove to half its density, so a breakdown that also thinned to the spine
+	/// would be two hits a bar and a hole in the arrangement. Every Breakdown in every form here
+	/// is <c>feel: 0.5f</c>, which is exactly why this fires on the INTRO instead — a kit walking
+	/// in on the bare bones of its own groove, which is what an intro is.
+	/// </summary>
+	const float KitSpineFrom = 0.32f;
+
+	/// <summary>
+	/// THE KIT'S DENSITY BIAS, −1 (thin) to +1 (fill), and what makes energy an input to what the
+	/// drummer PLAYS rather than only to how loud it is.
+	///
+	/// It shifts the weight between the DROP and ADD mutations, so a quiet section is likelier to
+	/// lose an onset and a loud one to gain one. Everything a drummer does with dynamics beyond
+	/// hitting harder is here: fewer notes, dropped ghosts, a busier bar under a chorus.
+	///
+	/// <c>DrumBusy</c> and <c>DrumTone</c> feed the same decision rather than sitting on top of it
+	/// as multipliers — that is the whole reason they are here. A bright kit is snare-led, so
+	/// <c>DrumTone</c> pushes the ghost layer up and the foot down; a dark one does the reverse.
+	/// </summary>
+	float KitBias( bool kick )
+	{
+		float energy = (_energy - 0.5f) * 1.4f;
+		float busy = (Math.Clamp( _c.DrumBusy, 0f, 1f ) - 0.5f) * 1.2f;
+		float tone = (_drumTone - 0.5f) * 0.6f * (kick ? -1f : 1f);
+		return Math.Clamp( energy + busy + tone, -1f, 1f );
+	}
+
+	/// <summary>The spine alone — see <see cref="KitSpineFrom"/>.</summary>
+	static Pattern ToSpine( Pattern fig, bool[] spine )
+	{
+		int n = 0;
+		for ( int i = 0; i < spine.Length; i++ ) if ( spine[i] ) n++;
+		if ( n == 0 || n == fig.Count ) return fig;
+		var ticks = new int[n]; var values = new int[n]; var vels = new float[n];
+		for ( int i = 0, k = 0; i < fig.Count; i++ )
+		{
+			if ( !spine[i] ) continue;
+			ticks[k] = fig.TickAt( i ); values[k] = fig.ValueAt( i ); vels[k] = fig.VelAt( i ); k++;
+		}
+		return new Pattern( fig.LengthTicks, ticks, values, vels );
+	}
+
+	/// <summary>
 	/// The kick's role, WITH THE SIGN OF ITS COMPLEMENT DECIDED BY WHO WROTE FIRST — and that sign
 	/// is the whole difference between the two orderings.
 	///
@@ -354,15 +401,17 @@ public sealed partial class MusicGen
 	Pattern ArrangeDrum( Pattern fig, Skeleton sk, Rng rng, in ArrangeRole role, bool kick )
 	{
 		if ( fig == null ) return null;
+		var spine = DrumGroove.SpineOf( fig, kick, _time.BarTicks );
 		var table = new Pattern[_prof.Grooves.Length];
 		for ( int i = 0; i < table.Length; i++ )
 			table[i] = kick ? _prof.Grooves[i].Kick : _prof.Grooves[i].Snare;
-		return Arrange( fig, sk, rng, role, table, KitMutate(),
-			DrumGroove.SpineOf( fig, kick, _time.BarTicks ), marks: false );
+		// The arrangement happens either way, so the stream costs the same whatever the section's
+		// energy — the spine section then keeps only what it was always going to keep.
+		var arranged = Arrange( fig, sk, rng, role, table, _prof.KitMutateRate, spine,
+			marks: false, bias: KitBias( kick ) );
+		if ( _energy > KitSpineFrom || _feel < 1f ) return arranged;
+		return ToSpine( arranged, DrumGroove.SpineOf( arranged, kick, _time.BarTicks ) );
 	}
-
-	/// <summary>How far the kit is allowed off its groove this section.</summary>
-	float KitMutate() => _prof.KitMutateRate;
 
 	/// <summary>Write a figure's onsets into the skeleton's occupancy without changing it — what a
 	/// quoted part still owes the parts arranged after it.</summary>
@@ -403,8 +452,12 @@ public sealed partial class MusicGen
 	/// not: the kick has its own layer on the grid and the snare is most of the accent grid, so
 	/// writing it into <c>Taken</c> as well would have the band pushing away from a beat it is
 	/// supposed to be locking to, and count it twice while doing it.</param>
+	/// <param name="bias">−1 (thin) to +1 (fill): shifts weight between DROP and ADD without
+	/// changing how much of the stream the draw costs. Zero for every melodic voice, so their
+	/// weights are exactly what they always were; the kit reads its section's energy and the
+	/// vibe's DRUM BUSY through it (see <see cref="KitBias"/>).</param>
 	Pattern Arrange( Pattern fig, Skeleton sk, Rng rng, in ArrangeRole role, Pattern[] table,
-		float mutateRate, bool[] spine = null, bool marks = true )
+		float mutateRate, bool[] spine = null, bool marks = true, float bias = 0f )
 	{
 		if ( fig == null || fig.Count == 0 ) { return fig; }
 
@@ -414,8 +467,8 @@ public sealed partial class MusicGen
 		int op = rng.WeightedIndex( new[]
 		{
 			(int)MathF.Round( QuoteWeight * (1f - mutate) * 100f ),   // quote
-			(int)MathF.Round( mutate * 30f ),                         // drop
-			(int)MathF.Round( mutate * 30f ),                         // add
+			(int)MathF.Round( mutate * 30f * (1f - bias) ),           // drop
+			(int)MathF.Round( mutate * 30f * (1f + bias) ),           // add
 			(int)MathF.Round( mutate * 25f ),                         // displace
 			(int)MathF.Round( mutate * 15f ),                         // recombine
 		} );

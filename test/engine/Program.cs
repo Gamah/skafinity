@@ -1744,7 +1744,7 @@ static class Program
 		// what the plan intended them to. One plan per song: this section is the suite's most
 		// expensive and a second plan per song would only be re-testing determinism, which the
 		// determinism section already owns.
-		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0, sections = 0, kitMoved = 0;
+		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0, sections = 0, kitMoved = 0, spineSections = 0;
 		bool ascends = true, spineHeld = true; string offender = null, spineOffender = null;
 		for ( int g = 0; g < GenreProfile.Count; g++ )
 			for ( int n = 0; n < 4; n++ )
@@ -1797,9 +1797,24 @@ static class Program
 				// asserted over its patterns as well — the same songs, already planned, so this costs
 				// nothing beyond the walk. Read off the trace's section spans, which carry the kit as
 				// the bar loop was handed it.
-				foreach ( var sec in trace.Sections )
+				for ( int si = 0; si < trace.Sections.Count; si++ )
 				{
+					var sec = trace.Sections[si];
 					sections++;
+
+					// A QUIET SECTION IN NORMAL TIME PLAYS THE SPINE AND NOTHING ELSE. Asserted
+					// because the mechanism is one energy threshold away from being unreachable: it
+					// is gated on `feel >= 1` so a half-time breakdown does not thin twice, and
+					// every Breakdown in every form is half time — so if this never fired, the
+					// gate would be silently doing nothing and no other check would notice.
+					var part = song.Form[si];
+					if ( part.Energy <= 0.32f && part.Feel >= 1f )
+					{
+						spineSections++;
+						for ( int i = 0; i < sec.Snare.Count; i++ )
+							if ( sec.Snare.ValueAt( i ) == DrumGroove.Ghost )
+							{ spineHeld = false; spineOffender ??= $"genre {g} seed {n} quiet section keeps a ghost"; }
+					}
 					foreach ( var fig in new[] { sec.Kick, sec.Snare } )
 					{
 						if ( fig == null ) continue;
@@ -1840,6 +1855,8 @@ static class Program
 			offender ?? spineOffender );
 		Check( "the arranger works on the kit rather than quoting the groove table",
 			kitMoved > sections / 5, $"{kitMoved} of {sections} sections moved off the drawn groove" );
+		Check( "a quiet section in normal time actually reaches the spine-only kit", spineSections > 0,
+			$"{spineSections} of {sections} sections were quiet and in normal time" );
 		Check( "every chorus of a song plays the same arranged part", chorusPairs > 0 && chorusMatched == chorusPairs,
 			$"{chorusMatched} of {chorusPairs} chorus pairs" );
 
