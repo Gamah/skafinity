@@ -408,7 +408,7 @@ public sealed partial class MusicGen
 		// The arrangement happens either way, so the stream costs the same whatever the section's
 		// energy — the spine section then keeps only what it was always going to keep.
 		var arranged = Arrange( fig, sk, rng, role, table, _prof.KitMutateRate, spine,
-			marks: false, bias: KitBias( kick ) );
+			marks: false, bias: KitBias( kick ), offPulse: kick );
 		if ( _energy > KitSpineFrom || _feel < 1f ) return arranged;
 		return ToSpine( arranged, DrumGroove.SpineOf( arranged, kick, _time.BarTicks ) );
 	}
@@ -457,7 +457,8 @@ public sealed partial class MusicGen
 	/// weights are exactly what they always were; the kit reads its section's energy and the
 	/// vibe's DRUM BUSY through it (see <see cref="KitBias"/>).</param>
 	Pattern Arrange( Pattern fig, Skeleton sk, Rng rng, in ArrangeRole role, Pattern[] table,
-		float mutateRate, bool[] spine = null, bool marks = true, float bias = 0f )
+		float mutateRate, bool[] spine = null, bool marks = true, float bias = 0f,
+		bool offPulse = false )
 	{
 		if ( fig == null || fig.Count == 0 ) { return fig; }
 
@@ -482,8 +483,8 @@ public sealed partial class MusicGen
 		switch ( op )
 		{
 			case 1: Drop( ticks, values, vels, fig, sk, rng, role, spine ); break;
-			case 2: Add( ticks, values, vels, fig, sk, rng, role ); break;
-			case 3: Displace( ticks, values, vels, fig, sk, rng, role, spine ); break;
+			case 2: Add( ticks, values, vels, fig, sk, rng, role, offPulse ); break;
+			case 3: Displace( ticks, values, vels, fig, sk, rng, role, spine, offPulse ); break;
 			case 4: Recombine( ticks, values, vels, fig, rng, table, spine ); break;
 		}
 
@@ -542,12 +543,17 @@ public sealed partial class MusicGen
 	/// <summary>ADD an onset on the best free cell of the genre's allowed class. The new hit takes
 	/// its VALUE from the onset before it, so it is the same gesture played once more rather than a
 	/// cell type the figure never used.</summary>
+	/// <param name="offPulse">Refuse cells on the beat — the other half of the kick's spine law
+	/// (see <see cref="DrumGroove.SpineOf"/>). A groove's identity is partly where it does NOT
+	/// play, and a rule about existing onsets cannot say that: the one drop IS the hole on beat 1,
+	/// and without this it quietly acquires the downbeat it is defined by not having.</param>
 	void Add( List<int> ticks, List<int> values, List<float> vels, Pattern fig, Skeleton sk,
-		Rng rng, in ArrangeRole role )
+		Rng rng, in ArrangeRole role, bool offPulse = false )
 	{
 		int best = -1; float bestScore = float.NegativeInfinity;
 		for ( int t = 0; t < fig.LengthTicks; t += Skeleton.CellTicks )
 		{
+			if ( offPulse && DrumGroove.IsPulse( t ) ) continue;
 			if ( ticks.Contains( t ) || !AllowedFigTick( t, fig, sk, role ) ) continue;
 			float s = Score( t, fig, sk, role );
 			if ( s > bestScore ) { bestScore = s; best = t; }
@@ -564,8 +570,13 @@ public sealed partial class MusicGen
 	/// <summary>DISPLACE one onset by a cell, staying inside the allowed class — the same figure
 	/// with one hit pushed or pulled. Not the first onset, for the same reason DROP spares it.
 	/// </summary>
+	/// <param name="offPulse">As <see cref="Add"/>'s: a kick may not be moved ONTO a beat either.
+	/// The same hole a groove is defined by is just as fillable by a displaced push as by an added
+	/// one — ska's beat 1 still sat 3 points over its baseline once Add alone was stopped. So the
+	/// kick's on-beat set is frozen entirely: nothing enters it, nothing leaves it, and what
+	/// arranges is the pushes around it.</param>
 	void Displace( List<int> ticks, List<int> values, List<float> vels, Pattern fig, Skeleton sk,
-		Rng rng, in ArrangeRole role, bool[] spine = null )
+		Rng rng, in ArrangeRole role, bool[] spine = null, bool offPulse = false )
 	{
 		if ( ticks.Count <= 1 ) return;
 		int i = 1 + rng.Int( ticks.Count - 1 );
@@ -579,6 +590,7 @@ public sealed partial class MusicGen
 		{
 			int t = ticks[i] + step * k;
 			if ( t <= 0 || t >= fig.LengthTicks || ticks.Contains( t ) ) continue;
+			if ( offPulse && DrumGroove.IsPulse( t ) ) continue;
 			if ( !AllowedFigTick( t, fig, sk, role ) ) continue;
 			// The VALUE and the VELOCITY move with the tick. A displace that moved only the tick
 			// would keep the figure's cells and lose which hit was which — the chop that got pushed

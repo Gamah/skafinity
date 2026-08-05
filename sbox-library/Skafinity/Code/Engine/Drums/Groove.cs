@@ -114,9 +114,19 @@ sealed class DrumGroove
 	///     them, 3 alone in pop's half-time — and a rule phrased in beat numbers would be wrong for
 	///     whichever genre disagrees. The ghosts around it are the density and stay arrangeable,
 	///     which is the whole of what punk's snare has to say: strike two, ghost the rest.
-	///   * <b>every kick on a bar's first beat</b>. A groove that loses its downbeat kick is a
-	///     different groove, and <see cref="MusicGen.Drop"/>'s "never the first onset" rule only
-	///     ever protected bar one of a four-bar figure.
+	///   * <b>every kick ON A BEAT.</b> A KICK ON THE BEAT IS THE PULSE; A KICK OFF IT IS THE PUSH,
+	///     and the push is the thing a drummer varies. Protecting the bar's first beat alone was
+	///     not enough and the failure was specific rather than general: beat 1 held at 96–97% in
+	///     every genre while every OTHER anchor eroded — country's beat 3, half of boom-chick, went
+	///     missing in 23% of bars, pop's beat 4 in 24%, rock's beat 3 in 15%. The kick count per
+	///     bar barely moved, so nothing about its level or its density said so; what a listener
+	///     gets is a kick that flickers where the pulse should be.
+	///
+	/// AND A GROOVE'S IDENTITY IS PARTLY WHERE IT DOES NOT PLAY, which a rule about onsets cannot
+	/// say on its own. The one drop IS the hole on beat 1, so <see cref="MusicGen.Add"/> may not
+	/// put a kick on a beat either — same law read the other way round, and without it ska's beat-1
+	/// occupancy climbed 41% → 45% as one-drop bars quietly acquired the downbeat they are defined
+	/// by not having. On the beat is the groove; off the beat is the arrangement.
 	///
 	/// The cymbal has no spine here because the cymbal is not arranged at all: it is the pulse, and
 	/// country's hat on the "and" — the largest mismatch the corpus pass found — is preserved by
@@ -127,9 +137,14 @@ sealed class DrumGroove
 		if ( p == null ) return null;
 		var spine = new bool[p.Count];
 		for ( int i = 0; i < p.Count; i++ )
-			spine[i] = kick ? p.TickAt( i ) % barTicks == 0 : p.ValueAt( i ) != Ghost;
+			spine[i] = kick ? IsPulse( p.TickAt( i ) ) : p.ValueAt( i ) != Ghost;
 		return spine;
 	}
+
+	/// <summary>A tick the kick's spine lives on — see <see cref="SpineOf"/>. One law, read two
+	/// ways: an onset here may not be dropped or moved, and an onset may not be ADDED here.
+	/// </summary>
+	public static bool IsPulse( int tick ) => tick % Timing.TicksPerBeat == 0;
 
 	const int R = Harmony.Rest;
 	static Pattern E( params int[] c ) => Pattern.Eighths( c );

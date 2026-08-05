@@ -1745,7 +1745,8 @@ static class Program
 		// expensive and a second plan per song would only be re-testing determinism, which the
 		// determinism section already owns.
 		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0, sections = 0, kitMoved = 0, spineSections = 0;
-		bool ascends = true, spineHeld = true; string offender = null, spineOffender = null;
+		bool ascends = true, spineHeld = true, pulseHeld = true;
+		string offender = null, spineOffender = null, pulseOffender = null;
 		for ( int g = 0; g < GenreProfile.Count; g++ )
 			for ( int n = 0; n < 4; n++ )
 			{
@@ -1841,6 +1842,31 @@ static class Program
 					if ( wanted >= 0 && struck < wanted )
 					{ spineHeld = false; spineOffender ??= $"genre {g} seed {n} \"{sec.Groove}\" {struck} of {wanted}"; }
 
+					// A KICK ON THE BEAT IS THE PULSE AND THE ARRANGER MAY NOT TAKE ONE AWAY.
+					// This is the check that was missing: the spine protected the bar's first beat
+					// only, so beat 1 held at 96-97% in every genre while country's beat 3 went
+					// missing in 23% of bars and pop's beat 4 in 24% — and because the kick COUNT
+					// per bar barely moved, nothing about density or level said so. What reaches a
+					// listener is a kick that flickers where the pulse should be.
+					//
+					// Stated as "never fewer", not "exactly": Recombine substitutes a whole bar of
+					// another groove from the SAME genre's table, so a one-drop section can take a
+					// bar of steppers and gain a downbeat. That is vocabulary rather than erosion,
+					// and it is the one direction this deliberately allows.
+					foreach ( var gr in GenreProfile.For( g ).Grooves )
+					{
+						if ( gr.Name != sec.Groove ) continue;
+						for ( int i = 0; i < gr.Kick.Count; i++ )
+						{
+							int t = gr.Kick.TickAt( i );
+							if ( !DrumGroove.IsPulse( t ) ) continue;
+							bool kept = false;
+							for ( int j = 0; j < sec.Kick.Count && !kept; j++ ) kept = sec.Kick.TickAt( j ) == t;
+							if ( !kept )
+							{ pulseHeld = false; pulseOffender ??= $"genre {g} seed {n} \"{sec.Groove}\" lost the kick at tick {t}"; }
+						}
+					}
+
 					// …and the kit is not simply the table handed back. Counted, not asserted per
 					// section: quoting is a legitimate outcome of the draw, exactly as it is for the
 					// melodic voices.
@@ -1855,6 +1881,7 @@ static class Program
 			offender ?? spineOffender );
 		Check( "the arranger works on the kit rather than quoting the groove table",
 			kitMoved > sections / 5, $"{kitMoved} of {sections} sections moved off the drawn groove" );
+		Check( "an arranged kick never loses a pulse — the beat is the groove", pulseHeld, pulseOffender );
 		Check( "a quiet section in normal time actually reaches the spine-only kit", spineSections > 0,
 			$"{spineSections} of {sections} sections were quiet and in normal time" );
 		Check( "every chorus of a song plays the same arranged part", chorusPairs > 0 && chorusMatched == chorusPairs,

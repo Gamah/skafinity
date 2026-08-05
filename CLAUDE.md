@@ -676,12 +676,31 @@ its own groove and its kick and snare go through the same `Arrange` every other 
 measured placements are real and are still why the tables look the way they do, and the bar a
 listener hears is a mutation of one — the same split `FillHits` already draws row by row. What
 bounds it is the **spine** (`DrumGroove.SpineOf`), and it is a LAW rather than a per-groove list of
-protected ticks: every struck snare, and every kick on a bar's first beat. A list would be a table
+protected ticks: every struck snare, and **every kick on a beat**. A list would be a table
 that has to be re-authored whenever a groove is added and is silently wrong when nobody does. **The
 cymbal is not arranged at all** — it is the pulse, and country's hat on the "and" is the largest
 mismatch the corpus pass found, so it is preserved by construction rather than by a rule that can
 be got wrong. The accent weights are untouched and remain measured: velocity was a separate
 question off the same pass.
+
+**A KICK ON THE BEAT IS THE PULSE; A KICK OFF IT IS THE PUSH, and only the push arranges.** The
+first version of that law protected the bar's *first* beat alone, and the way it failed is the part
+worth keeping: beat 1 held at 96–97% in every genre while every other anchor eroded — country's
+beat 3, half of boom-chick, went missing in **23%** of bars, pop's beat 4 in 24%, rock's beat 3 in
+15% — while the kick COUNT per bar moved by under 3%, so neither a density reading nor a level
+reading said anything at all. It reaches a listener as a kick that flickers where the pulse should
+be, and the two obvious diagnoses are both wrong and both measurably so: nothing touched
+`RenderKick`'s gain, and its agreement with the bass went *down*, not up. **Suspect PLACEMENT before
+level when a part feels weaker and the mix did not change.**
+
+The law is read **both ways, and it has to be**: an onset on a beat may not be dropped or moved,
+*and* one may not be added or displaced onto a beat. A groove's identity is partly where it does
+NOT play — the one drop IS the hole on beat 1 — and a rule phrased only over existing onsets cannot
+say that; stopping `Add` alone left ska's beat 1 three points over baseline by way of `Displace`.
+The one route deliberately left open is `Recombine`, which substitutes a whole bar of another
+groove from the *same genre's table*: a one-drop section taking a bar of steppers is vocabulary,
+not erosion. The suite asserts the invariant — "an arranged kick never loses a pulse" — against the
+groove the SECTION drew, which now varies per section.
 
 **The grooves and the accent weights are measured too, off a different kind of source.** There is no
 equivalent of a bpm field for where the kick falls in a train beat, so the drum tables are fitted to
