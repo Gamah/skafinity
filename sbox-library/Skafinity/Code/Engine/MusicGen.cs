@@ -116,7 +116,8 @@ public sealed partial class MusicGen
 		for ( int c = 0; c < _vlShift.Length; c++ )
 			vl[c] = $"[{string.Join( " ", _vlShift[c] )}]";
 		sb.AppendLine( $"voicelead {string.Join( " ", vl )} (semitones per voice, per chord)" );
-		sb.AppendLine( $"groove    {_groove.Name}, ride pref {_ridePref:0.00}" );
+		sb.AppendLine( $"groove    {_songGroove.Name} (the song's — each section draws its own, below),"
+			+ $" ride pref {_ridePref:0.00}, kit {(_kitLeads ? "leads" : "follows the band")}" );
 		sb.AppendLine( $"parts     comp {_songComp.LengthTicks / _time.BarTicks} bar(s), bass {_songBass.LengthTicks / _time.BarTicks} bar(s)"
 			+ $"{(_songKeys != null ? $", keys {_songKeys.LengthTicks / _time.BarTicks} bar(s)" : "")}"
 			+ $"{(_songLoud != null ? $", loud comp {_songLoud.LengthTicks / _time.BarTicks} bar(s) as {_prof.LoudComp} from energy {_prof.LoudFrom:0.00}" : "")}"
@@ -139,7 +140,7 @@ public sealed partial class MusicGen
 				// the first thing to check when a listening note is about a cymbal, because "the
 				// ride is too loud" and "the crash is too loud" are different repairs and a section
 				// on the hats is neither.
-				+ $"  {CymbalHand( i )}" );
+				+ $"  {CymbalHand( i )}  {(i < _sections.Count ? _sections[i].Groove : "?")}" );
 		}
 		return sb.ToString();
 	}
@@ -201,7 +202,12 @@ public sealed partial class MusicGen
 	/// many different rhythm sections a genre can produce at all: they come out of tables, so it is
 	/// a table-size ceiling rather than anything randomness can reach.</summary>
 	internal (Pattern Comp, Pattern Keys, Pattern Bass, DrumGroove Groove) SongParts =>
-		(_songComp, _songKeys, _songBass, _groove);
+		(_songComp, _songKeys, _songBass, _songGroove);
+
+	/// <summary>Whether this song's band wrote to the kit or the kit to the band. Cohesion is
+	/// achieved by two different mechanisms depending on the answer, so a sweep that averages the
+	/// two describes neither.</summary>
+	internal bool KitLeads => _kitLeads;
 
 	/// <summary>The song's two tunes (diagnostics — see <see cref="Melody"/>).</summary>
 	internal (Pattern Chorus, Pattern Verse) Tunes => (_chorusTune, _verseTune);
@@ -348,8 +354,12 @@ public sealed partial class MusicGen
 		public readonly int Start, End;
 		public readonly bool Ride, CrashRide;
 		public readonly string Type;
-		public SectionInfo( int start, int end, bool ride, bool crashRide, string type )
-		{ Start = start; End = end; Ride = ride; CrashRide = crashRide; Type = type; }
+		/// <summary>The groove this section drew. Per SECTION now, so it is no more derivable from
+		/// the genre or the seed's knobs than the cymbal hand is — and it is the other half of the
+		/// same answer when a listening note is about the drums.</summary>
+		public readonly string Groove;
+		public SectionInfo( int start, int end, bool ride, bool crashRide, string type, string groove )
+		{ Start = start; End = end; Ride = ride; CrashRide = crashRide; Type = type; Groove = groove; }
 	}
 
 	readonly List<SectionInfo> _sections = new();
@@ -435,7 +445,14 @@ public sealed partial class MusicGen
 	// loud comp at all (null otherwise). Drawn once per song rather than per section on purpose:
 	// the loud sections are the choruses, and every chorus must agree — that is the song's hook.
 	Pattern _songLoud;
-	DrumGroove _groove;      // the song's groove — per-genre tables, not a shared switch default
+	DrumGroove _groove;      // the CURRENT SECTION's groove — per-genre tables, not a shared switch default
+	DrumGroove _songGroove;  // and the song's own, which every chorus plays
+	// What the kit actually plays this section: the groove's patterns, worked on by the arranger.
+	// Separate fields rather than a rebuilt DrumGroove so the groove stays the thing that was drawn
+	// and these stay the thing that is played — the same split PlanTrace records.
+	Pattern _kickFig, _snareFig;
+	Pattern _songKick, _songSnare;   // …and the song's own, which every chorus replays
+	bool _kitLeads;          // per song: does the band write to the kit, or the kit to the band
 	bool _riffBass;          // the bass reads the riff's onsets instead of playing its own pattern
 	EndingStyle _ending;     // how this song lands (see EndingStyle) — a per-song draw, not a fixed pad
 	readonly List<Hit> _riffOnsets = new(); // this bar's riff, for the bass to double

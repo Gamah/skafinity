@@ -119,8 +119,19 @@ readonly struct ArrangeRole
 	/// <summary>Pull toward phrase seams, where a band converges.</summary>
 	public readonly float Seam;
 
-	public ArrangeRole( CellClass cells, float kick, float complement, float seam )
-	{ Cells = cells; Kick = kick; Complement = complement; Seam = seam; }
+	/// <summary>What an ADDED onset plays, where the voice's vocabulary says an addition is one
+	/// particular thing rather than "another of whatever was before it". The snare is the case: a
+	/// drummer filling in around a backbeat adds GHOSTS, and copying the previous cell would let a
+	/// bar acquire a second struck backbeat — which is the one thing about a snare part a listener
+	/// would notice immediately. <see cref="NoValue"/> keeps the copy-the-previous default.
+	/// </summary>
+	public readonly int AddValue;
+
+	public const int NoValue = int.MinValue;
+
+	public ArrangeRole( CellClass cells, float kick, float complement, float seam,
+		int addValue = NoValue )
+	{ Cells = cells; Kick = kick; Complement = complement; Seam = seam; AddValue = addValue; }
 }
 
 // The arranger. Part of the MusicGen engine — see MusicGen.cs.
@@ -142,31 +153,7 @@ public sealed partial class MusicGen
 	{
 		var sk = new Skeleton( sectionTick, _sectionTicks, barTicks );
 		_skeleton = sk;
-
-		// ── the accent grid, off the kit ──
-		foreach ( var h in _groove.Kick.Slice( sectionTick, sectionTick + _sectionTicks, sectionTick, _feel ) )
-		{
-			int c = sk.CellAt( h.Tick );
-			if ( c < 0 ) continue;
-			sk.Kick[c] = true;
-			sk.Accent[c] += h.Vel;
-		}
-		foreach ( var h in _groove.Snare.Slice( sectionTick, sectionTick + _sectionTicks, sectionTick, _feel ) )
-		{
-			int c = sk.CellAt( h.Tick );
-			if ( c >= 0 ) sk.Accent[c] += h.Value == DrumGroove.Ghost ? 0.3f : h.Vel;
-		}
-		// The genre's own measured accent weights on top: a country bar leans on its offbeat and a
-		// metal bar is deliberately flat, and that is a property of the genre rather than of the
-		// groove it drew.
-		for ( int c = 0; c < sk.Cells; c++ )
-		{
-			int inBar = c % sk.BarCells;
-			float metric = inBar == 0 ? _prof.AccentDown
-				: inBar % 4 != 0 ? _prof.AccentOff
-				: (inBar / 4) % 2 == 1 ? _prof.AccentBack : 1f;
-			sk.Accent[c] = Math.Min( 1f, sk.Accent[c] * metric * 0.6f );
-		}
+		_kitArranged = false;
 
 		// ── the seams ──
 		// A phrase ends every four bars, and the section's last bar is one whatever its length.
@@ -192,6 +179,66 @@ public sealed partial class MusicGen
 			}
 		}
 
+		// ── who goes first ──
+		// The skeleton the band writes against is the kit's accents, plus the genre's metric
+		// weights, plus the phrase seams, plus the tune. THREE OF THOSE FOUR DO NOT NEED THE KIT,
+		// which is what makes both orderings one mechanism rather than two.
+		//
+		// KIT LEADS: the kit arranges against seams, metre and tune; its accents then go on the
+		// grid; the band follows. KIT FOLLOWS: the band writes against a grid with no kit on it and
+		// the kit arranges last, against what the band actually took — a drummer playing to the
+		// riff. It is not a coin flip dressed up: a leading kit is most punk and most rock, a
+		// following kit is riff-led metal and a great deal of programmed pop.
+		var rng = new Rng( $"{_tag}:arr:{bk}" );
+		if ( _kitLeads ) { ArrangeKit( sk, bk ); KitAccents( sk ); }
+		else KitAccents( sk );
+
+		ArrangeBand( part, sk, rng );
+
+		if ( !_kitLeads ) { ArrangeKit( sk, bk ); KitAccents( sk ); }
+	}
+
+	/// <summary>The accent grid, off the kit and the genre's own measured weights.
+	///
+	/// WITH NO KIT ON THE GRID YET the cells carry the metre alone — which is the honest reading of
+	/// "the band writes against seams, metre and tune", and not a floor invented to keep the number
+	/// non-zero: it is exactly this formula with the kit's occupancy taken as flat.</summary>
+	void KitAccents( Skeleton sk )
+	{
+		bool haveKit = _kitArranged;
+		for ( int c = 0; c < sk.Cells; c++ ) { sk.Accent[c] = 0f; sk.Kick[c] = false; }
+
+		if ( haveKit )
+		{
+			foreach ( var h in _kickFig.Slice( sk.StartTick, sk.StartTick + _sectionTicks, sk.StartTick, _feel ) )
+			{
+				int c = sk.CellAt( h.Tick );
+				if ( c < 0 ) continue;
+				sk.Kick[c] = true;
+				sk.Accent[c] += h.Vel;
+			}
+			foreach ( var h in _snareFig.Slice( sk.StartTick, sk.StartTick + _sectionTicks, sk.StartTick, _feel ) )
+			{
+				int c = sk.CellAt( h.Tick );
+				if ( c >= 0 ) sk.Accent[c] += h.Value == DrumGroove.Ghost ? 0.3f : h.Vel;
+			}
+		}
+
+		// The genre's own measured accent weights on top: a country bar leans on its offbeat and a
+		// metal bar is deliberately flat, and that is a property of the genre rather than of the
+		// groove it drew.
+		for ( int c = 0; c < sk.Cells; c++ )
+		{
+			int inBar = c % sk.BarCells;
+			float metric = inBar == 0 ? _prof.AccentDown
+				: inBar % 4 != 0 ? _prof.AccentOff
+				: (inBar / 4) % 2 == 1 ? _prof.AccentBack : 1f;
+			sk.Accent[c] = Math.Min( 1f, (haveKit ? sk.Accent[c] : 1f) * metric * 0.6f );
+		}
+	}
+
+	void ArrangeBand( in Part part, Skeleton sk, Rng rng )
+	{
 		// ── the parts ──
 		// EVERY CHORUS AGREES, AND THE CHORUS IS STILL ARRANGED. Those are two different claims and
 		// conflating them is what would make this whole phase a no-op: if a chorus quoted the TABLE
@@ -203,7 +250,6 @@ public sealed partial class MusicGen
 		// reuses the cached line rather than re-deriving it: the guarantee becomes structural
 		// instead of resting on the skeleton happening to come out the same at three different
 		// points in the song.
-		var rng = new Rng( $"{_tag}:arr:{bk}" );
 		if ( part.Type == Section.Chorus )
 		{
 			if ( !_chorusArranged )
@@ -233,7 +279,139 @@ public sealed partial class MusicGen
 
 	/// <summary>Whether the song's chorus parts have been arranged yet. The chorus is arranged the
 	/// first time one is rendered and every later chorus reuses that line.</summary>
-	bool _chorusArranged;
+	bool _chorusArranged, _chorusKitArranged;
+
+	/// <summary>Whether the kit's patterns for THIS section are final yet — i.e. whether the accent
+	/// grid may be built off them.</summary>
+	bool _kitArranged;
+
+	/// <summary>
+	/// The kit, arranged. The drums were the one layer left out of the arranger, and the reasoning
+	/// was good — the grooves are fitted to a played corpus, so they were the measured reference the
+	/// band wrote against rather than another client of it. The cost was that the groove was drawn
+	/// ONCE PER SONG and never re-drawn: every bar of every section played the identical kick, snare
+	/// and cymbal, two or three states per genre and exactly one inside a song.
+	///
+	/// THE CYMBAL IS NOT ARRANGED. It is the pulse, and it is where the corpus pass found the
+	/// largest mismatch of all (country's hat on the "and", 84% against 36% on the beat) — leaving
+	/// it alone preserves that by construction rather than by a rule that can be got wrong. What
+	/// varies about the cymbal is which INSTRUMENT plays it and how sparse a section thins it, both
+	/// of which already vary per section.
+	///
+	/// EVERY CHORUS AGREES, the same way the band's does and for the same reason: the song's kit is
+	/// arranged the first time a chorus is rendered and every later chorus replays that line.
+	/// </summary>
+	void ArrangeKit( Skeleton sk, string bk )
+	{
+		var rng = new Rng( $"{_tag}:kit:{bk}" );
+		if ( _sectionType == Section.Chorus )
+		{
+			if ( !_chorusKitArranged )
+			{
+				_songKick = ArrangeDrum( _songKick, sk, rng, KickRole(), kick: true );
+				_songSnare = ArrangeDrum( _songSnare, sk, rng, _prof.SnareRole, kick: false );
+				_chorusKitArranged = true;
+			}
+			_kickFig = _songKick; _snareFig = _songSnare;
+			_kitArranged = true;
+			return;
+		}
+
+		_kickFig = ArrangeDrum( _kickFig, sk, rng, KickRole(), kick: true );
+		_snareFig = ArrangeDrum( _snareFig, sk, rng, _prof.SnareRole, kick: false );
+		_kitArranged = true;
+	}
+
+	/// <summary>
+	/// Where a section is quiet enough that the kit plays the SPINE and nothing else — the
+	/// downbeat kick and the struck backbeat, with every ghost and every pushed kick gone.
+	///
+	/// AND THE FEEL GATE IS THE POINT, not a caveat. Half time is a pattern RATE: it already
+	/// stretches the groove to half its density, so a breakdown that also thinned to the spine
+	/// would be two hits a bar and a hole in the arrangement. Every Breakdown in every form here
+	/// is <c>feel: 0.5f</c>, which is exactly why this fires on the INTRO instead — a kit walking
+	/// in on the bare bones of its own groove, which is what an intro is.
+	/// </summary>
+	const float KitSpineFrom = 0.32f;
+
+	/// <summary>
+	/// THE KIT'S DENSITY BIAS, −1 (thin) to +1 (fill), and what makes energy an input to what the
+	/// drummer PLAYS rather than only to how loud it is.
+	///
+	/// It shifts the weight between the DROP and ADD mutations, so a quiet section is likelier to
+	/// lose an onset and a loud one to gain one. Everything a drummer does with dynamics beyond
+	/// hitting harder is here: fewer notes, dropped ghosts, a busier bar under a chorus.
+	///
+	/// <c>DrumBusy</c> and <c>DrumTone</c> feed the same decision rather than sitting on top of it
+	/// as multipliers — that is the whole reason they are here. A bright kit is snare-led, so
+	/// <c>DrumTone</c> pushes the ghost layer up and the foot down; a dark one does the reverse.
+	/// </summary>
+	float KitBias( bool kick )
+	{
+		float energy = (_energy - 0.5f) * 1.4f;
+		float busy = (Math.Clamp( _c.DrumBusy, 0f, 1f ) - 0.5f) * 1.2f;
+		float tone = (_drumTone - 0.5f) * 0.6f * (kick ? -1f : 1f);
+		return Math.Clamp( energy + busy + tone, -1f, 1f );
+	}
+
+	/// <summary>The spine alone — see <see cref="KitSpineFrom"/>.</summary>
+	static Pattern ToSpine( Pattern fig, bool[] spine )
+	{
+		int n = 0;
+		for ( int i = 0; i < spine.Length; i++ ) if ( spine[i] ) n++;
+		if ( n == 0 || n == fig.Count ) return fig;
+		var ticks = new int[n]; var values = new int[n]; var vels = new float[n];
+		for ( int i = 0, k = 0; i < fig.Count; i++ )
+		{
+			if ( !spine[i] ) continue;
+			ticks[k] = fig.TickAt( i ); values[k] = fig.ValueAt( i ); vels[k] = fig.VelAt( i ); k++;
+		}
+		return new Pattern( fig.LengthTicks, ticks, values, vels );
+	}
+
+	/// <summary>
+	/// The kick's role, WITH THE SIGN OF ITS COMPLEMENT DECIDED BY WHO WROTE FIRST — and that sign
+	/// is the whole difference between the two orderings.
+	///
+	/// <see cref="Score"/> reads <c>Complement</c> as a push AWAY from cells the tune and the parts
+	/// placed so far have taken, which is right for every melodic voice and right for a kick the
+	/// band has not been written against yet: a leading kit states the beat and the band answers it.
+	/// A FOLLOWING kick is the opposite gesture. The riff is already on the grid, and a drummer
+	/// playing to it lands WITH it — that is what "the kick tracks the topline" means in programmed
+	/// pop and what a riff-led metal foot is doing under a gallop.
+	///
+	/// Ordering with the same sign on both sides is what the split reporting caught: it changed who
+	/// saw whom and left both modes agreeing to within a point or two, which is a mechanism that
+	/// costs a draw and buys nothing.
+	/// </summary>
+	ArrangeRole KickRole()
+	{
+		var r = _prof.KickRole;
+		return _kitLeads ? r
+			: new ArrangeRole( r.Cells, r.Kick, -r.Complement, r.Seam, r.AddValue );
+	}
+
+	/// <summary>One drum, through the same mutations as everything else — at the kit's own lower
+	/// rate, with the genre's spine held back, and without writing itself into the occupancy the
+	/// band reads.
+	///
+	/// The RECOMBINE table is this drum's line from the genre's OTHER grooves, which is the same
+	/// claim the melodic version makes: the genre's own vocabulary, re-cut, and never a gesture the
+	/// genre does not have.</summary>
+	Pattern ArrangeDrum( Pattern fig, Skeleton sk, Rng rng, in ArrangeRole role, bool kick )
+	{
+		if ( fig == null ) return null;
+		var spine = DrumGroove.SpineOf( fig, kick, _time.BarTicks );
+		var table = new Pattern[_prof.Grooves.Length];
+		for ( int i = 0; i < table.Length; i++ )
+			table[i] = kick ? _prof.Grooves[i].Kick : _prof.Grooves[i].Snare;
+		// The arrangement happens either way, so the stream costs the same whatever the section's
+		// energy — the spine section then keeps only what it was always going to keep.
+		var arranged = Arrange( fig, sk, rng, role, table, _prof.KitMutateRate, spine,
+			marks: false, bias: KitBias( kick ), offPulse: kick );
+		if ( _energy > KitSpineFrom || _feel < 1f ) return arranged;
+		return ToSpine( arranged, DrumGroove.SpineOf( arranged, kick, _time.BarTicks ) );
+	}
 
 	/// <summary>Write a figure's onsets into the skeleton's occupancy without changing it — what a
 	/// quoted part still owes the parts arranged after it.</summary>
@@ -265,17 +443,33 @@ public sealed partial class MusicGen
 	/// punk downstroke stays on the beat however loud the accent grid is elsewhere.
 	/// </summary>
 	Pattern Arrange( Pattern fig, Skeleton sk, Rng rng, in ArrangeRole role, Pattern[] table )
+		=> Arrange( fig, sk, rng, role, table, _prof.MutateRate );
+
+	/// <param name="spine">Onsets the mutations may not reach, index-aligned with
+	/// <paramref name="fig"/> — the drums' <see cref="DrumGroove.SpineOf"/>. Null for a voice whose
+	/// whole figure is fair game, which is every melodic one.</param>
+	/// <param name="marks">Whether the result goes into the skeleton's occupancy. The kit's does
+	/// not: the kick has its own layer on the grid and the snare is most of the accent grid, so
+	/// writing it into <c>Taken</c> as well would have the band pushing away from a beat it is
+	/// supposed to be locking to, and count it twice while doing it.</param>
+	/// <param name="bias">−1 (thin) to +1 (fill): shifts weight between DROP and ADD without
+	/// changing how much of the stream the draw costs. Zero for every melodic voice, so their
+	/// weights are exactly what they always were; the kit reads its section's energy and the
+	/// vibe's DRUM BUSY through it (see <see cref="KitBias"/>).</param>
+	Pattern Arrange( Pattern fig, Skeleton sk, Rng rng, in ArrangeRole role, Pattern[] table,
+		float mutateRate, bool[] spine = null, bool marks = true, float bias = 0f,
+		bool offPulse = false )
 	{
 		if ( fig == null || fig.Count == 0 ) { return fig; }
 
 		// The draw is taken whatever the outcome, so a genre's mutation rate cannot change how much
 		// of this stream the next voice sees — the same discipline PickOrNull keeps in the composer.
-		float mutate = Math.Clamp( _prof.MutateRate, 0f, 1f );
+		float mutate = Math.Clamp( mutateRate, 0f, 1f );
 		int op = rng.WeightedIndex( new[]
 		{
 			(int)MathF.Round( QuoteWeight * (1f - mutate) * 100f ),   // quote
-			(int)MathF.Round( mutate * 30f ),                         // drop
-			(int)MathF.Round( mutate * 30f ),                         // add
+			(int)MathF.Round( mutate * 30f * (1f - bias) ),           // drop
+			(int)MathF.Round( mutate * 30f * (1f + bias) ),           // add
 			(int)MathF.Round( mutate * 25f ),                         // displace
 			(int)MathF.Round( mutate * 15f ),                         // recombine
 		} );
@@ -288,15 +482,15 @@ public sealed partial class MusicGen
 
 		switch ( op )
 		{
-			case 1: Drop( ticks, values, vels, fig, sk, rng, role ); break;
-			case 2: Add( ticks, values, vels, fig, sk, rng, role ); break;
-			case 3: Displace( ticks, values, vels, fig, sk, rng, role ); break;
-			case 4: Recombine( ticks, values, vels, fig, rng, table ); break;
+			case 1: Drop( ticks, values, vels, fig, sk, rng, role, spine ); break;
+			case 2: Add( ticks, values, vels, fig, sk, rng, role, offPulse ); break;
+			case 3: Displace( ticks, values, vels, fig, sk, rng, role, spine, offPulse ); break;
+			case 4: Recombine( ticks, values, vels, fig, rng, table, spine ); break;
 		}
 
 		var arranged = ticks.Count == 0 ? fig
 			: new Pattern( fig.LengthTicks, ticks.ToArray(), values.ToArray(), vels.ToArray() );
-		MarkTaken( sk, arranged );
+		if ( marks ) MarkTaken( sk, arranged );
 		return arranged;
 	}
 
@@ -332,12 +526,13 @@ public sealed partial class MusicGen
 	/// comp is stepping on, most often. Never the figure's first onset: a figure that loses its
 	/// downbeat is a different figure.</summary>
 	void Drop( List<int> ticks, List<int> values, List<float> vels, Pattern fig, Skeleton sk,
-		Rng rng, in ArrangeRole role )
+		Rng rng, in ArrangeRole role, bool[] spine = null )
 	{
 		if ( ticks.Count <= 2 ) return;
 		int worst = -1; float worstScore = float.MaxValue;
 		for ( int i = 1; i < ticks.Count; i++ )
 		{
+			if ( spine != null && spine[i] ) continue;
 			float s = Score( ticks[i], fig, sk, role );
 			if ( s < worstScore ) { worstScore = s; worst = i; }
 		}
@@ -348,12 +543,17 @@ public sealed partial class MusicGen
 	/// <summary>ADD an onset on the best free cell of the genre's allowed class. The new hit takes
 	/// its VALUE from the onset before it, so it is the same gesture played once more rather than a
 	/// cell type the figure never used.</summary>
+	/// <param name="offPulse">Refuse cells on the beat — the other half of the kick's spine law
+	/// (see <see cref="DrumGroove.SpineOf"/>). A groove's identity is partly where it does NOT
+	/// play, and a rule about existing onsets cannot say that: the one drop IS the hole on beat 1,
+	/// and without this it quietly acquires the downbeat it is defined by not having.</param>
 	void Add( List<int> ticks, List<int> values, List<float> vels, Pattern fig, Skeleton sk,
-		Rng rng, in ArrangeRole role )
+		Rng rng, in ArrangeRole role, bool offPulse = false )
 	{
 		int best = -1; float bestScore = float.NegativeInfinity;
 		for ( int t = 0; t < fig.LengthTicks; t += Skeleton.CellTicks )
 		{
+			if ( offPulse && DrumGroove.IsPulse( t ) ) continue;
 			if ( ticks.Contains( t ) || !AllowedFigTick( t, fig, sk, role ) ) continue;
 			float s = Score( t, fig, sk, role );
 			if ( s > bestScore ) { bestScore = s; best = t; }
@@ -363,25 +563,34 @@ public sealed partial class MusicGen
 		while ( at < ticks.Count && ticks[at] < best ) at++;
 		int from = Math.Max( 0, at - 1 );
 		ticks.Insert( at, best );
-		values.Insert( at, values[from] );
+		values.Insert( at, role.AddValue == ArrangeRole.NoValue ? values[from] : role.AddValue );
 		vels.Insert( at, vels[from] * 0.9f );
 	}
 
 	/// <summary>DISPLACE one onset by a cell, staying inside the allowed class — the same figure
 	/// with one hit pushed or pulled. Not the first onset, for the same reason DROP spares it.
 	/// </summary>
+	/// <param name="offPulse">As <see cref="Add"/>'s: a kick may not be moved ONTO a beat either.
+	/// The same hole a groove is defined by is just as fillable by a displaced push as by an added
+	/// one — ska's beat 1 still sat 3 points over its baseline once Add alone was stopped. So the
+	/// kick's on-beat set is frozen entirely: nothing enters it, nothing leaves it, and what
+	/// arranges is the pushes around it.</param>
 	void Displace( List<int> ticks, List<int> values, List<float> vels, Pattern fig, Skeleton sk,
-		Rng rng, in ArrangeRole role )
+		Rng rng, in ArrangeRole role, bool[] spine = null, bool offPulse = false )
 	{
 		if ( ticks.Count <= 1 ) return;
 		int i = 1 + rng.Int( ticks.Count - 1 );
 		int step = rng.Chance( 0.5f ) ? Skeleton.CellTicks : -Skeleton.CellTicks;
+		// Both draws are taken before the spine is consulted, so a groove whose onsets are mostly
+		// spine costs this stream exactly what one whose onsets are all free costs.
+		if ( spine != null && spine[i] ) return;
 		// The allowed class is often coarser than a sixteenth, so widen the move rather than giving
 		// up: a skank displaced by one cell can never be legal, displaced by two it is.
 		for ( int k = 1; k <= 4; k++ )
 		{
 			int t = ticks[i] + step * k;
 			if ( t <= 0 || t >= fig.LengthTicks || ticks.Contains( t ) ) continue;
+			if ( offPulse && DrumGroove.IsPulse( t ) ) continue;
 			if ( !AllowedFigTick( t, fig, sk, role ) ) continue;
 			// The VALUE and the VELOCITY move with the tick. A displace that moved only the tick
 			// would keep the figure's cells and lose which hit was which — the chop that got pushed
@@ -398,8 +607,11 @@ public sealed partial class MusicGen
 	/// <summary>RECOMBINE: take one bar of the phrase from another figure in the same genre's
 	/// table. The genre's own vocabulary, re-cut — which is why this is the mutation that reaches
 	/// furthest without ever producing a gesture the genre does not have.</summary>
+	/// <param name="spine">Kept where the bar is cleared. Recombine is the one mutation that
+	/// removes onsets it never looked at — it replaces a whole bar — so without this a genre's
+	/// backbeat would survive Drop and Displace and then vanish anyway one time in six.</param>
 	void Recombine( List<int> ticks, List<int> values, List<float> vels, Pattern fig, Rng rng,
-		Pattern[] table )
+		Pattern[] table, bool[] spine = null )
 	{
 		if ( table == null || table.Length < 2 ) return;
 		Pattern other = null;
@@ -416,7 +628,7 @@ public sealed partial class MusicGen
 		int from = bar * barTicks, to = from + barTicks;
 
 		for ( int i = ticks.Count - 1; i >= 0; i-- )
-			if ( ticks[i] >= from && ticks[i] < to )
+			if ( ticks[i] >= from && ticks[i] < to && (spine == null || !spine[i]) )
 			{ ticks.RemoveAt( i ); values.RemoveAt( i ); vels.RemoveAt( i ); }
 
 		// ONE bar of the other figure, folded onto this bar — and taken from ONE of its bars, not

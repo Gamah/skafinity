@@ -108,7 +108,13 @@ public sealed partial class MusicGen
 		// The second chordal voice's figure. Drawn even where the genre has none, so the genres
 		// that do have one are not the only ones consuming the value.
 		_keysFig = _songKeys = PickOrNull( rng, prof.KeysFigures );
-		_groove = prof.DrawGroove( rng );
+		_groove = _songGroove = prof.DrawGroove( rng );
+		_songKick = _songGroove.Kick; _songSnare = _songGroove.Snare;
+		// WHO GOES FIRST. Drawn once per song and for every genre, so the draw count does not depend
+		// on the answer: the band writing to the kit and the kit writing to the band are two
+		// different mechanisms for the same cohesion, and a genre has an opinion about which one it
+		// is (see GenreProfile.KitLeadsChance).
+		_kitLeads = rng.Chance( prof.KitLeadsChance );
 		// Metal's bass either pedals under the riff or doubles it; punk sometimes takes the same
 		// unison. Both are RELATIONAL, so this decides whether the bass reads the guitar's onsets
 		// at render time rather than which table it plays from.
@@ -329,17 +335,25 @@ public sealed partial class MusicGen
 		// minutes. The chorus keeps the song's own figure (that is the song's identity, and every
 		// chorus must agree); the other sections draw their own off a stream keyed by section TYPE,
 		// so a verse contrasts with the chorus while both verses still match each other.
+		//
+		// THE GROOVE IS ONE OF THEM NOW. It was the last draw in the engine that happened once per
+		// song and never again — the kit's two or three table entries were a genre's whole drumming,
+		// and one of them was a whole SONG's. Its own stream, so a section acquiring a groove of its
+		// own moves nothing else in the kit.
 		if ( part.Type != Section.Chorus )
 		{
 			var figRng = new Rng( $"{_tag}:figure:{bk}" );
 			_compFig = figRng.Pick( _prof.CompFigures );
 			_keysFig = PickOrNull( figRng, _prof.KeysFigures );
 			_bassPat = figRng.Pick( _prof.BassPatterns );
+			_groove = _prof.DrawGroove( new Rng( $"{_tag}:groove:{bk}" ) );
 		}
 		else
 		{
 			_compFig = _songComp; _keysFig = _songKeys; _bassPat = _songBass;
+			_groove = _songGroove;
 		}
+		_kickFig = _groove.Kick; _snareFig = _groove.Snare;
 		var tune = TuneFor( part.Type );
 
 		// ── the section's own state ──
@@ -361,7 +375,8 @@ public sealed partial class MusicGen
 		// a pedal figure moves nothing else in the kit, and drawn per section because that is the
 		// scale a drummer holds a figure over.
 		_sections.Add( new SectionInfo( _time.TickToSample( sectionTick ),
-			_time.TickToSample( sectionTick + _sectionTicks ), _ride, _crashRide, $"{part.Type}" ) );
+			_time.TickToSample( sectionTick + _sectionTicks ), _ride, _crashRide, $"{part.Type}",
+			_groove.Name ) );
 		var footRng = new Rng( $"{_tag}:foot:{bk}" );
 		_footCells = 0;
 		for ( int i = 0; i < 8; i++ )
@@ -379,6 +394,10 @@ public sealed partial class MusicGen
 		// places and left every one of them able to disagree about what the section is — the same
 		// argument PlanTrace makes about re-deriving the plan.
 		PlanArrangement( part, sectionTick, beatsPerBar * Timing.TicksPerBeat, tune, bk );
+		// Recorded AFTER the arrangement, so what a sweep reads is the part the section will play
+		// rather than the table entry it started from.
+		Trace?.Mark( sectionTick, _sectionTicks, beatsPerBar * Timing.TicksPerBeat, part.Type,
+			_groove.Name, _kickFig, _snareFig, _groove.Cymbal );
 
 
 		bool isIntro = part.Type == Section.Intro;

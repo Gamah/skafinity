@@ -368,6 +368,31 @@ sealed class GenreProfile
 	/// </summary>
 	public float MutateRate { get; init; } = 0.6f;
 
+	/// <summary>The KICK's role. Its <see cref="ArrangeRole.Cells"/> is where this genre's foot
+	/// lives — a gallop is a sixteenth thing and a two-beat country kick is not — and its
+	/// <see cref="ArrangeRole.Complement"/> is which way it reads the tune: pushed away from the
+	/// melody's landings, or (negative, via a low value against a high Kick pull) content to land
+	/// with them.</summary>
+	public ArrangeRole KickRole { get; init; } = new( CellClass.Eighths, 0.2f, 0.25f, 0.35f );
+
+	/// <summary>The SNARE's role. It holds the backbeat whatever this says — the struck hits are
+	/// spine and the arranger cannot reach them (see <see cref="DrumGroove.SpineOf"/>) — so what
+	/// is arranged here is the ghost layer around them.</summary>
+	public ArrangeRole SnareRole { get; init; } = new( CellClass.Sixteenths, 0.1f, 0.4f, 0.3f );
+
+	/// <summary>How often a non-chorus section works on the kit it drew. DELIBERATELY UNDER
+	/// <see cref="MutateRate"/> in every genre: a guitar figure is authored, so the worst a mutation
+	/// can do to it is make it worse, while a drum figure carries a genre's identity in specific
+	/// measured positions and eroding those converges six genres on one drummer.</summary>
+	public float KitMutateRate { get; init; } = 0.4f;
+
+	/// <summary>How often a song has the KIT write first and the band follow it, rather than the
+	/// other way round. Both are real and they are different mechanisms for the same cohesion: a
+	/// leading kit is most punk and most rock, a following kit is riff-led metal and a great deal of
+	/// programmed pop where the drums track the topline. Drawn once per song, like
+	/// <see cref="RiffBassChance"/>, and for every genre whatever it says.</summary>
+	public float KitLeadsChance { get; init; } = 0.65f;
+
 	/// <summary>What kind of TUNE this genre writes (see <see cref="TuneVocab"/>). Distinct from
 	/// <see cref="Lead"/>, which is what the lead instrument does when it improvises instead.
 	/// </summary>
@@ -520,6 +545,13 @@ sealed class GenreProfile
 				// The chorus is punk's downstroke over ska's harmony, and it is on the BEAT.
 				LoudCompRole = new( CellClass.Downbeats, kick: 0.40f, complement: 0.20f, seam: 0.40f ),
 				MutateRate = 0.55f,
+				// The kit. Ska's kick is an eighth-note instrument and its snare carries one ghost;
+				// the hand that matters here is the offbeat one, and that is the cymbal, which is
+				// not arranged at all.
+				KickRole = new( CellClass.Eighths, kick: 0.15f, complement: 0.30f, seam: 0.35f ),
+				SnareRole = new( CellClass.Eighths, kick: 0.10f, complement: 0.35f, seam: 0.30f,
+					addValue: DrumGroove.Ghost ),
+				KitMutateRate = 0.38f, KitLeadsChance = 0.70f,
 				CompFigures = CompFigure.SkaPunk, Comp = CompStyle.Skank,
 			CompOrnament = CompFigure.SkaPunkFlick,
 			// The dynamic that IS third-wave ska: the skank stops for the chorus and the same voice
@@ -578,6 +610,13 @@ sealed class GenreProfile
 				CompRole = new( CellClass.Eighths, kick: 0.30f, complement: 0.40f, seam: 0.40f ),
 				KeysRole = new( CellClass.Eighths, kick: 0.05f, complement: 0.75f, seam: 0.20f ),
 				MutateRate = 0.65f,
+				// Rock's kick is where its identity is — the pushed &1 and &3 the corpus pass put
+				// there — so it arranges on eighths and leans toward the seams it is seldom already
+				// on, and the whole kit mutates near the bottom of the roster.
+				KickRole = new( CellClass.Eighths, kick: 0.15f, complement: 0.20f, seam: 0.45f ),
+				SnareRole = new( CellClass.Eighths, kick: 0.10f, complement: 0.40f, seam: 0.35f,
+					addValue: DrumGroove.Ghost ),
+				KitMutateRate = 0.35f, KitLeadsChance = 0.80f,
 				CompFigures = CompFigure.Rock, Comp = CompStyle.Riff,
 			CompOrnament = CompFigure.RockPickup,
 			KeysFigures = CompFigure.RockKeys, Keys = KeysStyle.Stabs,
@@ -627,6 +666,12 @@ sealed class GenreProfile
 				CompRole = new( CellClass.Offbeats, kick: 0.05f, complement: 0.40f, seam: 0.30f ),
 				KeysRole = new( CellClass.Eighths, kick: 0.05f, complement: 0.70f, seam: 0.25f ),
 				MutateRate = 0.60f,
+				// Country's snare IS the train beat — a sixteenth stream of ghosts around a struck
+				// backbeat — so its ghost layer is the one thing here with sixteenths to work on.
+				KickRole = new( CellClass.Eighths, kick: 0.10f, complement: 0.35f, seam: 0.30f ),
+				SnareRole = new( CellClass.Sixteenths, kick: 0.05f, complement: 0.30f, seam: 0.25f,
+					addValue: DrumGroove.Ghost ),
+				KitMutateRate = 0.42f, KitLeadsChance = 0.55f,
 				CompFigures = CompFigure.Country, Comp = CompStyle.BoomChick,
 			CompOrnament = CompFigure.CountryPickOff,
 			KeysFigures = CompFigure.CountryKeys, Keys = KeysStyle.HonkyTonk,
@@ -684,6 +729,12 @@ sealed class GenreProfile
 				BassRole = new( CellClass.Sixteenths, kick: 0.85f, complement: 0.05f, seam: 0.35f ),
 				CompRole = new( CellClass.Sixteenths, kick: 0.45f, complement: 0.25f, seam: 0.45f ),
 				MutateRate = 0.55f,
+				// Metal's kick is a sixteenth instrument and its kit FOLLOWS: the riff is written
+				// first and the double pedal is played to it, which is what a riff-led genre means.
+				KickRole = new( CellClass.Sixteenths, kick: 0.10f, complement: 0.15f, seam: 0.40f ),
+				SnareRole = new( CellClass.Eighths, kick: 0.20f, complement: 0.30f, seam: 0.35f,
+					addValue: DrumGroove.Ghost ),
+				KitMutateRate = 0.45f, KitLeadsChance = 0.25f,
 				CompFigures = CompFigure.Metal, Comp = CompStyle.Gallop,
 			CompOrnament = CompFigure.MetalTremolo,
 			Grooves = DrumGroove.Metal, GrooveWeights = new[] { 3, 2, 2 },
@@ -742,6 +793,13 @@ sealed class GenreProfile
 				BassRole = new( CellClass.Eighths, kick: 0.55f, complement: 0.10f, seam: 0.40f ),
 				CompRole = new( CellClass.Downbeats, kick: 0.35f, complement: 0.20f, seam: 0.40f ),
 				MutateRate = 0.40f,
+				// Punk's two-step doubles its kick at the sixteenth, and its snare strikes 2 and 4
+				// and ghosts nearly every eighth between them. The lowest kit mutation on the
+				// roster: this is the genre whose drums are most nearly the whole arrangement.
+				KickRole = new( CellClass.Sixteenths, kick: 0.10f, complement: 0.20f, seam: 0.40f ),
+				SnareRole = new( CellClass.Eighths, kick: 0.15f, complement: 0.30f, seam: 0.30f,
+					addValue: DrumGroove.Ghost ),
+				KitMutateRate = 0.30f, KitLeadsChance = 0.85f,
 				CompFigures = CompFigure.Punk, Comp = CompStyle.Downstroke,
 			CompOrnament = CompFigure.PunkTurnaround,
 			Grooves = DrumGroove.Punk, GrooveWeights = new[] { 3, 2, 2 },
@@ -801,6 +859,12 @@ sealed class GenreProfile
 				CompRole = new( CellClass.Eighths, kick: 0.20f, complement: 0.35f, seam: 0.25f ),
 				KeysRole = new( CellClass.Sixteenths, kick: 0.05f, complement: 0.80f, seam: 0.20f ),
 				MutateRate = 0.50f,
+				// Pop's kit is programmed and it tracks the topline, so it mostly FOLLOWS — and it
+				// is the genre most willing to put a kick on a sixteenth, because a programmer will.
+				KickRole = new( CellClass.Sixteenths, kick: 0.10f, complement: 0.30f, seam: 0.30f ),
+				SnareRole = new( CellClass.Sixteenths, kick: 0.05f, complement: 0.40f, seam: 0.25f,
+					addValue: DrumGroove.Ghost ),
+				KitMutateRate = 0.40f, KitLeadsChance = 0.30f,
 				CompFigures = CompFigure.Pop, Comp = CompStyle.Pad,
 			KeysFigures = CompFigure.PopArp, Keys = KeysStyle.Arp,
 			KeysOrnament = CompFigure.PopArpRun,

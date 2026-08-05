@@ -1744,8 +1744,9 @@ static class Program
 		// what the plan intended them to. One plan per song: this section is the suite's most
 		// expensive and a second plan per song would only be re-testing determinism, which the
 		// determinism section already owns.
-		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0;
-		bool ascends = true; string offender = null;
+		int songs = 0, moved = 0, chorusPairs = 0, chorusMatched = 0, sections = 0, kitMoved = 0, spineSections = 0;
+		bool ascends = true, spineHeld = true, pulseHeld = true;
+		string offender = null, spineOffender = null, pulseOffender = null;
 		for ( int g = 0; g < GenreProfile.Count; g++ )
 			for ( int n = 0; n < 4; n++ )
 			{
@@ -1792,7 +1793,97 @@ static class Program
 						if ( fig.TickAt( i ) <= fig.TickAt( i - 1 ) )
 						{ ascends = false; offender ??= $"genre {g} seed {n} figure index {i}"; }
 				}
+
+				// THE KIT IS ARRANGED TOO NOW, so both of the arranger's structural claims have to be
+				// asserted over its patterns as well — the same songs, already planned, so this costs
+				// nothing beyond the walk. Read off the trace's section spans, which carry the kit as
+				// the bar loop was handed it.
+				for ( int si = 0; si < trace.Sections.Count; si++ )
+				{
+					var sec = trace.Sections[si];
+					sections++;
+
+					// A QUIET SECTION IN NORMAL TIME PLAYS THE SPINE AND NOTHING ELSE. Asserted
+					// because the mechanism is one energy threshold away from being unreachable: it
+					// is gated on `feel >= 1` so a half-time breakdown does not thin twice, and
+					// every Breakdown in every form is half time — so if this never fired, the
+					// gate would be silently doing nothing and no other check would notice.
+					var part = song.Form[si];
+					if ( part.Energy <= 0.32f && part.Feel >= 1f )
+					{
+						spineSections++;
+						for ( int i = 0; i < sec.Snare.Count; i++ )
+							if ( sec.Snare.ValueAt( i ) == DrumGroove.Ghost )
+							{ spineHeld = false; spineOffender ??= $"genre {g} seed {n} quiet section keeps a ghost"; }
+					}
+					foreach ( var fig in new[] { sec.Kick, sec.Snare } )
+					{
+						if ( fig == null ) continue;
+						for ( int i = 1; i < fig.Count; i++ )
+							if ( fig.TickAt( i ) <= fig.TickAt( i - 1 ) )
+							{ ascends = false; offender ??= $"kit: genre {g} seed {n} index {i}"; }
+					}
+
+					// THE SPINE SURVIVED. A section's struck snares are the genre's backbeat and the
+					// arranger may not reach them, so the count can only ever go UP (Add writes
+					// ghosts) — never down. Checked against the groove the section drew rather than
+					// against a number, because which groove that is now varies per section.
+					int struck = 0;
+					for ( int i = 0; i < sec.Snare.Count; i++ )
+						if ( sec.Snare.ValueAt( i ) != DrumGroove.Ghost ) struck++;
+					int wanted = -1;
+					foreach ( var gr in GenreProfile.For( g ).Grooves )
+					{
+						if ( gr.Name != sec.Groove ) continue;
+						wanted = 0;
+						for ( int i = 0; i < gr.Snare.Count; i++ )
+							if ( gr.Snare.ValueAt( i ) != DrumGroove.Ghost ) wanted++;
+					}
+					if ( wanted >= 0 && struck < wanted )
+					{ spineHeld = false; spineOffender ??= $"genre {g} seed {n} \"{sec.Groove}\" {struck} of {wanted}"; }
+
+					// A KICK ON THE BEAT IS THE PULSE AND THE ARRANGER MAY NOT TAKE ONE AWAY.
+					// This is the check that was missing: the spine protected the bar's first beat
+					// only, so beat 1 held at 96-97% in every genre while country's beat 3 went
+					// missing in 23% of bars and pop's beat 4 in 24% — and because the kick COUNT
+					// per bar barely moved, nothing about density or level said so. What reaches a
+					// listener is a kick that flickers where the pulse should be.
+					//
+					// Stated as "never fewer", not "exactly": Recombine substitutes a whole bar of
+					// another groove from the SAME genre's table, so a one-drop section can take a
+					// bar of steppers and gain a downbeat. That is vocabulary rather than erosion,
+					// and it is the one direction this deliberately allows.
+					foreach ( var gr in GenreProfile.For( g ).Grooves )
+					{
+						if ( gr.Name != sec.Groove ) continue;
+						for ( int i = 0; i < gr.Kick.Count; i++ )
+						{
+							int t = gr.Kick.TickAt( i );
+							if ( !DrumGroove.IsPulse( t ) ) continue;
+							bool kept = false;
+							for ( int j = 0; j < sec.Kick.Count && !kept; j++ ) kept = sec.Kick.TickAt( j ) == t;
+							if ( !kept )
+							{ pulseHeld = false; pulseOffender ??= $"genre {g} seed {n} \"{sec.Groove}\" lost the kick at tick {t}"; }
+						}
+					}
+
+					// …and the kit is not simply the table handed back. Counted, not asserted per
+					// section: quoting is a legitimate outcome of the draw, exactly as it is for the
+					// melodic voices.
+					bool same = false;
+					foreach ( var gr in GenreProfile.For( g ).Grooves )
+						same |= FigureSig( gr.Kick ) == FigureSig( sec.Kick )
+							&& FigureSig( gr.Snare ) == FigureSig( sec.Snare );
+					if ( !same ) kitMoved++;
+				}
 			}
+		Check( "an arranged KIT still ascends, and its spine survives", ascends && spineHeld,
+			offender ?? spineOffender );
+		Check( "the arranger works on the kit rather than quoting the groove table",
+			kitMoved > sections / 5, $"{kitMoved} of {sections} sections moved off the drawn groove" );
+		Check( "an arranged kick never loses a pulse — the beat is the groove", pulseHeld, pulseOffender );
+		Check( "a quiet section in normal time actually reaches the spine-only kit", spineSections > 0,
+			$"{spineSections} of {sections} sections were quiet and in normal time" );
 		Check( "every chorus of a song plays the same arranged part", chorusPairs > 0 && chorusMatched == chorusPairs,
 			$"{chorusMatched} of {chorusPairs} chorus pairs" );
 
