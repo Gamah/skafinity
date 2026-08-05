@@ -1017,9 +1017,9 @@ hum. Every genre now draws two tunes per song, off their own streams (`{tag}:tun
   `RenderTune` resolves a degree to the nearest chord tone **on the strong beats only**; snapping
   every note would rewrite the tune chord by chord, which is the "improvisation over the changes"
   this replaces.
-- `Melody.Draw` writes **call and answer**: the second phrase repeats the first's rhythm exactly
-  and resolves home. The rhythm is drawn before the pitches for that reason — a fresh random phrase
-  never sounds composed however good its notes are.
+- `Melody.Draw` writes **call and answer**: the answering phrase repeats the call's rhythm exactly
+  and lands the line. The rhythm is drawn before the pitches for that reason — a fresh random phrase
+  never sounds composed however good its notes are. Two of those pairs make a PERIOD (below).
 - The chorus tune is the hook: **identical every chorus**, which is what makes a chorus a chorus.
   Verses get their own, sparser tune. `TuneFor(section)` returns null where a section is not a
   place for one — a solo is where the genre's `LeadStyle` grammar improvises, an intro is a
@@ -1037,10 +1037,43 @@ The ska skank is one comp style among six, not the model for the others — the 
 bed under the tune in every genre, including ska. Ska is also the one genre that plays *two* of them
 (`GenreProfile.LoudComp`): the skank through its verses, punk's downstroke through its choruses.
 
-**The tune is as long as the harmonic cycle** (`ChordBars × progression length`, capped at 8 bars).
-A four-bar tune over an eight-bar cycle states itself twice and the second statement lands over
-different chords than it was drawn against — same notes, different harmony, which is what "the lead
-clashes with the backing" actually is.
+**A TUNE IS A PERIOD, AND THE CALL/ANSWER PAIR IS WHAT IT IS MADE OF — not what it replaces.**
+`Melody.Draw` writes four phrases: an **antecedent** (call, answer) that leaves the line open, and a
+**consequent** (call, answer) that closes it. Two phrases was the whole of a tune's structure before
+this, and the period was binary all the way down — punk and pop landed on a 2-bar rhythmic cell,
+stated twice to make the tune, looped to fill an 8-bar section and repeated identically at every
+chorus, i.e. one 2-bar rhythm heard eight times in the most exposed voice in the mix. Four things
+hold it up:
+
+- **The half cadence is what makes the consequent necessary.** The antecedent lands on a chord tone
+  that is *not* the tonic (`Melody.HalfCadence` — the fifth mostly, the third otherwise). Resolve it
+  home and the period stops being one thought; it becomes two short tunes end to end, which is the
+  old shape wearing more bars.
+- **A new rhythm enters a tune at the consequent's call or nowhere.** An answer repeats its own
+  call's rhythm — that is the machinery that stopped tunes sounding improvised and it is untouched —
+  so `Melody.PeriodShape` is the entire variation budget: `Parallel` restates the call and varies
+  only how it is answered, `Varied` keeps its rhythm and sings a fresh contour, `Contrasting` brings
+  a phrase of its own. **The weights are authored, not measured** (there is no melodic corpus here),
+  and they are one table rather than six because nothing found says a genre has an opinion about it.
+- **The tune is a WHOLE NUMBER OF HARMONIC CYCLES, capped at 8 bars.** The cap was never about
+  length — it is that a tune's statements must land over the chords they were drawn against, and two
+  cycles do, bar for bar. So punk and pop (`ChordBars` 1 × a four-chord progression) double a 4-bar
+  cycle into an 8-bar period instead of being stuck with two phrases; a tune of 1.5 cycles would
+  still be the defect the clamp exists for. Eight is the ceiling because a section is eight bars, and
+  a tune longer than the section it is sung in never finishes.
+- **A phrase is at least two bars** (`Melody.MinPhraseBars`), so a tune shorter than four of them is
+  a plain call and answer and says so. Four one-bar "phrases" is a tune restating itself every bar,
+  which is this same defect arriving from the other direction.
+
+`--seed` prints whether a song's tune is a period and how long a phrase of it is; `--stats` prints
+**distinct phrase rhythms and contours WITHIN one tune**, which is the number this moved — 1.00 and
+2.00 by construction before, 1.28–1.34 and 3.36–3.47 after. Its across-song `distinct` counts are
+measured over the CALL, so they shrank for the four genres whose call went from four bars to two
+(a shorter string collides more often); punk and pop, whose call was already two bars, are
+byte-identical on that line. The band's own cohesion numbers moved by at most a point, which is
+what the convergence rule asks of a change confined to the melody. Cross-genre onset overlap rose
+for the punk/pop pairs (21% → 45%) because their tunes are twice as long on the same grid; the
+identical-tune rate stayed 0%.
 
 **A section shorter than the tune sings the tune's END, not its beginning.** `RenderTune` pulls the
 anchor back by the difference, so the section's last bar lands on the tune's resolution. A four-bar
