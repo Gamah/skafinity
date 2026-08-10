@@ -155,6 +155,15 @@ sealed class GenreProfile
 	public float ShuffleMin { get; init; } = 0.30f;
 	public float ShuffleMax { get; init; } = 0.36f;
 
+	/// <summary>The depth at which a song's feel IS the triplet, read off <see cref="Timing.Swing"/>
+	/// alone. The shuffle/swing decision is made here and only its depth survives into
+	/// <see cref="Timing"/>, so anything downstream that needs to know which of the two it is asks
+	/// this. It sits above every genre's <see cref="SwingMax"/> and below every
+	/// <see cref="ShuffleMin"/> — that gap is what makes it a classification rather than a taste,
+	/// and the engine suite asserts the gap is still there, because a retuned band would otherwise
+	/// move this line without anything saying so.</summary>
+	public const float ShuffleGrid = 0.25f;
+
 	/// <summary>The genre's own tempo band, and its uptempo band (drawn when the song rolls
 	/// FAST). One band per genre is the point: metal at country's tempo is not metal.</summary>
 	public int BpmMin { get; init; }

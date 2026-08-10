@@ -769,7 +769,17 @@ public sealed partial class MusicGen
 		int beats = Math.Max( 1, span / Timing.TicksPerBeat );
 
 		var shape = rng.PickWeighted( FillShapeTable, _prof.FillShapes );
-		bool triplet = rng.Chance( _c.TripletChance );
+		// A SHUFFLE IS ALREADY A TRIPLET FEEL, so a fill on the straight grid under one is not
+		// straight — it is neither. Ticks are metrical and the shuffle is a warp applied on the way
+		// to samples (see Timing), which interpolates between eighth ANCHORS: the four sixteenths of
+		// a beat come out 2:2:1:1, so the back half of every beat runs at double the speed of the
+		// front. At 115 bpm with swing 0.33 they land at 0/173/347/434 ms. That is right for a comp
+		// landing an occasional sixteenth between two eighths the band shares, and wrong for the one
+		// voice that runs continuous sixteenths — a drummer shuffling fills in triplets.
+		//
+		// The Chance draw still happens either way, so the genre's stream position is untouched: the
+		// feel decides the GRID, never how much of the stream a fill spends (see FillCells).
+		bool triplet = rng.Chance( _c.TripletChance ) || _time.Swing >= GenreProfile.ShuffleGrid;
 		bool tomLed = rng.Chance( 0.45f );
 
 		// A fill longer than a bar still has to keep the time while it happens. A gesture or a

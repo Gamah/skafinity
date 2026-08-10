@@ -799,6 +799,18 @@ static class Program
 			country.ShuffleMin >= 0.28f && country.ShuffleMax <= 0.4f );
 		Check( "the shuffle band is clear of the swing band", country.ShuffleMin > country.SwingMax );
 
+		// ShuffleGrid classifies a song's feel off Timing.Swing alone (a fill on a shuffle rolls
+		// triplets, not sixteenths), so it is only a classification while it sits in the gap between
+		// the two bands. Retune either band past it and it silently becomes a taste.
+		bool gridSeparates = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var p = GenreProfile.For( g );
+			if ( p.SwingChance > 0f ) gridSeparates &= p.SwingMax < GenreProfile.ShuffleGrid;
+			if ( p.ShuffleChance > 0f ) gridSeparates &= p.ShuffleMin >= GenreProfile.ShuffleGrid;
+		}
+		Check( "ShuffleGrid separates every swing band from every shuffle band", gridSeparates );
+
 		int shuffles = 0;
 		for ( int i = 0; i < 400; i++ )
 			if ( country.DrawSwing( new Rng( $"sh:{i}" ), false ) >= country.ShuffleMin )
