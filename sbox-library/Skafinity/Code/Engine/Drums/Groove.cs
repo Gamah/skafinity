@@ -777,6 +777,15 @@ public sealed partial class MusicGen
 		// the kit has already handed over to it, so there is nothing else playing the beat.
 		if ( beats > 4 && shape != FillShape.Rolling ) shape = FillShape.Ramp;
 
+		// And the same rule from the other end: a PICKUP is a wait and then a flurry, so it needs a
+		// span to wait in. Over one beat there is nothing to wait through and the shape degenerates
+		// into the flurry alone — five or six 32nds in the beat the kit has just handed over to,
+		// with no groove either side of them. That is the most common fill length there is (a beat
+		// is 55% of the draw), so a genre with any weight on Pickup plays it constantly, and it
+		// reads as a drummer arriving late and cramming the whole fill in anyway. A fill that short
+		// accelerates into the bar line instead.
+		if ( beats == 1 && shape == FillShape.Pickup ) shape = FillShape.Ramp;
+
 		float[] grid = triplet ? FillTriplet : FillStraight;
 		// The genre's hits-per-bar turned into per-cell probabilities: the position weights are the
 		// SHAPE of a bar's occupancy and this fills them until they sum to the target. The flurry
