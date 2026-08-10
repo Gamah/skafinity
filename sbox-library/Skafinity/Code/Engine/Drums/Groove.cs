@@ -769,13 +769,32 @@ public sealed partial class MusicGen
 		int beats = Math.Max( 1, span / Timing.TicksPerBeat );
 
 		var shape = rng.PickWeighted( FillShapeTable, _prof.FillShapes );
-		bool triplet = rng.Chance( _c.TripletChance );
+		// A SHUFFLE IS ALREADY A TRIPLET FEEL, so a fill on the straight grid under one is not
+		// straight — it is neither. Ticks are metrical and the shuffle is a warp applied on the way
+		// to samples (see Timing), which interpolates between eighth ANCHORS: the four sixteenths of
+		// a beat come out 2:2:1:1, so the back half of every beat runs at double the speed of the
+		// front. At 115 bpm with swing 0.33 they land at 0/173/347/434 ms. That is right for a comp
+		// landing an occasional sixteenth between two eighths the band shares, and wrong for the one
+		// voice that runs continuous sixteenths — a drummer shuffling fills in triplets.
+		//
+		// The Chance draw still happens either way, so the genre's stream position is untouched: the
+		// feel decides the GRID, never how much of the stream a fill spends (see FillCells).
+		bool triplet = rng.Chance( _c.TripletChance ) || _time.Swing >= GenreProfile.ShuffleGrid;
 		bool tomLed = rng.Chance( 0.45f );
 
 		// A fill longer than a bar still has to keep the time while it happens. A gesture or a
 		// pickup stretched over two bars is not a sparser fill, it is a hole in the arrangement —
 		// the kit has already handed over to it, so there is nothing else playing the beat.
 		if ( beats > 4 && shape != FillShape.Rolling ) shape = FillShape.Ramp;
+
+		// And the same rule from the other end: a PICKUP is a wait and then a flurry, so it needs a
+		// span to wait in. Over one beat there is nothing to wait through and the shape degenerates
+		// into the flurry alone — five or six 32nds in the beat the kit has just handed over to,
+		// with no groove either side of them. That is the most common fill length there is (a beat
+		// is 55% of the draw), so a genre with any weight on Pickup plays it constantly, and it
+		// reads as a drummer arriving late and cramming the whole fill in anyway. A fill that short
+		// accelerates into the bar line instead.
+		if ( beats == 1 && shape == FillShape.Pickup ) shape = FillShape.Ramp;
 
 		float[] grid = triplet ? FillTriplet : FillStraight;
 		// The genre's hits-per-bar turned into per-cell probabilities: the position weights are the
