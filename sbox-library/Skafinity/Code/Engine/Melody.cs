@@ -26,15 +26,26 @@ static class Melody
 	/// <summary>Cell value for a rest — no onset, the previous note holds.</summary>
 	public const int Rest = Harmony.Rest;
 
-	/// <summary>The range a tune is written in, in SCALE DEGREES from the key's tonic: from the
-	/// sixth below it up to the third above the octave. Twelve degrees, about an octave and a fifth
-	/// in a major scale, and deliberately lopsided — a melody sits above its tonic and only dips
-	/// under it, so a symmetric range would spend half of itself where no tune goes.
-	///
-	/// It is an authored bound rather than a measured one: what it is FOR is that a line which
-	/// wanders further stops being singable, and singable is what makes the thing a tune. The
-	/// number is a judgement about that and nothing more.</summary>
-	public const int DegreeMin = -2, DegreeMax = 9;
+/// <summary>The range a tune is written in, in SCALE DEGREES from the key's tonic: from the
+/// flat-sixth below it up to the major-seventh above the octave. Fourteen degrees -- larger than
+/// any single phrase spans, but reachable when a chorus hits high and dips low enough.
+///
+/// It is an authored bound rather than a measured one: what it is FOR is that a line which
+/// wanders further stops being singable, and singable is what makes the thing a tune. The
+/// number is a judgement about that and nothing more.</summary>
+	public const int DegreeMin = -3, DegreeMax = 10;
+
+/// <summary>The span a single phrase covers inside the key's tonic. A major scale has seven diatonic
+/// degrees — PhraseMin to PhraseMax is roughly that many -- about how far a phrase of five to six
+/// bars typically reaches upward and downward from its opening chord tone before returning. The
+/// whole tune may wander further; see <see cref="DegreeMin"/> and <see cref="DegreeMax"/>.
+///
+/// It is an authored bound rather than a measured one: large-scale pop-melody research measures
+/// melodic range on a rolling two-bar window because phrase-by-phrase spread is far narrower than
+/// whole-song ambitus, but no source gives a number for this roster's genres yet, so the value
+/// here is a judgement until something measures it.</summary>
+	public const int PhraseMin = -1, PhraseMax = 6;
+
 
 	/// <summary>The note lengths a tune may be written in, in ticks: sixteenth, eighth, dotted
 	/// eighth, quarter, dotted quarter, half. <see cref="Timing.TicksPerBeat"/> is 48, so every one
@@ -332,7 +343,7 @@ static class Melody
 			{
 				float u = notes < 2 ? 0.5f : i / (float)(notes - 1);
 				// Where in the range this note sits, −1 at the bottom and +1 at the top.
-				const float Mid = (DegreeMin + DegreeMax) / 2f, Half = (DegreeMax - DegreeMin) / 2f;
+				const float Mid = (PhraseMin + PhraseMax) / 2f, Half = (PhraseMax - PhraseMin) / 2f;
 				float pos = (degree - Mid) / Half;
 				sign = rng.Chance( Math.Clamp( 0.5f + Arch * (1f - 2f * u) - Centre * pos, 0.05f, 0.95f ) )
 					? 1 : -1;
