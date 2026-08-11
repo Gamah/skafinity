@@ -26,15 +26,44 @@ static class Melody
 	/// <summary>Cell value for a rest — no onset, the previous note holds.</summary>
 	public const int Rest = Harmony.Rest;
 
-	/// <summary>The range a tune is written in, in SCALE DEGREES from the key's tonic: from the
-	/// sixth below it up to the third above the octave. Twelve degrees, about an octave and a fifth
-	/// in a major scale, and deliberately lopsided — a melody sits above its tonic and only dips
-	/// under it, so a symmetric range would spend half of itself where no tune goes.
+	/// <summary>The AMBITUS — the range a whole tune is written in, in SCALE DEGREES from the key's
+	/// tonic: from the sixth below it up to the third above the octave. Twelve degrees, about an
+	/// octave and a fifth in a major scale, and deliberately lopsided — a melody sits above its
+	/// tonic and only dips under it, so a symmetric range would spend half of itself where no tune
+	/// goes.
 	///
 	/// It is an authored bound rather than a measured one: what it is FOR is that a line which
 	/// wanders further stops being singable, and singable is what makes the thing a tune. The
 	/// number is a judgement about that and nothing more.</summary>
 	public const int DegreeMin = -2, DegreeMax = 9;
+
+	/// <summary>How many scale degrees ONE PHRASE may cover — eight, an octave in a major scale,
+	/// inside the twelve the whole tune may reach.
+	///
+	/// A RANGE AND AN AMBITUS ARE TWO DIFFERENT NUMBERS AND ONE CANNOT DO BOTH JOBS. The ambitus is
+	/// a whole-song figure — how far the tune goes over all of it — and a tune here is 2–8 bars, so
+	/// bounding a single phrase with it was measuring one thing and spending it on another. What a
+	/// phrase actually does is orbit a register: it opens somewhere, moves about an octave around
+	/// that, and the tune gets its wider reach from the phrases sitting in DIFFERENT places rather
+	/// than from any one of them wandering.
+	///
+	/// So the window is drawn per phrase and anchored on the note the phrase opens on
+	/// (<see cref="Opens"/>), which is why the opening degree keeps its weighting instead of being
+	/// folded into a window drawn first. Inside a phrase this is the bound the walk reflects off
+	/// and the centre <see cref="Centre"/> pulls toward; the ambitus stays the outer wall.
+	///
+	/// THE WINDOW BOUNDS WHERE A LINE WANDERS, NOT WHERE IT MAY BE PUT. An answer transposes its
+	/// call bodily (<see cref="AnswerOp.SequenceUp2"/> takes it up two degrees), and that is a
+	/// deliberate move rather than a walk drifting out of register — so <see cref="Answer"/>
+	/// reflects off the ambitus. Folding a sequence back into the call's window would flatten the
+	/// one gesture in the tune whose whole point is that it goes somewhere else.
+	///
+	/// Authored like everything else here (there is no melodic corpus in this repo). The published
+	/// pop-melody work that gives whole-song ambitus at around two octaves measures range on a
+	/// rolling two-bar window for exactly this reason, but its figures are for a different roster
+	/// and are not borrowed as a number — this is a judgement about a phrase being one gesture in
+	/// one register, and <c>--stats</c> reports what the engine actually does with it.</summary>
+	public const int PhraseSpan = 8;
 
 	/// <summary>The note lengths a tune may be written in, in ticks: sixteenth, eighth, dotted
 	/// eighth, quarter, dotted quarter, half. <see cref="Timing.TicksPerBeat"/> is 48, so every one
@@ -142,16 +171,17 @@ static class Melody
 	/// into the same hill. This is a lean on a draw, not a shape imposed on one.</summary>
 	const float Arch = 0.25f;
 
-	/// <summary>How hard the line is pulled back toward the middle of its range — TESSITURA, the
-	/// fact that a melody orbits a central pitch rather than diffusing across everything it is
-	/// allowed to sing.
+	/// <summary>How hard the line is pulled back toward the middle of its PHRASE WINDOW —
+	/// TESSITURA, the fact that a melody orbits a central pitch rather than diffusing across
+	/// everything it is allowed to sing.
 	///
 	/// It is what actually keeps a tune off the range ends. <see cref="Reflect"/> is a BACKSTOP: it
 	/// stops a line parking at a boundary, but a walk with no centre still spends its time out
 	/// there, and the arch makes that worse in the first half of every phrase by leaning uphill
 	/// whatever the register already is. The two are different jobs and both are needed — this
 	/// decides where the line lives, reflection decides what happens when it arrives at an edge
-	/// anyway.</summary>
+	/// anyway. The centre it pulls toward is the PHRASE's (<see cref="PhraseSpan"/>), so a phrase
+	/// orbits its own register rather than the middle of everything the tune may reach.</summary>
 	const float Centre = 0.30f;
 
 	/// <summary>
@@ -310,6 +340,15 @@ static class Melody
 	{
 		var degrees = new List<int>( notes );
 		int degree = Opens[rng.WeightedIndex( OpenWeights )];
+		// THE PHRASE'S OWN WINDOW, drawn around the note the phrase opens on so that the opening
+		// degree keeps its weighting and cannot land outside its own register. Where the window may
+		// sit is what gives the tune its wider reach: two phrases an octave apart cover the ambitus
+		// between them without either of them wandering.
+		int loMin = Math.Max( DegreeMin, degree - (PhraseSpan - 1) );
+		int loMax = Math.Min( degree, DegreeMax - (PhraseSpan - 1) );
+		if ( loMax < loMin ) loMax = loMin;
+		int lo = Math.Min( loMin + rng.Int( loMax - loMin + 1 ), DegreeMax );
+		int hi = Math.Min( lo + PhraseSpan - 1, DegreeMax );
 		int owed = 0;
 		for ( int i = 0; i < notes; i++ )
 		{
@@ -331,14 +370,14 @@ static class Melody
 			else
 			{
 				float u = notes < 2 ? 0.5f : i / (float)(notes - 1);
-				// Where in the range this note sits, −1 at the bottom and +1 at the top.
-				const float Mid = (DegreeMin + DegreeMax) / 2f, Half = (DegreeMax - DegreeMin) / 2f;
-				float pos = (degree - Mid) / Half;
+				// Where in the PHRASE'S window this note sits, −1 at the bottom and +1 at the top.
+				float mid = (lo + hi) / 2f, half = Math.Max( 1f, (hi - lo) / 2f );
+				float pos = (degree - mid) / half;
 				sign = rng.Chance( Math.Clamp( 0.5f + Arch * (1f - 2f * u) - Centre * pos, 0.05f, 0.95f ) )
 					? 1 : -1;
 			}
 			if ( leap ) owed = -sign;
-			degree = Reflect( degree + sign * size );
+			degree = Reflect( degree + sign * size, lo, hi );
 		}
 		return degrees;
 	}
@@ -378,15 +417,21 @@ static class Melody
 	/// A clamp is sticky: a line that reaches a boundary and keeps stepping outward parks there,
 	/// which is where 10–18% of every tune's notes sat and where most of its repeated adjacent
 	/// notes came from — the two are the same defect seen from either side. Reflection keeps the
-	/// range (that is what makes a tune singable) and turns the wall into a turn.</summary>
-	internal static int Reflect( int degree )
+	/// range (that is what makes a tune singable) and turns the wall into a turn.
+	///
+	/// Off the AMBITUS — the outer wall, which is what a transposed answer folds against.</summary>
+	internal static int Reflect( int degree ) => Reflect( degree, DegreeMin, DegreeMax );
+
+	/// <summary>Fold a degree back inside an arbitrary window by reflecting off its ends — the
+	/// walk inside one phrase uses its own (<see cref="PhraseSpan"/>).</summary>
+	internal static int Reflect( int degree, int lo, int hi )
 	{
-		for ( int guard = 0; guard < 8 && (degree < DegreeMin || degree > DegreeMax); guard++ )
+		for ( int guard = 0; guard < 8 && (degree < lo || degree > hi); guard++ )
 		{
-			if ( degree < DegreeMin ) degree = 2 * DegreeMin - degree;
-			if ( degree > DegreeMax ) degree = 2 * DegreeMax - degree;
+			if ( degree < lo ) degree = 2 * lo - degree;
+			if ( degree > hi ) degree = 2 * hi - degree;
 		}
-		return Math.Clamp( degree, DegreeMin, DegreeMax );
+		return Math.Clamp( degree, lo, hi );
 	}
 }
 

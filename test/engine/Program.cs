@@ -1424,6 +1424,44 @@ static class Program
 		Check( "a tune is written in more than three note lengths", lengths.Count > 3,
 			$"{lengths.Count} distinct spans" );
 
+		// TWO BOUNDS, DOING TWO JOBS. A phrase covers one register (Melody.PhraseSpan); the whole
+		// tune reaches further by putting its phrases in DIFFERENT registers and by transposing an
+		// answer bodily out of its call's window. The call is the phrase that comes straight off
+		// DrawContour, so it is the exact test of the window; the second half of the check is that
+		// the ambitus is not thereby made vacuous — if no tune ever exceeded a phrase's span, the
+		// outer bound would not be a second bound at all.
+		int widestCall = 0, wider = 0, tunes = 0;
+		for ( int i = 0; i < 200; i++ )
+		{
+			var t = Melody.Draw( new Rng( $"window:{i}" ), 8, bar, GenreProfile.For( 1 ).Tune );
+			var hits = t.Slice( 0, t.LengthTicks );
+			int cLo = int.MaxValue, cHi = int.MinValue, tLo = int.MaxValue, tHi = int.MinValue;
+			foreach ( var h in hits )
+			{
+				tLo = Math.Min( tLo, h.Value ); tHi = Math.Max( tHi, h.Value );
+				if ( h.Tick >= 2 * bar ) continue;
+				cLo = Math.Min( cLo, h.Value ); cHi = Math.Max( cHi, h.Value );
+			}
+			if ( cHi < cLo ) continue;
+			tunes++;
+			widestCall = Math.Max( widestCall, cHi - cLo + 1 );
+			if ( tHi - tLo + 1 > cHi - cLo + 1 ) wider++;
+		}
+		Check( "one phrase stays inside one register", tunes > 100 && widestCall <= Melody.PhraseSpan,
+			$"widest call spans {widestCall} degrees, phrase window is {Melody.PhraseSpan}" );
+		Check( "the whole tune reaches wider than one phrase does", wider > tunes / 2,
+			$"{wider} of {tunes} tunes" );
+
+		// The window is drawn around the note the phrase opens on, so the opening degree keeps the
+		// weighting Opens gives it — a window drawn first would have to fold the opening note into
+		// it, and the tonic and the fifth are where tunes actually start.
+		var opens = new HashSet<int>();
+		for ( int i = 0; i < 200; i++ )
+			opens.Add( Melody.Draw( new Rng( $"opens:{i}" ), 8, bar, GenreProfile.For( 1 ).Tune )
+				.Slice( 0, bar )[0].Value );
+		Check( "a phrase still opens on a chord tone", opens.IsSubsetOf( new[] { 0, 2, 4, 7 } ),
+			string.Join( ",", opens ) );
+
 		// A leap really is a range of intervals now, not one interval wearing a general name.
 		var sizes = new HashSet<int>();
 		for ( int i = 0; i < 200; i++ )
