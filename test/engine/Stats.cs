@@ -468,6 +468,10 @@ static class Stats
 			var songs = byGenre[g];
 			int notes = 0, offGrid = 0, pinned = 0, repeated = 0, callAnswer = 0, tunes = 0, tonic = 0;
 			int periods = 0, phraseRhythms = 0, phraseContours = 0, tuneBars = 0;
+			// The two range figures, which are two different questions: how far one PHRASE moves,
+			// and how far the whole tune reaches by putting its phrases in different registers.
+			// One number was doing both jobs before there was a phrase window to measure.
+			int phraseSpan = 0, phrases = 0, tuneSpan = 0;
 			var lens = new SortedDictionary<int, int>();
 			var firsts = new SortedDictionary<int, int>();
 			var leaps = new SortedDictionary<int, int>();
@@ -495,6 +499,7 @@ static class Stats
 				// tunes the genre can write, and say nothing at all about what happens inside one.
 				var inRhythm = new HashSet<string>();
 				var inContour = new HashSet<string>();
+				int tLo = int.MaxValue, tHi = int.MinValue;
 
 				for ( int i = 0; i < s.TuneTicks.Length; i++ )
 				{
@@ -502,6 +507,7 @@ static class Stats
 					if ( s.TuneTicks[i] % Timing.TicksPerEighth != 0 ) offGrid++;
 					Bump( lens, s.TuneSpans[i] );
 					int d = s.TuneDegrees[i];
+					tLo = Math.Min( tLo, d ); tHi = Math.Max( tHi, d );
 					if ( d <= Melody.DegreeMin || d >= Melody.DegreeMax ) pinned++;
 					if ( i > 0 && d == s.TuneDegrees[i - 1] ) repeated++;
 					if ( i > 0 && i < call ) Bump( leaps, Math.Abs( d - s.TuneDegrees[i - 1] ) );
@@ -513,19 +519,25 @@ static class Stats
 				contours.Add( contour.ToString() );
 				whole.Add( rhythm + "/" + contour );
 
+				if ( tHi >= tLo ) { tuneSpan += tHi - tLo + 1; }
+
 				for ( int p = 0; p * phrase < s.TuneLength; p++ )
 				{
 					var pr = new StringBuilder();
 					var pc = new StringBuilder();
 					int first = int.MinValue;
+					int pLo = int.MaxValue, pHi = int.MinValue;
 					for ( int i = 0; i < s.TuneTicks.Length; i++ )
 					{
 						if ( s.TuneTicks[i] < p * phrase || s.TuneTicks[i] >= (p + 1) * phrase ) continue;
 						if ( first == int.MinValue ) first = s.TuneDegrees[i];
+						pLo = Math.Min( pLo, s.TuneDegrees[i] ); pHi = Math.Max( pHi, s.TuneDegrees[i] );
 						pr.Append( s.TuneTicks[i] - p * phrase ).Append( ',' );
 						pc.Append( s.TuneDegrees[i] - first ).Append( ',' );
 					}
 					if ( pr.Length == 0 ) continue;
+					phraseSpan += pHi - pLo + 1;
+					phrases++;
 					inRhythm.Add( pr.ToString() );
 					inContour.Add( pc.ToString() );
 				}
@@ -554,6 +566,9 @@ static class Stats
 			Console.WriteLine( $"    note lengths      {Hist( lens, notes )}" );
 			Console.WriteLine( $"    first degree      {Hist( firsts, tunes )}" );
 			Console.WriteLine( $"    step sizes        {Hist( leaps, Sum( leaps ) )}" );
+			Console.WriteLine( $"    range             {phraseSpan / (double)Math.Max( 1, phrases ):0.0} degrees a phrase,"
+				+ $" {tuneSpan / (double)tunes:0.0} the whole tune"
+				+ $"   (window {Melody.PhraseSpan}, ambitus {Melody.DegreeMax - Melody.DegreeMin + 1})" );
 			Console.WriteLine( $"    within one tune   {phraseRhythms / (double)tunes:0.00} phrase rhythms,"
 				+ $" {phraseContours / (double)tunes:0.00} phrase contours" );
 			Console.WriteLine( $"    distinct          {rhythms.Count} rhythms, {contours.Count} contours, {whole.Count} tunes" );

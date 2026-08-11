@@ -1126,13 +1126,30 @@ up as if they were measured.** A rest is an OMITTED ONSET rather than a cell: th
 span grows and `RenderTune`'s two-beat cap turns the remainder into silence, so the renderer needs
 nothing. A `Melody.Rest` CELL would be read as a degree and sung.
 
-**`Melody.DegreeMin/DegreeMax` is an authored judgement and is still open.** `-2..9` is twelve scale
-degrees, ~19 semitones in a major scale — which is a WHOLE-SONG figure doing a PHRASE's job, since
-a tune here is 2–8 bars (the large-scale pop-melody work measures range on a rolling two-bar window
-for exactly that reason). The right shape is probably two bounds: a tight span one phrase may cover
-inside a looser one the whole tune may reach. Not done, because the arch and the centre pull
-already narrow the phrase in practice and no source found gives a phrase-range figure for this
-roster's genres — a second authored number dressed as a fix is worse than the honest one.
+**A RANGE AND AN AMBITUS ARE TWO BOUNDS AND ONE NUMBER CANNOT BE BOTH.** `Melody.DegreeMin/DegreeMax`
+(`-2..9`, twelve scale degrees) is the AMBITUS — how far a whole tune reaches — and it used to bound
+a single phrase as well, which is a whole-song figure doing a phrase's job (a tune here is 2–8 bars;
+the large-scale pop-melody work measures range on a rolling two-bar window for exactly that reason).
+`Melody.PhraseSpan` is the second bound: eight degrees, an octave, drawn per phrase as a WINDOW
+around the note that phrase opens on. Inside a phrase the walk reflects off the window and the
+tessitura pull centres on it; the ambitus is the outer wall. A tune's wider reach then comes from
+its phrases sitting in DIFFERENT registers rather than from any one of them wandering.
+
+**The window bounds where a line WANDERS, not where it may be PUT** — `Answer` transposes a call
+bodily (`SequenceUp2` takes it up two degrees) and reflects off the ambitus, because folding a
+sequence back into its call's window would flatten the one gesture in a tune whose point is that it
+goes somewhere else. The window is drawn around the opening note rather than the opening note being
+folded into a window drawn first, so `Opens`' weighting toward the tonic and the fifth survives.
+
+**Both numbers are authored and the measurement is of the ENGINE, not of the music.** No source found
+gives a phrase-range figure for this roster's genres, so the published pop figures are cited as the
+reason for the SHAPE and never borrowed as a value. What `--stats` reports is what the engine does
+with it: the phrase/tune split went 5.3–6.4 / 8.1–9.3 degrees to **5.1–5.9 / 7.8–8.7** across the six
+genres. Note what that says — the arch and the centre pull already held the average well inside the
+ambitus, so **the window is a ceiling on the tail rather than a re-centring**, and a session expecting
+the mean to move a long way has misread which mechanism does which job. Distinctness is unmoved
+(within-tune contours 3.41–3.47, distinct rhythms per genre identical), which is what the convergence
+rule asks of a change confined to the melody.
 
 **Two genres landing on a similar tune at one seed is a FEATURE and must never be engineered away.**
 The genre is in the tune's streams so that they are not RELIABLY identical (rock and country used
