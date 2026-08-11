@@ -171,10 +171,9 @@ static class Melody
 	/// into the same hill. This is a lean on a draw, not a shape imposed on one.</summary>
 	const float Arch = 0.25f;
 
-	/// <summary>How hard the line is pulled back toward the middle of its PHRASE WINDOW — TESSITURA,
-	/// the
-	/// fact that a melody orbits a central pitch rather than diffusing across everything it is
-	/// allowed to sing.
+	/// <summary>How hard the line is pulled back toward the middle of its PHRASE WINDOW —
+	/// TESSITURA, the fact that a melody orbits a central pitch rather than diffusing across
+	/// everything it is allowed to sing.
 	///
 	/// It is what actually keeps a tune off the range ends. <see cref="Reflect"/> is a BACKSTOP: it
 	/// stops a line parking at a boundary, but a walk with no centre still spends its time out
