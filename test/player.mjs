@@ -231,8 +231,15 @@ function invariantHolds(p, pool) {
   check('a scrub past the end lands inside the song', p.current && p.current.offset < dur,
     JSON.stringify(p.current));
 
+  // The gap between committing the audio and the start timeout firing is tens of milliseconds, and
+  // the position has to hold through it: reading `current` as "nothing" in there is what made every
+  // seek and every resume flash back to 0:00 before carrying on.
   p.seekWithin(dur * 0.25);
+  check('the position holds across a seek, before the new source starts',
+    Math.abs(p.position().time - dur * 0.25) < 0.1, String(p.position().time));
   await wait(100);
+  check('…and still reads it once the source has started',
+    Math.abs(p.position().time - dur * 0.25) < 0.1, String(p.position().time));
   p.ctx.currentTime = p.current.startTime + 0.5;
   p.pause();
   const off = p.resumeOffset;

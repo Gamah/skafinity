@@ -581,10 +581,12 @@ export class SkafinityPlayer extends EventTarget {
   pause() {
     this.playing = false;
     const c = this.current;
-    if (c && this.ctx && this.ctx.currentTime > c.startTime) {
-      const into = this.ctx.currentTime - c.startTime + c.offset;
+    if (c && this.ctx) {
+      // A song scheduled but not started yet is at its offset, not before it — the clamp is what
+      // makes a pause during those few milliseconds keep the place a seek just chose.
+      const into = Math.max(0, this.ctx.currentTime - c.startTime) + c.offset;
       // Right at the end there is nothing left to resume INTO; start the next song cleanly instead.
-      this.resumeOffset = into < c.duration - 0.25 ? Math.max(0, into) : 0;
+      this.resumeOffset = into < c.duration - 0.25 ? into : 0;
       this.n = c.n + (this.resumeOffset ? 0 : 1);
     }
     this.stopNodes();
@@ -696,13 +698,22 @@ export class SkafinityPlayer extends EventTarget {
       this.activeNodes = this.activeNodes.filter((x) => x !== src && x !== g);
     };
 
+    // What is audible, and where it started — pause() and position() both read this.
+    const desc = { n: songN, startTime, offset, duration: buffer.duration * LOOPS_PER_SONG };
+    // Claim it NOW when nothing is audible, rather than only when the start timeout fires. The two
+    // are tens of milliseconds apart and the audio is genuinely committed for that whole gap, so a
+    // progress bar reading `current` in between would otherwise find nothing and draw a zero — which
+    // is what every seek and every resume looked like: a flash back to the start of the song. A song
+    // scheduled BEHIND one that is already playing does not claim it; that one is still the audible
+    // one until its own timeout says otherwise.
+    if (!this.current) this.current = desc;
+
     const mySeq = this.seq;
     const delay = Math.max(0, (startTime - ctx.currentTime) * 1000);
     setTimeout(() => {
       if (mySeq !== this.seq || this.destroyed) return;
       this.displayN = songN;
-      // What is audible right now, and where it started — pause() reads this to resume in place.
-      this.current = { n: songN, startTime, offset, duration: buffer.duration * LOOPS_PER_SONG };
+      this.current = desc;
       if (this.bufferingN === songN) this.bufferingN = -1;
       // Adopt the (frozen) vibe this song was rendered with, so the editor and the seed reflect
       // what is audible and the link reproduces it.
