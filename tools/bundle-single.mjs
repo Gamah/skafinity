@@ -70,7 +70,8 @@ function assertScriptSafe(name, text) {
 }
 
 // ── Inputs ──
-for (const f of ['index.html', 'app.js', 'engine.js', 'worker.js', 'queue.js', 'style.css', 'config.json'])
+for (const f of ['index.html', 'app.js', 'engine.js', 'worker.js', 'queue.js', 'palette.js',
+                 'player.js', 'skafinity-element.js', 'style.css', 'config.json'])
   try { readFileSync(join(web, f)); } catch { fail(`web/${f} is missing.`); }
 try { readFileSync(join(fw, 'dotnet.js')); } catch {
   fail(`web/_framework/dotnet.js is missing — build the bundle first ('make' with the .NET SDK, or 'make up').`);
@@ -100,7 +101,7 @@ loaderSrc = sub(loaderSrc, /export\{(\w+) as default,(\w+) as dotnet,(\w+) as ex
 let engineSrc = read(join(web, 'engine.js'));
 assertScriptSafe('engine.js', engineSrc);
 engineSrc = sub(engineSrc, "import { dotnet } from './_framework/dotnet.js';", '', 'engine.js loader import');
-engineSrc = sub(engineSrc, 'export default function Skafinity()', 'Skafinity = function Skafinity()',
+engineSrc = sub(engineSrc, 'export default function Skafinity(opts)', 'Skafinity = function Skafinity(opts)',
   'engine.js default export');
 // engine.js is block-scoped next to app.js; a top-level `var` there would hoist past the block.
 if (hasTopLevelVar(engineSrc)) fail('engine.js declares a top-level `var` — use let/const so it stays inside its block.');
@@ -117,15 +118,53 @@ assertScriptSafe('queue.js', queueSrc);
 queueSrc = sub(queueSrc, 'export class GenQueue', 'class GenQueue', 'queue.js class export');
 if (hasTopLevelVar(queueSrc)) fail('queue.js declares a top-level `var` — use let/const.');
 
-// ── app.js: drop its imports, inline config.json, build workers from the blob module ──
+// ── palette.js: un-export everything so it can sit in one scope with the rest ──
+// A generic strip rather than a name list, because the palette is a bag of small pure functions and
+// a list would be one more thing to forget. It still hard-fails if the shape changes: a file with
+// no exports left is not a file this bundler understood.
+let paletteSrc = read(join(web, 'palette.js'));
+assertScriptSafe('palette.js', paletteSrc);
+{
+  const before = (paletteSrc.match(/^export /gm) || []).length;
+  if (before < 8) fail(`palette.js has ${before} top-level exports — expected the pure-function bag. ` +
+    `Fix tools/bundle-single.mjs rather than shipping a broken bundle.`);
+  paletteSrc = paletteSrc.replace(/^export /gm, '');
+  if (hasTopLevelVar(paletteSrc)) fail('palette.js declares a top-level `var` — use let/const.');
+}
+
+// ── player.js: drop its imports, inline the config fetch, build workers from the blob module ──
+// The worker construction and the house-mix fetch moved here out of app.js when the transport was
+// extracted; they are still the only two things in it that assume a server.
+let playerSrc = read(join(web, 'player.js'));
+assertScriptSafe('player.js', playerSrc);
+playerSrc = sub(playerSrc, "import Skafinity from './engine.js';", '', 'player.js engine import');
+playerSrc = sub(playerSrc, "import { GenQueue } from './queue.js';", '', 'player.js queue import');
+playerSrc = sub(playerSrc, "const res = await fetch(url, { cache: 'no-store' });",
+  'const res = await __skafConfigResponse();', 'player.js config.json fetch');
+// Both branches of defaultCreateWorker: there is no worker.js to fetch here, same-origin or not.
+playerSrc = sub(playerSrc, "return new Worker(url, { type: 'module' });",
+  'return __skafMakeWorker();', 'player.js same-origin worker construction');
+playerSrc = sub(playerSrc, "const w = new Worker(shim, { type: 'module' });",
+  'const w = __skafMakeWorker();', 'player.js cross-origin worker construction');
+playerSrc = playerSrc.replace(/^export /gm, '');
+playerSrc = sub(playerSrc, 'default SkafinityPlayer;', '', 'player.js default export');
+if (hasTopLevelVar(playerSrc)) fail('player.js declares a top-level `var` — use let/const.');
+
+// ── skafinity-element.js: drop its imports, un-export ──
+let elementSrc = read(join(web, 'skafinity-element.js'));
+assertScriptSafe('skafinity-element.js', elementSrc);
+elementSrc = sub(elementSrc, "import { SkafinityPlayer } from './player.js';", '', 'element player import');
+elementSrc = sub(elementSrc,
+  "import { derivePalette, chooseMode, pickAccent, parseColor, NEUTRAL_ACCENT } from './palette.js';",
+  '', 'element palette import');
+elementSrc = elementSrc.replace(/^export /gm, '');
+elementSrc = sub(elementSrc, 'default SkafinityPlayerElement;', '', 'element default export');
+if (hasTopLevelVar(elementSrc)) fail('skafinity-element.js declares a top-level `var` — use let/const.');
+
+// ── app.js: the page host. Its one import is the element, which is already in scope here ──
 let appSrc = read(join(web, 'app.js'));
 assertScriptSafe('app.js', appSrc);
-appSrc = sub(appSrc, "import Skafinity from './engine.js';", '', 'app.js engine import');
-appSrc = sub(appSrc, "import { GenQueue } from './queue.js';", '', 'app.js queue import');
-appSrc = sub(appSrc, "fetch('./config.json', { cache: 'no-store' })",
-  '__skafConfigResponse()', 'app.js config.json fetch');
-appSrc = sub(appSrc, "new Worker(new URL('./worker.js', import.meta.url), { type: 'module' })",
-  '__skafMakeWorker()', 'app.js worker construction');
+appSrc = sub(appSrc, "await import('./skafinity-element.js');", '', 'app.js element import');
 
 // The house-mix config is a build input here, not a runtime fetch: the standalone file has
 // no server to fetch it from, so it carries the canonical values it was built with.
@@ -228,11 +267,20 @@ function __skafMakeWorker() {
 }`,
   runtimeBlock('__skafAssets'),
   queueSrc,
+  paletteSrc,
+  playerSrc,
+  elementSrc,
   appSrc,
 ].join('\n');
 
 // ── The page ──
 let html = read(join(web, 'index.html'));
+// The demo pages are siblings on the served site and do not exist next to a handed-over single
+// file, so the two links become absolute. (test/dist-single.mjs asserts the artifact references
+// nothing relative — a dead link is exactly what it is there to catch.)
+const SITE = 'https://gamah.github.io/skafinity/';
+for (const page of ['embed-light.html', 'embed-dark.html'])
+  html = sub(html, `href="${page}"`, `href="${SITE}${page}"`, `index.html ${page} link`);
 html = sub(html, /<link rel="stylesheet" href="style\.css" \/>/,
   () => '<style>\n' + read(join(web, 'style.css')) + '\n</style>', 'index.html stylesheet link');
 html = sub(html, /<script type="module" src="app\.js"><\/script>/,

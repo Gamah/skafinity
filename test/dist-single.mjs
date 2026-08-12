@@ -30,7 +30,10 @@ catch { console.error(`dist-single: ${file} is missing — build it with 'make d
 
 check('the page is one file with no external references', !/(src|href)="(?!https?:)/.test(html),
   (html.match(/(src|href)="(?!https?:)[^"]*"/g) || []).join(', ') || 'none');
-check('the runtime bundle directory is not referenced', !html.includes('_framework/'));
+// A REFERENCE — a path in a string or an import — is the failure; a comment that cites where a
+// [SOURCE] fact was read from is not, and engine.js carries one of those into the bundle.
+check('the runtime bundle directory is not referenced', !/["'`(]\s*\.?\/?_framework\//.test(html),
+  (html.match(/["'`(]\s*\.?\/?_framework\/[^"'`\s)]*/g) || []).join(', ') || 'none');
 
 // The three payload constants are each one line (JSON.stringify emits no newlines), so pulling
 // them out is a line match rather than a parse.

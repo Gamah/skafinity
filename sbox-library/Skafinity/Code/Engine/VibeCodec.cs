@@ -13,19 +13,22 @@ namespace Skafinity;
 ///
 /// WIRE FORMAT (genre-independent envelope, fixed positions):
 ///   <c>[genre char][global block][instrument grid]</c>
-/// where the global block is <see cref="GlobalFields"/> in order, and the instrument grid
-/// reserves up to <see cref="MaxInstruments"/> blocks of 4 columns
-/// (volume / tone / character / extra). Column <c>c</c> of instrument <c>i</c> always lives
-/// at position <c>1 + globals + i*4 + c</c>, so adding a genre, an instrument, or a 5th
-/// column never shifts an existing position. APPEND-ONLY now means: append global knobs,
-/// append instrument slots (≤ MaxInstruments), and only ever append columns past the 4th.
+/// where the global block is <see cref="GlobalFields"/> in order (currently EMPTY — see there),
+/// and the instrument grid reserves up to <see cref="MaxInstruments"/> blocks of one char per
+/// WIRE column. The wire carries columns <see cref="WireFirstColumn"/>..<see cref="Columns"/>-1
+/// (tone / character / extra); column 0 is VOLUME, a local mix preference that is deliberately
+/// not part of a song's identity and never travels. Wire column <c>c</c> of instrument <c>i</c>
+/// always lives at <c>1 + globals + i*WireColumns + (c - WireFirstColumn)</c>, so adding a genre,
+/// an instrument, or a 5th column never shifts an existing position. APPEND-ONLY means: append
+/// instrument slots (≤ MaxInstruments), and only ever append columns past the last.
 /// <see cref="Apply"/> ignores trailing chars a shorter string lacks, so a vibe from a
 /// client with fewer slots still parses (the missing knobs keep their config defaults).
 ///
-/// RETIRING a knob does not remove its position: the entry becomes a reserved (null) slot that
-/// encodes as filler and decodes to nothing. That keeps every later knob at the wire position it
-/// has always had, so vibes shared before the retirement still decode correctly, and a future
-/// global knob can claim the slot.
+/// RETIRING a knob inside a row does not remove its position: the cell becomes a reserved (null)
+/// slot that encodes as filler and decodes to nothing, so every later knob keeps the wire position
+/// it has always had. A GLOBAL knob has no such backstop — the global block sits in front of the
+/// whole grid, so adding one (or bringing a retired one back) shifts every grid position and
+/// invalidates every seed ever shared. Prefer a row knob; a global is a deliberate format break.
 ///
 /// Lossy by design (16 levels/knob) but stable: Encode(Decode(s)) == s.
 /// </summary>
@@ -34,6 +37,10 @@ public static class VibeCodec
 	internal const string Alphabet = "0123456789abcdefghijklmnopqrstuvwxyz";
 	public const int Levels = 16;   // one hex digit per knob
 	public const int Columns = 4;       // volume, tone, character, extra
+	/// <summary>First column that travels on the wire. Column 0 is VOLUME — a local mix preference
+	/// (see <see cref="ReadVolumes"/>), so the whole column is skipped rather than encoded as filler.</summary>
+	public const int WireFirstColumn = 1;
+	public const int WireColumns = Columns - WireFirstColumn;
 	public const int MaxInstruments = 8; // reserved instrument slots in the wire grid
 
 	public sealed class Field
@@ -49,11 +56,6 @@ public static class VibeCodec
 		public string Voice;
 		/// <summary>Matrix column: 0 volume, 1 tone, 2 character, 3 extra (ignored for globals).</summary>
 		public int Column;
-		/// <summary>Whether this knob travels in the shareable vibe seed. Per-instrument VOLUME knobs
-		/// set this false: volume is a local mix preference persisted per-voice (see
-		/// <see cref="ReadVolumes"/>), not part of the song's identity. The grid slot is still
-		/// reserved on the wire (filler char) so the other columns keep their fixed positions.</summary>
-		public bool InSeed = true;
 
 		/// <summary>Current value as a 0..1 fraction of the range.</summary>
 		public float GetNorm( MusicGen.Config c ) =>
@@ -97,64 +99,25 @@ public static class VibeCodec
 	static Field[] Row( string voice, Field vol, Field tone, Field character, Field extra )
 		=> new[] { vol, tone, character, extra };
 
-	// A per-instrument VOLUME knob (column 0). Marked out of the seed: volume is a local mix
-	// preference persisted per-voice (see ReadVolumes/ApplyVolumes), not part of the vibe.
+	// A per-instrument VOLUME knob (column 0). Column 0 is off the wire entirely: volume is a local
+	// mix preference persisted per-voice (see ReadVolumes/ApplyVolumes), not part of the vibe.
 	static Field Vol( string voice, Func<MusicGen.Config, float> g, Action<MusicGen.Config, float> s )
-	{
-		var f = F( "VOLUME", 0f, 1.5f, false, g, s, voice, 0 );
-		f.InSeed = false;
-		return f;
-	}
+		=> F( "VOLUME", 0f, 1.5f, false, g, s, voice, 0 );
 
-	// Shared GLOBAL knobs — the wire's global block, in order (append-only).
-	static readonly Field[] GlobalFields =
-	{
-		// RESERVED ×2 — were TEMPO MIN / TEMPO MAX, an absolute band every genre shared. The band
-		// is per-genre character now (GenreProfile) and the knob is the TEMPO scale appended at
-		// the end of this block.
-		null,
-		null,
-		// RESERVED — was TEMPO BIAS, how often a song took its genre's uptempo band. A global
-		// slider over that is the same mistake the swing slider was: a reroll could hand any
-		// genre a 100% fast bias, and how often a genre runs hot is something the genre IS.
-		// It lives in GenreProfile.FastChance now, beside SwingChance, for the same reason.
-		null,
-		// RESERVED — was SWING, now per-genre character (GenreProfile). Kept as an empty slot so
-		// every later global and the whole instrument grid stay at their existing wire positions
-		// and previously shared vibes still decode. A future global knob can claim it.
-		null,
-		// RESERVED — was RESONANCE. It set a Config field no voice ever read, so the slider was
-		// inert; every patch names its own SVF damping next to the voice it belongs to, which is
-		// where a timbre value belongs. Kept as an empty slot so every later global and the whole
-		// instrument grid stay at their existing wire positions.
-		null,
-		// RESERVED — was STEREO WIDTH. The width the mix is TUNED for is 100%; the slider could
-		// only ever narrow it, so its whole travel was degrees of worse. It is not deleted, it is
-		// house config (AdvancedFields) — how wide to run is a playback-environment decision (a
-		// game piping this through a positional source, a listener on laptop speakers) rather than
-		// a musical one, and that is exactly what AdvancedFields is for.
-		null,
-		// RESERVED — was REVERB. How much room a song sits in is per-song CHARACTER, drawn from a
-		// band the way tempo and swing are (MusicGen.ReverbMin/Max), times the genre's own trim.
-		// A listener's slider over it could reach bone dry and could reach swimming, and neither is
-		// a thing any of these genres is. What survives as house config is a SCALE over the draw.
-		null,
-		// Appended, so every position above keeps the place it has always had. The range is 15
-		// steps of 0.05 so the neutral 1.0 lands exactly on a level rather than a rounding of one.
-		// RESERVED — was TEMPO, a 0.70-1.45 multiplier over whatever the genre drew.
-		//
-		// Its history is the argument against it. It began as absolute TEMPO MIN / TEMPO MAX
-		// (the two reserved slots above), became a multiplier because an absolute band cannot be
-		// right for six genres at once, then grew per-genre saturation because the multiplier's
-		// ends were unplayable everywhere. Each fix was real and none of them reached the actual
-		// problem: the top of the slider is past what the music is, so the knob spent its upper
-		// half making songs faster than the genre means. A ska song came back at 208 bpm — inside
-		// its own saturation, drawn from a band whose top is 190, and simply too fast.
-		//
-		// A tempo band is anchored on records (see GenreProfile). A knob that overrides it is a
-		// listener preference beating a measurement, and there is nothing left to narrow.
-		null,
-	};
+	// Shared GLOBAL knobs — the wire's global block, in front of the grid, in order.
+	//
+	// EMPTY, and it is meant to stay that way. Every knob that was ever here turned out to be
+	// something a listener should not hold: TEMPO (min/max, then bias, then a scale over the
+	// genre's own band) is anchored on records and lives in GenreProfile, as does SWING and how
+	// often a genre runs hot; RESONANCE set a Config field no voice read; STEREO WIDTH and REVERB
+	// are playback environment, so they are house config (AdvancedFields) rather than song
+	// identity. What they share is that a global slider lets a preference beat a measurement, and
+	// each is a knob for six genres at once — which is what GenreProfile is for.
+	//
+	// So a knob belongs in a genre's grid row or in GenreProfile. Adding one HERE shifts the whole
+	// grid and invalidates every shared seed; that is the cost, and it is the reason this list is
+	// the last place to reach for.
+	static readonly Field[] GlobalFields = { };
 
 	// ── Advanced / tuning-only knobs ──
 	// Config fields that shape the BASELINE MIX (peak balances, kit presence) rather than a
@@ -440,7 +403,7 @@ public static class VibeCodec
 	// DRUMS is the same four knobs in every genre: volume / tone (toms↔cymbals) / busy /
 	// drive (pull↔push).
 	static Field[] DrumsRow() => Row( "DRUMS",
-		F( "VOLUME", 0f, 1.5f, false, c => c.DrumVol, ( c, v ) => c.DrumVol = v, "DRUMS", 0 ),
+		Vol( "DRUMS", c => c.DrumVol, ( c, v ) => c.DrumVol = v ),
 		F( "TONE", 0f, 1f, false, c => c.DrumTone, ( c, v ) => c.DrumTone = v, "DRUMS", 1 ),
 		F( "BUSY", 0f, 1f, false, c => c.DrumBusy, ( c, v ) => c.DrumBusy = v, "DRUMS", 2 ),
 		F( "DRIVE", 0f, 1f, false, c => c.DrumDrive, ( c, v ) => c.DrumDrive = v, "DRUMS", 3 ) );
@@ -506,10 +469,10 @@ public static class VibeCodec
 		int genre = Math.Clamp( c.Genre, 0, GenreDefs.Length - 1 );
 		var sb = new StringBuilder();
 		sb.Append( Alphabet[genre] );
-		foreach ( var f in GlobalFields ) sb.Append( f != null && f.InSeed ? Quant( f, c ) : Alphabet[0] );
+		foreach ( var f in GlobalFields ) sb.Append( f != null ? Quant( f, c ) : Alphabet[0] );
 		foreach ( var row in Def( genre ).Grid )
-			for ( int col = 0; col < Columns; col++ )
-				sb.Append( row[col] != null && row[col].InSeed ? Quant( row[col], c ) : Alphabet[0] );
+			for ( int col = WireFirstColumn; col < Columns; col++ )
+				sb.Append( row[col] != null ? Quant( row[col], c ) : Alphabet[0] );
 		return sb.ToString();
 	}
 
@@ -537,7 +500,7 @@ public static class VibeCodec
 			pos++;
 		}
 		foreach ( var row in Def( c.Genre ).Grid )
-			for ( int col = 0; col < Columns; col++ )
+			for ( int col = WireFirstColumn; col < Columns; col++ )
 			{
 				ApplyAt( vibe, pos, row[col], c );
 				pos++;
@@ -546,7 +509,7 @@ public static class VibeCodec
 
 	static void ApplyAt( string vibe, int pos, Field f, MusicGen.Config c )
 	{
-		if ( f == null || !f.InSeed || pos >= vibe.Length ) return;
+		if ( f == null || pos >= vibe.Length ) return;
 		int q = Alphabet.IndexOf( vibe[pos] );
 		if ( q < 0 ) return; // skip unknown chars, keep the knob value
 		f.SetNorm( c, q / (float)(Levels - 1) );
@@ -618,14 +581,28 @@ public static class VibeCodec
 	/// so every player walks the same line for a given tag.</summary>
 	public static string VibeSeed( string tag, int n ) => $"{Station( tag )}:vibe:{n}";
 
-	/// <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and long enough
-	/// that it cannot be a tag. The floor is the whole test — it sits well above an 8-char player
-	/// tag (and the 9-char default "rotaliate") so the two never collide in <c>vibe:tag:n</c>.
-	/// There is deliberately no ceiling: the wire grows as genres and instruments are appended,
-	/// and a bound would silently start rejecting valid seeds.</summary>
+	/// <summary>The shortest string <see cref="Encode"/> can produce — the leanest genre's grid.
+	/// Derived rather than written down, so shrinking or growing a grid cannot leave the floor in
+	/// <see cref="LooksLikeVibe"/> behind.</summary>
+	static readonly int ShortestVibe = ComputeShortestVibe();
+
+	static int ComputeShortestVibe()
+	{
+		int min = int.MaxValue;
+		foreach ( var g in GenreDefs )
+			min = Math.Min( min, 1 + GlobalFields.Length + g.Grid.Length * WireColumns );
+		return min;
+	}
+
+	/// <summary>True if <paramref name="s"/> looks like a vibe token: all base-36 and no shorter
+	/// than the shortest thing <see cref="Encode"/> emits. The floor is the whole test — it has to
+	/// stay above an 8-char player tag (and the 9-char default "rotaliate") so the two never collide
+	/// in <c>vibe:tag:n</c>; a grid lean enough to drop it there is the signal to lengthen the wire,
+	/// not the floor. There is deliberately no ceiling: the wire grows as genres and instruments are
+	/// appended, and a bound would silently start rejecting valid seeds.</summary>
 	public static bool LooksLikeVibe( string s )
 	{
-		if ( string.IsNullOrEmpty( s ) || s.Length < 16 ) return false;
+		if ( string.IsNullOrEmpty( s ) || s.Length < ShortestVibe ) return false;
 		foreach ( var ch in s.ToLowerInvariant() )
 			if ( Alphabet.IndexOf( ch ) < 0 ) return false;
 		return true;

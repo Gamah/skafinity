@@ -1688,6 +1688,19 @@ static class Program
 			Check( $"genre {g} encodes to its own first char",
 				enc.Length > 0 && VibeCodec.Alphabet.IndexOf( enc[0] ) == g );
 
+			// The wire is exactly the genre char plus one char per WIRE column of each instrument
+			// row — no filler block in front of it, and no column-0 slot per row. A seed is short
+			// because every position in it is a knob somebody can hear.
+			int rows = 0;
+			foreach ( var f in VibeCodec.Fields( g ) ) if ( VibeCodec.IsVolume( f ) ) rows++;
+			Check( $"genre {g} vibe is the genre char plus its grid",
+				enc.Length == 1 + rows * VibeCodec.WireColumns, $"{enc.Length} for {rows} rows" );
+
+			// Volume is a local mix preference, so moving one must not change the shared string.
+			var loud = new MusicGen.Config { Genre = g };
+			foreach ( var f in VibeCodec.Fields( g ) ) if ( VibeCodec.IsVolume( f ) ) f.SetNorm( loud, 0.1f );
+			Check( $"genre {g} volumes never travel in the seed", VibeCodec.Encode( loud ) == enc );
+
 			// Round-trip: decode onto a fresh Config, re-encode, expect the same string. This
 			// is the property that actually matters — a shared URL must reproduce the knobs.
 			var back = new MusicGen.Config();
@@ -1799,8 +1812,12 @@ static class Program
 		Check( "a one-char vibe still selects the genre", trunc.Genre == 1 );
 
 		Check( "LooksLikeVibe rejects a player tag", !VibeCodec.LooksLikeVibe( "rotaliate" ) );
-		Check( "LooksLikeVibe accepts a real vibe",
-			VibeCodec.LooksLikeVibe( VibeCodec.Encode( new MusicGen.Config { Genre = 0 } ) ) );
+		// Every genre, not just the widest: the floor has to clear a tag while still admitting the
+		// LEANEST grid, which is the one a shortened wire would drop below first.
+		bool everyGenreLooksLikeOne = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			everyGenreLooksLikeOne &= VibeCodec.LooksLikeVibe( VibeCodec.Encode( new MusicGen.Config { Genre = g } ) );
+		Check( "LooksLikeVibe accepts a real vibe from every genre", everyGenreLooksLikeOne );
 
 		// AdvancedFields is the "config value, not a vibe slider" marker — the two registries
 		// must stay disjoint or a house-mix knob would leak into the shareable seed.

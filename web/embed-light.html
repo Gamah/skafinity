@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>skafinity embed — a light, Bootstrap-ish host page</title>
+  <!-- A deliberately ORDINARY light page: system font stack, white cards, rounded corners, and a
+       --bs-primary because that is what a Bootstrap page has. Nothing here configures the widget —
+       the whole point is that <skafinity-player> arrives with no theme attribute and works out
+       where it landed. Compare with embed-dark.html, which is the same element on a page that
+       agrees with it about nothing. -->
+  <style>
+    :root {
+      --bs-primary: #0d6efd;
+      --bs-body-color: #212529;
+      --bs-body-bg: #fff;
+      --bs-border-radius: 0.375rem;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bs-body-bg);
+      color: var(--bs-body-color);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+    .container { max-width: 780px; margin: 0 auto; padding: 3rem 1rem 5rem; }
+    h1 { font-size: 2rem; font-weight: 500; margin: 0 0 .5rem; }
+    .lead { color: #6c757d; margin: 0 0 2rem; }
+    .card {
+      background: #fff;
+      border: 1px solid #dee2e6;
+      border-radius: var(--bs-border-radius);
+      padding: 1.25rem;
+      box-shadow: 0 .125rem .25rem rgba(0,0,0,.075);
+      margin-bottom: 1.5rem;
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin: 0 0 .75rem; }
+    /* The probe measures a real button, so this is what the widget will copy its radius and font
+       from — not <body>'s. */
+    button, .btn {
+      background: var(--bs-primary);
+      color: #fff;
+      border: 1px solid var(--bs-primary);
+      border-radius: var(--bs-border-radius);
+      padding: .375rem .75rem;
+      font: inherit;
+      font-size: .875rem;
+      cursor: pointer;
+    }
+    a { color: var(--bs-primary); }
+    code { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: .25rem; padding: .1rem .35rem; font-size: .8125rem; }
+    .readout { font-size: .8125rem; color: #6c757d; margin-top: .75rem; }
+    .readout b { color: #212529; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>A light page that embeds skafinity</h1>
+    <p class="lead">Bootstrap-ish: system font, white cards, <code>--bs-primary</code>, rounded corners.</p>
+
+    <div class="card">
+      <h2>Latest release notes</h2>
+      <p>Filler, so the widget has a page around it rather than a void. <button type="button">A button</button> —
+        this is the element the palette probe measures.</p>
+    </div>
+
+    <div class="card">
+      <h2>Soundtrack</h2>
+      <!-- No theme, no accent, no CSS: everything below is sniffed. -->
+      <skafinity-player storage-key="demo-light"></skafinity-player>
+      <p class="readout" id="readout"></p>
+    </div>
+
+    <p><a href="index.html">← back to skafinity</a> · <a href="embed-dark.html">the same element on a dark page →</a></p>
+  </div>
+
+  <script type="module">
+    await import('./skafinity-element.js');
+    const el = document.querySelector('skafinity-player');
+    const show = () => {
+      const t = el.themeInfo;
+      document.getElementById('readout').innerHTML =
+        `sniffed: mode <b>${t.mode}</b>, accent from <b>${t.accentSource}</b>`;
+    };
+    el.addEventListener('theme', show);
+    show();
+  </script>
+</body>
+</html>

@@ -38,7 +38,8 @@ FROM nginx:1.27-alpine
 # wasm MIME type ships in this nginx's mime.types; conf just sets the docroot + caching.
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-# Static page + glue (index.html, engine.js, app.js, queue.js, worker.js, style.css). web/_framework
+# Static pages + glue (index.html + the two embed demos, engine.js, app.js, player.js, queue.js,
+# palette.js, skafinity-element.js, worker.js, style.css). web/_framework
 # is excluded via .dockerignore so only the freshly-built bundle below lands in the image.
 COPY web/ /usr/share/nginx/html/
 COPY --from=builder /publish/wwwroot/_framework /usr/share/nginx/html/_framework
