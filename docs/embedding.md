@@ -43,6 +43,7 @@ exactly that tree) rather than picking files out of it.
 | `autoplay` | present/absent | absent | Best-effort — browsers block audio without a gesture, and the widget then just sits there showing play. |
 | `volume` | `0`–`1.5` | remembered, else `0.8` | Master volume. |
 | `shuffle` | `on` \| `off` | `on` | Re-roll genre and knobs for every new song. |
+| `share-base` | a URL | — | The page that reproduces a seed on your site; the copy button hangs `#<seed>` off it and says "copy link". Absent, it copies the seed alone. |
 
 Properties: `seed` (get/set), `playing`, `position`, `themeInfo`, and methods `play()`, `pause()`,
 `seek(seconds)`, `load()`, `refreshTheme()`.
@@ -68,23 +69,34 @@ Static: `SkafinityPlayerElement.playerDefaults` — transport options every elem
 built with. A page that already runs Web Audio sets `audioContext` here (before the first widget
 upgrades) so the widgets join its graph instead of opening another.
 
-### The URL is not the element's to write
+### The URL is not the element's to read or write
 
-The element **never** touches `location`. On the skafinity site the URL follows the song, and that
-is the page doing it, in about four lines — `web/app.js` is the worked example:
+The element **never** touches `location` — two widgets on one page would fight over one address bar,
+and an embed has no claim on the address of the page that took it in. That cuts both ways, so the
+copy button cannot work out a shareable URL either: `location.href` inside an embed is the *host's*
+page, which reproduces nothing unless that page wired the seed up. Tell it what does, and the button
+becomes "copy link" instead of "copy seed":
 
-```js
-el.addEventListener('song', (e) => {
-  if (location.hash.slice(1) !== e.detail.seed) history.replaceState(null, '', '#' + e.detail.seed);
-});
-window.addEventListener('hashchange', () => {
-  const h = location.hash.slice(1);
-  if (h && h !== el.seed) el.seed = h;
-});
+```html
+<skafinity-player share-base="https://example.com/tunes/"></skafinity-player>
 ```
 
-Two widgets on one page would fight over one address bar, which is why this is a host decision and
-not a default.
+Anything after a `#` in the base is replaced with the seed that is playing when the button is
+pressed. Absent, it copies the bare seed, which reproduces the song in any skafinity.
+
+Honouring an inbound link is the host's other half, and `web/app.js` is the worked example:
+
+```js
+const hash = location.hash.slice(1);
+if (hash) el.setAttribute('seed', hash);            // before the definition loads
+el.setAttribute('share-base', location.href.split('#')[0]);
+```
+
+The skafinity site deliberately does **not** write the seed back out as the song changes: a shuffled
+station would rewrite the address every ~75 seconds, filling the back button with songs nobody chose
+to go back to, and any address copied by hand is stale as soon as the next song starts. The link is
+built on demand by the copy button instead. Nothing stops a host doing the opposite — a
+`history.replaceState` on the `song` event is all it takes.
 
 ---
 

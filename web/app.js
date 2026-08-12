@@ -7,10 +7,14 @@
 //
 // What stays a PAGE concern, and is the reason the element does not do it:
 //
-//   THE URL IS THE SONG. The element never writes location.hash — an embed has no claim on the
-//   address bar of the page that took it in, and two widgets on one page would fight over it. So
-//   the toy wires it up itself, from the element's public `song` event, and that wiring is also the
-//   worked example a host copies out of docs/embedding.md.
+//   A LINK IS THE SONG, BUT THE ADDRESS BAR IS NOT. The element never writes location.hash — an
+//   embed has no claim on the address bar of the page that took it in, and two widgets on one page
+//   would fight over it. The toy does the URL wiring itself, and this is the worked example a host
+//   copies out of docs/embedding.md — but it only wires the INBOUND half: a link that carries a
+//   seed is honoured, and then the seed comes straight back out of the bar. A shuffled station
+//   re-writing the URL every ~75 seconds fills the back button with songs nobody chose to go back
+//   to, and leaves an address that is stale the moment it is read. `share-base` below is the other
+//   half: the widget's copy button builds the same link on demand, from this page's address.
 const el = document.querySelector('skafinity-player');
 
 // Seed the element BEFORE the definition loads, so it is constructed with the shared song rather
@@ -19,15 +23,21 @@ const el = document.querySelector('skafinity-player');
 const hash = location.hash.slice(1);
 if (hash) el.setAttribute('seed', hash);
 
+const pageUrl = () => location.href.split('#')[0];
+// What the widget's "copy link" hands out: this page, plus whatever is playing when it is pressed.
+el.setAttribute('share-base', pageUrl());
+// Consume the link and tidy up after it. replaceState rather than assigning location.hash, which
+// would add a history entry (and fire hashchange straight back at us).
+const clearHash = () => { if (location.hash) history.replaceState(null, '', pageUrl()); };
+
 await import('./skafinity-element.js');
+clearHash();
 
-el.addEventListener('song', (e) => {
-  if (location.hash.slice(1) !== e.detail.seed) history.replaceState(null, '', '#' + e.detail.seed);
-});
-
+// Someone can still paste a skafinity link into the bar of a page that is already open.
 window.addEventListener('hashchange', () => {
   const h = location.hash.slice(1);
   if (h && h !== el.seed) el.seed = h;
+  clearHash();
 });
 
 el.addEventListener('error', (e) => {
@@ -63,12 +73,3 @@ themeBtn.onclick = () => {
 };
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (mode === 'auto') applyTheme(); });
 applyTheme();
-
-document.getElementById('copyBtn').onclick = async (ev) => {
-  const btn = ev.currentTarget;
-  try {
-    await navigator.clipboard.writeText(location.href);
-    btn.textContent = 'copied!';
-    setTimeout(() => (btn.textContent = 'copy link'), 1200);
-  } catch (_) { /* clipboard denied — the URL is in the address bar either way */ }
-};

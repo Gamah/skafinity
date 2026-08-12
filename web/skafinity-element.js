@@ -248,7 +248,7 @@ const prefersDark = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
 
 export class SkafinityPlayerElement extends HTMLElement {
-  static get observedAttributes() { return ['seed', 'theme', 'accent', 'controls', 'volume']; }
+  static get observedAttributes() { return ['seed', 'theme', 'accent', 'controls', 'volume', 'share-base']; }
 
   /** Transport options every element on the page is constructed with. A host that already runs Web
    *  Audio sets `audioContext` here (before the first widget upgrades) so the widgets join its
@@ -295,6 +295,7 @@ export class SkafinityPlayerElement extends HTMLElement {
   attributeChangedCallback(name, oldV, newV) {
     if (oldV === newV) return;
     if (name === 'theme' || name === 'accent') { this.refreshTheme(); return; }
+    if (name === 'share-base') { this.syncShare(); return; }
     if (!this.player) return;
     if (name === 'seed' && newV && newV !== this.player.seed) this.player.applySeed(newV);
     if (name === 'controls') this.applyControls();
@@ -514,27 +515,48 @@ export class SkafinityPlayerElement extends HTMLElement {
     input.className = 'grow';
     input.placeholder = 'vibe:tag:n  /  tag:n  /  tag';
     input.setAttribute('part', 'seed-input');
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.player.applySeed(input.value); });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.playSeed(input.value); });
     const go = document.createElement('button');
-    go.textContent = 'go';
+    // Typing a seed and being handed a stopped transport is a dead end — the button says play
+    // because that is what it does.
+    go.textContent = 'play';
     go.className = 'primary';
     go.setAttribute('part', 'button seed-go');
-    go.onclick = () => this.player.applySeed(input.value);
+    go.onclick = () => this.playSeed(input.value);
     const copy = document.createElement('button');
-    copy.textContent = 'copy seed';
     copy.setAttribute('part', 'button seed-copy');
-    // The SEED, not the URL: an embed has no claim on the host page's address, and the seed is the
-    // thing that reproduces the song anywhere.
     copy.onclick = async () => {
+      const text = this.shareText();
       try {
-        await navigator.clipboard.writeText(this.player.seed);
+        await navigator.clipboard.writeText(text);
         copy.textContent = 'copied!';
-        setTimeout(() => (copy.textContent = 'copy seed'), 1200);
+        setTimeout(() => this.syncShare(), 1200);
       } catch (_) { /* clipboard denied in this context — the text is in the box either way */ }
     };
     bar.append(input, go, copy);
     board.append(bar);
-    Object.assign(this.els, { seedBar: bar, seedInput: input });
+    Object.assign(this.els, { seedBar: bar, seedInput: input, copyBtn: copy });
+    this.syncShare();
+  }
+
+  /** Take the seed in the box and START — what the seed bar's button means. */
+  playSeed(v) {
+    this.player.applySeed(v);
+    // Already playing? applySeed restarted the sequence itself; a second start would only churn.
+    if (!this.player.playing) this.play();
+  }
+
+  // What the copy button hands over. `share-base` is a URL the HOST says reproduces the song on its
+  // site — the element cannot work that out for itself, because reading `location` inside an embed
+  // yields the host page's address, which reproduces nothing unless that page wired the seed up.
+  // Without one it copies the seed, which does reproduce the song anywhere, and says so on the button.
+  shareBase() { return (this.getAttribute('share-base') || '').trim(); }
+  shareText() {
+    const base = this.shareBase();
+    return base ? `${base.split('#')[0]}#${this.seed}` : this.seed;
+  }
+  syncShare() {
+    if (this.els.copyBtn) this.els.copyBtn.textContent = this.shareBase() ? 'copy link' : 'copy seed';
   }
 
   buildVibe(board) {

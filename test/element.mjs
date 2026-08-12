@@ -275,6 +275,32 @@ check('…and back', el.els.playBtn.textContent === '▶');
   el.syncPosition();
 }
 
+// ── The seed bar ───────────────────────────────────────────────────────────────
+{
+  const bar = el.shadowRoot.querySelector('[data-section="seed"]');
+  const go = bar.children.find((c) => (c.getAttribute('part') || '').includes('seed-go'));
+  check('the seed bar starts the song rather than just loading it', go.textContent === 'play', go.textContent);
+  el.pause();
+  el.els.seedInput.value = 'v0:typed:3';
+  go.onclick();
+  await wait(10);
+  check('typing a seed and pressing it plays', el.player.playing && el.player.seed.endsWith(':typed:3'),
+    `${el.player.playing} ${el.player.seed}`);
+
+  // Copy: a seed alone unless the HOST says what URL reproduces it, because reading `location` from
+  // inside an embed yields the host page's address, which reproduces nothing.
+  check('with no share-base it copies the seed', el.shareText() === el.player.seed, el.shareText());
+  check('…and the button says so', el.els.copyBtn.textContent === 'copy seed', el.els.copyBtn.textContent);
+  el.setAttribute('share-base', 'https://example.com/skafinity/#stale');
+  el.attributeChangedCallback('share-base', null, 'https://example.com/skafinity/#stale');
+  check('a share-base makes it a link', el.shareText() === `https://example.com/skafinity/#${el.player.seed}`,
+    el.shareText());
+  check('…the button follows', el.els.copyBtn.textContent === 'copy link', el.els.copyBtn.textContent);
+  el.removeAttribute('share-base');
+  el.attributeChangedCallback('share-base', 'x', null);
+  el.pause();     // leave the transport stopped for the checks below
+}
+
 {
   const seen = [];
   el.addEventListener('song', (e) => seen.push(e.detail.n));

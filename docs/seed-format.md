@@ -10,8 +10,9 @@
   follow the fixed wire grid below. Empty/absent ⇒ default knobs (genre 0).
 
 Parsing (in `web/engine.js`, `parseSeed`) mirrors the controller: accept `vibe:tag:n`,
-`tag:n`, or `tag`. The page keeps the current seed in `location.hash` so it's shareable and
-reload-stable.
+`tag:n`, or `tag`. The page reads a seed out of `location.hash` at boot and then clears it; the
+widget's copy button is what builds a shareable link back out of the seed that is playing
+(`share-base` in `docs/embedding.md`).
 
 ### VibeCodec wire format (genre-aware, append-only)
 

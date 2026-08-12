@@ -53,7 +53,9 @@ doubt the C# is right.
 - The synthesis is pure integer/float math with a portable PRNG, AOT-compiled to native
   wasm — runs far faster than real time, so we pre-render whole ~75 s loops on demand.
 - A whole song is its seed (`vibe:tag:n`), so **the entire experience is a URL**. Share
-  `…/web/#vibe:bd44ac2a:23` and the other person hears the exact same song.
+  `…/web/#vibe:bd44ac2a:23` and the other person hears the exact same song. Such a link is
+  honoured on arrival and then taken back OUT of the address bar; the widget's copy button
+  rebuilds it on demand instead (see the embeddable-element section).
 - The web has real `<input type=range>` sliders (s&box did not), so the vibe editor is
   nicer here than in the game.
 
@@ -212,9 +214,16 @@ Full reference in **`docs/embedding.md`** (attributes, parts, custom properties,
 three facts a session needs before touching the web layer:
 
 - **The toy page is a CONSUMER of the element, not a second implementation.** `web/index.html` is a
-  header, a `<skafinity-player>`, and a footer; `web/app.js` is the host script that syncs
-  `location.hash` and drives the page's light/dark switch. If the widget breaks, the flagship page
-  breaks with it — which is deliberate, because the alternative is a demo nobody looks at.
+  header, a `<skafinity-player>`, and a footer; `web/app.js` is the host script that reads an
+  inbound `location.hash`, hands the element a `share-base`, and drives the page's light/dark
+  switch. If the widget breaks, the flagship page breaks with it — which is deliberate, because the
+  alternative is a demo nobody looks at.
+- **The address bar is read, never written.** The seed comes out of the hash at boot and the hash is
+  then cleared: a shuffled station rewriting the URL every ~75 s fills the back button with songs
+  nobody chose, and any address copied by hand goes stale at the next crossfade. "copy link" builds
+  `share-base` + `#` + the seed that is playing when it is pressed, which is why the element needs
+  telling what URL reproduces a song on the page it sits in — it cannot read `location` to find out.
+  **A reload therefore no longer resumes the same song** (only `n` is persisted, not the tag).
 - **The palette is derived, never shipped.** `web/palette.js` is a port of
   `Code/UI/SkafinityTheme.cs` and `test/palette.mjs` reads the factors back out of that C# — so the
   s&box panel and the web widget cannot drift into two colour schemes. Light mode is those same

@@ -13,7 +13,7 @@
         <h1>ska<span>finity</span></h1>
         <a class="ghlink" href="https://github.com/Gamah/skafinity" target="_blank" rel="noopener">find it on GitHub!</a>
       </div>
-      <p class="tag">endless, deterministic procedural songs — ska, rock, country, metal, punk and pop. The whole song is a URL.</p>
+      <p class="tag">endless, deterministic procedural songs — ska, rock, country, metal, punk and pop. The whole song is a link.</p>
     </header>
 
     <!-- The toy IS the embed: same element, same file, no configuration. It carries no theme or
@@ -22,15 +22,14 @@
     <skafinity-player id="toy" storage-key="toy"></skafinity-player>
 
     <p class="pagebar">
-      <button id="copyBtn">copy link</button>
       <button id="themeBtn" title="Light / dark / follow your system">theme: auto</button>
-      <span class="dim">the URL follows the song · the widget re-derives its palette from this page</span>
+      <span class="dim">copy link takes the song with it · the widget re-derives its palette from this page</span>
     </p>
 
     <p id="status" class="status"></p>
 
     <footer>
-      seed format <code>vibe:tag:n</code> · share the URL, get the same song · export is stereo .wav<br />
+      seed format <code>vibe:tag:n</code> · share a copied link, get the same song · export is stereo .wav<br />
       embed it in your own page: <code>&lt;skafinity-player&gt;</code> — see
       <a class="ghlink" href="embed-light.html">the light demo</a>,
       <a class="ghlink" href="embed-dark.html">the dark one</a>, and
