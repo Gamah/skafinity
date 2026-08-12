@@ -73,11 +73,23 @@ check('metal is globals + 4 instruments × 4', E.VibeFieldCount(3) === GLOBALS +
 // here was asserting that the block still had something in it, which was never the contract.
 check('the global block is a consistent size across genres', GLOBALS >= 0, `${GLOBALS}`);
 
-// The wire is genre char + global block + instrument grid. Its length tracks the WIRE, which can
-// hold reserved slots a retired knob left behind, so it is >= the count of live UI knobs rather
-// than exactly one more.
+// The wire is genre char + global block + instrument grid, and the block is empty, so the length is
+// the genre char plus one char per WIRE column of each instrument row. Derived from the field
+// metadata rather than written down: the number of columns that travel is whatever every genre
+// agrees on, and it must be FEWER than the 4 the UI lays out, because column 0 (VOLUME) is a local
+// preference that never rides in a shared seed.
+const rowsOf = (g) => {
+  let rows = 0;
+  for (let i = 0; i < E.VibeFieldCount(g); i++) if (E.VibeFieldVoice(g, i) && E.VibeFieldColumn(g, i) === 0) rows++;
+  return rows;
+};
 const vibe = E.EncodeVibe(cfg);
-check('ska vibe is at least fields + genre char', vibe.length >= skaCount + 1, `${vibe.length}`);
+const wireColumns = (vibe.length - 1) / rowsOf(0);
+check('ska vibe is the genre char plus whole columns of its grid', Number.isInteger(wireColumns), `${vibe.length}`);
+check('fewer columns travel than the UI lays out', wireColumns < 4, `${wireColumns}`);
+for (let g = 1; g < E.GenreCount(); g++)
+  check(`genre ${g} uses the same wire columns`,
+    E.EncodeVibe(E.SetGenre(cfg, g)).length === 1 + rowsOf(g) * wireColumns, `${E.EncodeVibe(E.SetGenre(cfg, g)).length}`);
 check('Encode(Decode(vibe)) is stable', E.EncodeVibe(E.DecodeVibe(vibe, cfg)) === vibe);
 check('LooksLikeVibe accepts the encoding', E.LooksLikeVibe(vibe) === true);
 check('LooksLikeVibe rejects a short tag', E.LooksLikeVibe('gamah') === false);
@@ -86,8 +98,14 @@ check('vibe starts with genre 0 char', vibe[0] === '0', vibe);
 // rock vibe is genre-tagged + shorter, and round-trips its own genre
 const rockCfg = E.SetGenre(cfg, 1);
 const rockVibe = E.EncodeVibe(rockCfg);
-check('rock vibe is at least fields + genre char', rockVibe.length >= rockCount + 1, `${rockVibe.length}`);
 check('rock vibe is shorter than ska', rockVibe.length < vibe.length);
+// A listener's levels are a local mix preference: moving one must leave the shared string alone.
+{
+  let loud = cfg;
+  for (let i = 0; i < skaCount; i++)
+    if (E.VibeFieldVoice(0, i) && E.VibeFieldColumn(0, i) === 0) loud = E.SetVibeField(loud, i, 0.1);
+  check('volumes never travel in the seed', E.EncodeVibe(loud) === vibe, E.EncodeVibe(loud));
+}
 check('rock vibe starts with genre 1 char', rockVibe[0] === '1', rockVibe);
 check('decoding a rock vibe restores genre 1', E.GetGenre(E.DecodeVibe(rockVibe, cfg)) === 1);
 check('rock Encode(Decode) is stable', E.EncodeVibe(E.DecodeVibe(rockVibe, cfg)) === rockVibe);

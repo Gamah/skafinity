@@ -383,7 +383,11 @@ export class SkafinityPlayer extends EventTarget {
   // (`vibe::23`) resolves to, so a host that spells it differently plays a different song from the
   // same seed. Keep this in step with the C#; the engine test asserts that side.
   seedFor(nn) { return `${this.tag ? lower(this.tag) : 'rotaliate'}:${nn}`; }
-  get seed() { return `${this.vibe}:${this.tag}:${this.displayN}`; }
+  // Before the runtime is up there is no vibe to encode and the tag is a placeholder that boot may
+  // replace, so the seed is the one we were HANDED — which is the seed a link carried, and the only
+  // string that reproduces anything. Answering `:sometag:0` there would be a seed that plays nothing
+  // and would show up in the box (and on the copy button) of a widget nobody has pressed play on yet.
+  get seed() { return this.mod ? `${this.vibe}:${this.tag}:${this.displayN}` : this.pendingSeed; }
   set seed(s) { this.applySeed(s); }
 
   applySeed(s) {

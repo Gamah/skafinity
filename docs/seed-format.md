@@ -17,11 +17,21 @@ widget's copy button is what builds a shareable link back out of the seed that i
 ### VibeCodec wire format (genre-aware, append-only)
 
 The wire layout is **genre-independent**: `[genre char][global block][instrument grid]`,
-where the grid reserves up to `MaxInstruments` (8) blocks of 4 columns
-(volume / tone / character / extra). Column `c` of instrument `i` always lives at
-`1 + globals + i*4 + c`, so adding a genre, an instrument, or a 5th column never shifts an
-existing position. **Append-only means**: append global knobs, append instrument slots
-(≤ 8), and only ever append columns past the 4th — never reorder/remove. `Apply` ignores
+where the grid reserves up to `MaxInstruments` (8) blocks of one char per **wire column**.
+A row has 4 columns (volume / tone / character / extra) but only columns
+`WireFirstColumn`..3 travel: **column 0 is VOLUME**, a local mix preference persisted per voice
+rather than part of the song's identity, so the whole column is skipped instead of being encoded
+as filler. **The global block is empty** — every knob that ever lived there turned out to belong
+to `GenreProfile` or to the house config, and the block sits in front of the grid, so putting one
+back would shift every position and invalidate every shared seed (see the note in `VibeCodec.cs`).
+Between them that is why a seed has no fixed run of `0`s in it: ska is 22 chars, metal 13, and
+each one is a knob.
+
+Wire column `c` of instrument `i` lives at `1 + globals + i*WireColumns + (c - WireFirstColumn)`,
+so adding a genre, an instrument, or a 5th column never shifts an existing position.
+**Append-only means**: append instrument slots (≤ 8), and only ever append columns past the
+last — never reorder/remove. A retired knob *inside a row* still holds its cell (filler char, and
+`Pop` has two). `Apply` ignores
 trailing positions a shorter string lacks (older/other-genre seeds degrade gracefully). Each
 genre defines its own instrument grid (Ska-Punk 6 instruments, Rock 4). The JS UI reads the field
 list — including each field's `voice`/`column` — straight from the wasm exports

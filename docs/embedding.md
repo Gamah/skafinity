@@ -164,6 +164,13 @@ skafinity-player::part(play-button) { border-radius: 50%; }
 view: the first `play()` (or `preload="auto"`, or an explicit `load()`) starts the download, and the
 widget shows a progress bar with real megabytes while it happens.
 
+**What the widget knows before it boots is the seed it was given**, and it shows it: a `seed`
+attribute (or a `seed` property set from a link's hash) lands in the seed box straight away, and
+`copy link` hands out a link that reproduces it — none of which needs the engine. Until then the
+transport reports that seed *as* `seed` rather than inventing one from its placeholder tag, so
+what is on screen and what a copy yields are the same string. Everything else about the song —
+the genre, the vibe knobs, the playlist — arrives with the runtime.
+
 The total is not knowable up front — the boot config carries names and hashes but no sizes — so it
 is the sum of the `Content-Length`s seen so far. The runtime starts every asset download together,
 so it settles within a round trip; until it does the bar is an honest indeterminate sweep rather

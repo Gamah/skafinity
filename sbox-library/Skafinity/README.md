@@ -197,10 +197,12 @@ of what song an untagged seed *is*. Composition is the must-match part; the `Vib
 overrides the subset of knobs `VibeCodec` covers, the rest come from `MusicGen.Config` defaults.
 
 `VibeCodec` is **genre-aware and append-only**. The vibe string is `[genre char][globals]
-[instrument grid]`, the grid reserving up to 8 instruments × 4 columns at fixed positions
-(`1 + globals + i*4 + c`). Each of the six genres has its own instrument grid; `Fields(genre)`
-is the per-genre list the UI iterates. Never reorder or remove — only append globals,
-instrument slots, or columns — or existing shared seeds change meaning.
+[instrument grid]`, the grid reserving up to 8 instruments × the WIRE columns at fixed positions
+(`1 + globals + i*WireColumns + (c - WireFirstColumn)`). The globals block is currently empty and
+column 0 (VOLUME) never travels — a listener's levels are a local preference, not part of the song
+— so every char in a seed is a knob somebody can hear. Each of the six genres has its own
+instrument grid; `Fields(genre)` is the per-genre list the UI iterates. Never reorder or remove —
+only append instrument slots or columns — or existing shared seeds change meaning.
 
 ## License
 

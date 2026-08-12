@@ -187,6 +187,24 @@ for (const p of ['transport', 'seed-bar', 'playlist', 'slider', 'button', 'progr
   check(`::part(${p}) is exposed`, parts.has(p), [...parts].join(' '));
 check('the probe left nothing behind in the page', globalThis.document.body.all((n) => n.getAttribute('aria-hidden') === 'true').length === 0);
 
+// ── The seed is legible before the engine is fetched ───────────────────────────
+// Nothing is downloaded until the first play, so a widget carrying a link's seed sits there unbooted
+// — and the seed still has to be on screen, or the link looks like it did nothing.
+{
+  check('the seed box shows the linked seed before boot',
+    !el.player.ready && el.els.seedInput.value === 'v0:demo:7', el.els.seedInput.value);
+  el.seed = 'v0:later:2';
+  check('…and follows a seed handed to a widget that has still not booted',
+    el.els.seedInput.value === 'v0:later:2', el.els.seedInput.value);
+  el.setAttribute('share-base', 'https://example.com/skafinity/');
+  el.attributeChangedCallback('share-base', null, 'https://example.com/skafinity/');
+  check('copy hands over a link that reproduces it, unbooted',
+    el.shareText() === 'https://example.com/skafinity/#v0:later:2', el.shareText());
+  el.removeAttribute('share-base');
+  el.attributeChangedCallback('share-base', 'x', null);
+  el.seed = 'v0:demo:7';
+}
+
 // ── It themed itself off the page ──────────────────────────────────────────────
 {
   const bg = el.style.getPropertyValue('--_ska-bg');

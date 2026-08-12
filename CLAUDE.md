@@ -223,7 +223,10 @@ three facts a session needs before touching the web layer:
   nobody chose, and any address copied by hand goes stale at the next crossfade. "copy link" builds
   `share-base` + `#` + the seed that is playing when it is pressed, which is why the element needs
   telling what URL reproduces a song on the page it sits in — it cannot read `location` to find out.
-  **A reload therefore no longer resumes the same song** (only `n` is persisted, not the tag).
+  **A reload therefore no longer resumes the same song** (only `n` is persisted, not the tag). A
+  linked seed is on screen from the first frame, before any of the 7.5 MB is fetched: the transport
+  answers `seed` with the seed it was HANDED until it has booted, rather than composing one out of
+  a placeholder tag it is about to throw away.
 - **The palette is derived, never shipped.** `web/palette.js` is a port of
   `Code/UI/SkafinityTheme.cs` and `test/palette.mjs` reads the factors back out of that C# — so the
   s&box panel and the web widget cannot drift into two colour schemes. Light mode is those same

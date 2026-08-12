@@ -297,14 +297,18 @@ export class SkafinityPlayerElement extends HTMLElement {
     if (name === 'theme' || name === 'accent') { this.refreshTheme(); return; }
     if (name === 'share-base') { this.syncShare(); return; }
     if (!this.player) return;
-    if (name === 'seed' && newV && newV !== this.player.seed) this.player.applySeed(newV);
+    if (name === 'seed' && newV && newV !== this.player.seed) { this.player.applySeed(newV); this.syncSeedInput(); }
     if (name === 'controls') this.applyControls();
     if (name === 'volume') { const v = parseFloat(newV); if (Number.isFinite(v)) this.setVolume(v); }
   }
 
   // ── Public surface (properties mirror the attributes) ──────────────────────
   get seed() { return this.player ? this.player.seed : this.getAttribute('seed') || ''; }
-  set seed(v) { this.player ? this.player.applySeed(v) : this.setAttribute('seed', v); }
+  set seed(v) {
+    if (!this.player) { this.setAttribute('seed', v); return; }
+    this.player.applySeed(v);
+    this.syncSeedInput();
+  }
   get playing() { return !!(this.player && this.player.playing); }
   play() { return this.player.play().catch((e) => this.showError(e)); }
   pause() { this.player.pause(); }
@@ -536,7 +540,16 @@ export class SkafinityPlayerElement extends HTMLElement {
     bar.append(input, go, copy);
     board.append(bar);
     Object.assign(this.els, { seedBar: bar, seedInput: input, copyBtn: copy });
+    this.syncSeedInput();
     this.syncShare();
+  }
+
+  /** Show the seed the transport is holding. The `song` event does this once the engine is up; this
+   *  is the same job BEFORE it is, because a link that carries a seed has to be visible on a widget
+   *  that has not fetched 7.5 MB of runtime yet — the seed is what the visitor was sent, and waiting
+   *  for a press of play to display it makes the link look like it did nothing. */
+  syncSeedInput() {
+    if (this.els.seedInput && !this.player.ready) this.els.seedInput.value = this.player.seed;
   }
 
   /** Take the seed in the box and START — what the seed bar's button means. */
@@ -553,7 +566,11 @@ export class SkafinityPlayerElement extends HTMLElement {
   shareBase() { return (this.getAttribute('share-base') || '').trim(); }
   shareText() {
     const base = this.shareBase();
-    return base ? `${base.split('#')[0]}#${this.seed}` : this.seed;
+    // No seed yet (nothing has been played and no link brought one) — a bare `page#` reproduces
+    // nothing and looks like a broken link, so hand over the page.
+    const seed = this.seed;
+    if (!base) return seed;
+    return seed ? `${base.split('#')[0]}#${seed}` : base.split('#')[0];
   }
   syncShare() {
     if (this.els.copyBtn) this.els.copyBtn.textContent = this.shareBase() ? 'copy link' : 'copy seed';
