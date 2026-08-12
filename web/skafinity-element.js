@@ -15,6 +15,13 @@ import { SkafinityPlayer } from './player.js';
 import { derivePalette, chooseMode, pickAccent, parseColor, NEUTRAL_ACCENT } from './palette.js';
 
 const COL_HEADERS = ['VOLUME', 'TONE', 'CHARACTER', 'EXTRA'];
+// Shown where a length would be if there were one — nothing is rendered yet, so there is no
+// duration to state. An honest dash beats 0:00, which reads as a song of no length.
+const NO_TIME = '–:––';
+const fmtTime = (s) => {
+  const t = Math.max(0, Math.round(s));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
 // Every section the widget can show. `controls` names the ones it does.
 const SECTIONS = ['transport', 'seed', 'vibe', 'playlist'];
 
@@ -89,9 +96,20 @@ input[type=range] { accent-color: var(--ska-accent, var(--_ska-accent)); padding
 .right { margin-left: auto; }
 
 /* ── Transport ── */
+.transport { display: flex; flex-direction: column; gap: 8px; }
 .now b { font-weight: 600; color: var(--ska-text, var(--_ska-text)); }
 .vol { display: flex; align-items: center; gap: 6px; }
 .vol input { width: 90px; }
+/* The seek bar is a real range input, so dragging, arrow keys, Home/End and a screen reader all
+   work without any of it being written here. */
+.seek { display: flex; align-items: center; gap: 8px; }
+.seek input { flex: 1; }
+.seek input[disabled] { opacity: 0.4; }
+.time {
+  font-size: 11px; color: var(--ska-text-dim, var(--_ska-text-dim));
+  font-variant-numeric: tabular-nums; min-width: 34px;   /* a steady width, so digits don't jitter */
+}
+.time.total { text-align: right; }
 .bufstate { color: var(--ska-accent, var(--_ska-accent)); font-size: 12px; display: none; }
 .bufstate.show { display: inline; animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
@@ -245,6 +263,9 @@ export class SkafinityPlayerElement extends HTMLElement {
     this.els = {};
     this.booted = false;
     this._mq = null;
+    this._clock = null;         // rAF handle (or interval id) driving the seek bar
+    this._clockRaf = false;
+    this._scrubbing = false;    // a drag owns the thumb until it is released
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -264,6 +285,7 @@ export class SkafinityPlayerElement extends HTMLElement {
 
   disconnectedCallback() {
     if (this._mq) { this._mq.removeEventListener('change', this._onScheme); this._mq = null; }
+    this.stopClock();
     // Removal from the document is the only teardown signal a custom element gets, and a widget
     // that keeps a worker rendering (and an interval firing) after it is gone is a leak in someone
     // else's page.
@@ -285,6 +307,10 @@ export class SkafinityPlayerElement extends HTMLElement {
   get playing() { return !!(this.player && this.player.playing); }
   play() { return this.player.play().catch((e) => this.showError(e)); }
   pause() { this.player.pause(); }
+  /** Where the audible song is: `{n, time, duration, ratio, playing}`; `duration` 0 = not rendered. */
+  get position() { return this.player ? this.player.position() : { n: 0, time: 0, duration: 0, ratio: 0, playing: false }; }
+  /** Scrub to `seconds` into the current song (paused: where the next play comes in). */
+  seek(seconds) { this.player.seekWithin(seconds); }
   /** Boot the engine without playing (what `preload` does). */
   load() { return this.player.load(); }
 
@@ -377,10 +403,14 @@ export class SkafinityPlayerElement extends HTMLElement {
   }
 
   buildTransport(board) {
+    // Two rows under one section, because `controls="transport"` means the whole transport: the
+    // buttons and the bar that says where in the song they are acting.
+    const wrap = document.createElement('div');
+    wrap.className = 'transport';
+    wrap.dataset.section = 'transport';
+    wrap.setAttribute('part', 'transport');
     const bar = document.createElement('div');
     bar.className = 'row';
-    bar.dataset.section = 'transport';
-    bar.setAttribute('part', 'transport');
 
     const mk = (label, title, cls, fn) => {
       const b = document.createElement('button');
@@ -417,8 +447,44 @@ export class SkafinityPlayerElement extends HTMLElement {
     vol.append('vol ', volIn);
 
     bar.append(prev, playBtn, next, now, buf, vol);
-    board.append(bar);
-    Object.assign(this.els, { transport: bar, playBtn, now: nowN, buf, volIn });
+
+    // ── The seek bar ──
+    // The whole song's PCM is already in memory, so a scrub is a re-schedule of a buffer we hold,
+    // not a fetch — which is why this is a plain slider and not a "loading" affordance.
+    const seek = document.createElement('div');
+    seek.className = 'seek';
+    seek.setAttribute('part', 'seek');
+    const at = document.createElement('span');
+    at.className = 'time';
+    at.setAttribute('part', 'time-elapsed');
+    at.textContent = '0:00';
+    const total = document.createElement('span');
+    total.className = 'time total';
+    total.setAttribute('part', 'time-total');
+    total.textContent = NO_TIME;
+    const seekIn = document.createElement('input');
+    // Per-mille of the song rather than seconds: the song's length is not known until it is
+    // rendered, and a range whose max changes under a drag jumps the thumb.
+    seekIn.type = 'range'; seekIn.min = '0'; seekIn.max = '1000'; seekIn.step = '1'; seekIn.value = '0';
+    seekIn.disabled = true;
+    seekIn.title = 'Seek within this song';
+    seekIn.setAttribute('aria-label', 'Seek within this song');
+    seekIn.setAttribute('part', 'slider seek-slider');
+    // `input` fires all through a drag, `change` on release (and on each arrow key). Seeking on
+    // `input` would restart the audio schedule at every pixel; the label follows the thumb instead
+    // and the transport is told once, when the thumb is let go.
+    seekIn.oninput = () => { this._scrubbing = true; this.syncPosition(); };
+    seekIn.onchange = () => {
+      this._scrubbing = false;
+      const { duration } = this.player.position();
+      if (duration > 0) this.player.seekWithin((parseInt(seekIn.value, 10) / 1000) * duration);
+      this.syncPosition();
+    };
+    seek.append(at, seekIn, total);
+
+    wrap.append(bar, seek);
+    board.append(wrap);
+    Object.assign(this.els, { transport: wrap, playBtn, now: nowN, buf, volIn, seekIn, timeAt: at, timeTotal: total });
   }
 
   buildBoot(board) {
@@ -568,19 +634,62 @@ export class SkafinityPlayerElement extends HTMLElement {
     p.addEventListener('vibe', () => { this.buildVibeEditor(); this.syncShuffle(); });
     p.addEventListener('state', (e) => {
       this.els.playBtn.textContent = e.detail.playing ? '⏸' : '▶';
+      e.detail.playing ? this.startClock() : this.stopClock();
       relay(e.detail.playing ? 'play' : 'pause', e.detail);
     });
+    p.addEventListener('position', (e) => { this.syncPosition(); relay('position', e.detail); });
     p.addEventListener('buffer', (e) => {
       this.els.buf.classList.toggle('show', e.detail.generating);
       this.els.buf.textContent = e.detail.generating ? `generating #${e.detail.n}…` : '';
     });
-    p.addEventListener('timeline', () => this.renderPlaylist());
+    // A render landing is also how the current song's LENGTH becomes known, so the bar follows the
+    // timeline as well as the playhead.
+    p.addEventListener('timeline', () => { this.renderPlaylist(); this.syncPosition(); });
     p.addEventListener('error', (e) => { this.showError(e.detail.error); relay('error', e.detail); });
   }
 
   setVolume(v) {
     this.player.setVolume(v);
     if (this.els.volIn.value !== String(v)) this.els.volIn.value = String(v);
+  }
+
+  // ── The playhead ───────────────────────────────────────────────────────────
+  /** Draw the seek bar from the transport's position — or, mid-drag, from the thumb the user is
+   *  holding, which must win over the clock until they let go. */
+  syncPosition() {
+    const { seekIn, timeAt, timeTotal } = this.els;
+    if (!seekIn || !this.player) return;
+    const { duration, ratio } = this.player.position();
+    const known = duration > 0;
+    seekIn.disabled = !known;
+    const shown = this._scrubbing && known ? parseInt(seekIn.value, 10) / 1000 : ratio;
+    if (!this._scrubbing) {
+      const v = String(Math.round(shown * 1000));
+      if (seekIn.value !== v) seekIn.value = v;
+    }
+    timeAt.textContent = known ? fmtTime(shown * duration) : '0:00';
+    timeTotal.textContent = known ? fmtTime(duration) : NO_TIME;
+  }
+
+  // The bar moves continuously while the transport only speaks on events, so the widget drives it
+  // off the animation frame — which also means it stops costing anything in a hidden tab. The
+  // interval is the fallback for an environment with no rAF (the node test's stub DOM is one).
+  startClock() {
+    if (this._clock !== null) return;
+    const raf = typeof requestAnimationFrame === 'function';
+    const step = () => {
+      if (!this.player || !this.player.playing) { this.stopClock(); return; }
+      this.syncPosition();
+      if (raf) this._clock = requestAnimationFrame(step);
+    };
+    this._clockRaf = raf;
+    this._clock = raf ? requestAnimationFrame(step) : setInterval(step, 200);
+  }
+  stopClock() {
+    if (this._clock === null) return;
+    if (this._clockRaf) cancelAnimationFrame(this._clock); else clearInterval(this._clock);
+    this._clock = null;
+    this.syncPosition();
   }
 
   syncShuffle() {

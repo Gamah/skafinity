@@ -235,6 +235,8 @@ const CURVE_OUT = powerCurve('out');
  *   song     {n,seed,vibe,tag,genre,genreName}  a new song became audible
  *   vibe     {}                    the live cfg changed (rebuild any editor)
  *   state    {playing}
+ *   position {n,time,duration,ratio,playing}  a jump in the playhead (pause/resume/scrub/new song);
+ *                                             for a moving bar, poll position() instead
  *   buffer   {generating,n}        playback stalled on a song being rendered
  *   timeline {}                    the playlist window changed
  *   error    {error}
@@ -299,6 +301,13 @@ export class SkafinityPlayer extends EventTarget {
     this.current = null;        // {n, startTime, offset, duration} of the audible song
     this.resumeOffset = 0;      // seconds into it that a pause was taken at
     this.pendingOffset = 0;     // …handed to the next first-song schedule, once
+    // Does the timeline behind the cached PCM still describe what a play would produce? A vibe,
+    // genre or seed change made while PAUSED cannot restart anything, so it records the fact here
+    // and the next play throws the timeline away. Without it a resume either replays a song the
+    // knobs no longer describe, or — if every play rebuilds to be safe — re-renders a song it is
+    // already holding, which is a multi-second silence and a playlist full of progress bars for a
+    // press of ⏸ then ▶.
+    this.dirty = true;
     this.restartTimer = null;
     this.tick = null;
     this.destroyed = false;
@@ -390,6 +399,8 @@ export class SkafinityPlayer extends EventTarget {
     }
     if (p.hasN) this.n = Math.max(0, p.n);
     this.displayN = this.n;
+    this.dirty = true;
+    this.resumeOffset = 0;      // a different song: there is nothing to resume into
     this.emitSong();
     if (this.playing) this.startSequence();
   }
@@ -433,6 +444,7 @@ export class SkafinityPlayer extends EventTarget {
       this.vibe = this.mod.encodeVibe(this.cfg);
       this.emitSong();
     }
+    this.dirty = true;
     // Debounce-restart so a slider drag isn't a generation storm (≈0.35 s, like the game).
     clearTimeout(this.restartTimer);
     this.restartTimer = setTimeout(() => { if (this.playing) this.startSequence(); }, 350);
@@ -442,6 +454,7 @@ export class SkafinityPlayer extends EventTarget {
     this.genre = g;
     this.cfg = this.mod.setGenre(this.cfg, g);
     this.applyStoredVolumes();
+    this.dirty = true;
     this.vibe = this.mod.encodeVibe(this.cfg);
     this.emit('vibe', {});
     this.emitSong();
@@ -453,6 +466,7 @@ export class SkafinityPlayer extends EventTarget {
   reroll() {
     this.cfg = this.mod.rollVibe(this.cfg, true);
     this.genre = this.mod.getGenre(this.cfg);
+    this.dirty = true;
     this.vibe = this.mod.encodeVibe(this.cfg);
     this.emit('vibe', {});
     this.emitSong();
@@ -545,12 +559,19 @@ export class SkafinityPlayer extends EventTarget {
     await this.load();
     await this.ensureContext();
     this.playing = true;
-    // Only a resume consumes the offset: every other route into startSequence (a new seed, a genre,
-    // a vibe edit) is a different song and starts at its downbeat.
-    this.pendingOffset = this.resumeOffset;
+    // Only a resume consumes the offset: every other route into a restart (a new seed, a genre, a
+    // vibe edit) is a different song and starts at its downbeat.
+    const offset = this.resumeOffset;
     this.resumeOffset = 0;
-    this.startSequence();
+    // A RESUME IS A SEEK, NOT A RESTART. The song is already rendered and the timeline behind it is
+    // still the timeline, so the soft path re-schedules the PCM already in hand and audio is back
+    // within a frame. `startSequence` would drop that cache, the ledger and every look-ahead render
+    // in flight — several seconds of silence, and the playlist redrawing itself as it re-earns what
+    // it had. That is only the right answer when the knobs moved while we were paused.
+    if (this.dirty || !this.ctx) this.startSequence(offset);
+    else this.seekTo(this.n, offset);
     this.emit('state', { playing: true });
+    this.emit('position', this.position());
   }
 
   // Pause SUSPENDS nothing: with one AudioContext across several widgets, suspending it would stop
@@ -568,8 +589,46 @@ export class SkafinityPlayer extends EventTarget {
     }
     this.stopNodes();
     this.emit('state', { playing: false });
+    this.emit('position', this.position());
   }
   toggle() { return this.playing ? (this.pause(), Promise.resolve()) : this.play(); }
+
+  // ── Where we are in the song ─────────────────────────────────────────────────
+  // Whole seconds of PCM are in hand, so the position is arithmetic on the audio clock rather than
+  // anything the engine has to be asked for. A host polls this (rAF) for a progress bar; the
+  // `position` event only marks the discontinuities — a pause, a resume, a scrub.
+  //
+  // `duration` is 0 when the song is not rendered (nothing playing yet, or a seek still buffering).
+  // That is the honest answer, not a guess: songs differ in length, so a bar drawn against an
+  // assumed one would be wrong for the whole first song.
+  position() {
+    const c = this.current;
+    const duration = c ? c.duration : this.durationOf(this.displayN);
+    let time;
+    if (c && this.ctx) time = Math.min(Math.max(0, this.ctx.currentTime - c.startTime + c.offset), duration);
+    else time = duration > 0 ? Math.min(this.resumeOffset, duration) : this.resumeOffset;
+    return { n: this.displayN, time, duration, ratio: duration > 0 ? time / duration : 0, playing: this.playing };
+  }
+  durationOf(nn) {
+    const r = this.rendered.get(nn);
+    return r ? r.buffer.duration * LOOPS_PER_SONG : 0;
+  }
+
+  // Scrub inside the audible song. Web Audio nodes cannot be rewound, so this re-schedules the same
+  // buffer from an offset — the SOFT path, because the timeline is not what changed. Paused, it just
+  // moves where the next play will come in.
+  seekWithin(seconds) {
+    const duration = this.position().duration;
+    // Landing on the last instant would schedule a song with nothing left to play; leave the tail.
+    const t = Math.max(0, duration > 0 ? Math.min(seconds, Math.max(0, duration - 0.25)) : seconds);
+    if (!this.playing || !this.ctx) {
+      this.resumeOffset = t;
+      this.emit('position', this.position());
+      return;
+    }
+    this.seekTo(this.displayN, t);
+    this.emit('position', this.position());
+  }
 
   stopNodes() {
     this.seq++;
@@ -658,6 +717,7 @@ export class SkafinityPlayer extends EventTarget {
       this.store.set('n', String(songN));
       this.emitSong();
       this.emit('timeline', {});
+      this.emit('position', this.position());
       this.emitBuffer();
     }, delay);
 
@@ -692,8 +752,10 @@ export class SkafinityPlayer extends EventTarget {
   // HARD restart — for base changes (new seed/tag/genre/vibe edit) that invalidate the whole
   // timeline: aborts in-flight renders, drops the PCM cache AND the frozen-vibe ledger, rebuilds
   // from n. For a navigation that should PRESERVE the timeline (Prev/Next), use seekTo().
-  startSequence() {
+  startSequence(offset = 0) {
     this.stopNodes();
+    this.pendingOffset = offset;
+    this.dirty = false;
     this.renderSeq++;      // the cfg behind every index may have changed; nothing in flight survives
     this.gen.clear();      // paired with abandoning every in-flight render below — see queue.js
     this.rendered.clear();
@@ -716,16 +778,23 @@ export class SkafinityPlayer extends EventTarget {
   // cached song instantly; otherwise stalls in a buffering state while it regenerates from nn's
   // ledger seed. Restarts the audio schedule (a manual jump can't rewind committed Web Audio
   // nodes) but does NOT discard the timeline.
-  seekTo(nn) {
+  // `offset` is seconds into song nn to come in at — a resume or a scrub (see seekWithin); every
+  // other caller lands on the downbeat.
+  seekTo(nn, offset = 0) {
     nn = Math.max(0, nn | 0);
     this.n = nn;
     if (!this.playing || !this.ctx) {
       this.displayN = nn;
+      // Paused: this is where the next play comes in. Setting it unconditionally is what stops a
+      // Prev/Next taken while paused from inheriting the offset of the song we paused out of.
+      this.resumeOffset = offset;
       this.emitSong();
       this.emit('timeline', {});
+      this.emit('position', this.position());
       return;
     }
     this.stopNodes();
+    this.pendingOffset = offset;
     // Drop queued work — the window around nn is re-requested below. This RELEASES the dropped
     // indices' claims; holding them would bar those songs from ever being queued again (queue.js).
     this.gen.dropQueued();

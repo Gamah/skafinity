@@ -180,6 +180,20 @@ whole song's PCM — for as long as the list does.
 Browsers require a user gesture before audio — `AudioContext.resume()` is gated on the play
 button.
 
+**There are two restart paths and picking the wrong one is silent.** `startSequence` is the HARD
+one — it drops the PCM cache, the frozen-vibe ledger and every in-flight render, because the cfg
+behind every index may have changed. `seekTo` is the SOFT one: it keeps all of that and only
+re-schedules. Web Audio nodes cannot be rewound, so a pause, a resume and a scrub inside a song are
+all "tear the nodes down and start the same buffer at an offset" — i.e. all SOFT. A resume routed
+through the hard path still *works*, which is why it is worth naming: it just answers ▶ with a
+several-second re-render of a song already in memory and a playlist full of progress bars. What
+decides is `dirty`, set by the knob/genre/seed paths when they cannot restart because nothing is
+playing, and cleared by `startSequence`.
+
+`position()` is arithmetic on the audio clock (`ctx.currentTime - startTime + offset`), not
+something the engine is asked for, and `duration` is 0 until the song is rendered — an unknown
+length is reported as unknown rather than assumed, because songs differ in length.
+
 **A fade UP FROM SILENCE is not a crossfade, and must not borrow its length.** A crossfade is long
 because two songs have to trade places without either being heard to stop; nothing is being traded
 at the start of a session. `SkafinityPlayer` used one number for both, and what a multi-second linear

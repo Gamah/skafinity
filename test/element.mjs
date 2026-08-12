@@ -182,7 +182,8 @@ el.connectedCallback();
 const parts = new Set(el.shadowRoot.all(() => true).flatMap((n) => (n.getAttribute('part') || '').split(/\s+/)).filter(Boolean));
 check('it built a shadow tree', el.shadowRoot.children.length >= 2);
 check('nothing was built into the host page itself', host.children.filter((c) => c !== el).length === 0);
-for (const p of ['transport', 'seed-bar', 'playlist', 'slider', 'button', 'progress', 'play-button'])
+for (const p of ['transport', 'seed-bar', 'playlist', 'slider', 'button', 'progress', 'play-button',
+                 'seek', 'seek-slider', 'time-elapsed', 'time-total'])
   check(`::part(${p}) is exposed`, parts.has(p), [...parts].join(' '));
 check('the probe left nothing behind in the page', globalThis.document.body.all((n) => n.getAttribute('aria-hidden') === 'true').length === 0);
 
@@ -246,6 +247,33 @@ check('the seed the attribute asked for is the one playing', el.player.seed.ends
 check('the play button flipped to pause', el.els.playBtn.textContent === '⏸');
 el.pause();
 check('…and back', el.els.playBtn.textContent === '▶');
+
+// ── The seek bar ───────────────────────────────────────────────────────────────
+// Nothing renders in this stub (the fake worker never answers), so the bar's other job is on show
+// here: a song whose length is not known yet gets an inert bar and a dash, not a guess.
+{
+  check('the seek bar is inert until a song is rendered', el.els.seekIn.disabled === true);
+  check('…and says so rather than showing a length', el.els.timeTotal.textContent === '–:––',
+    el.els.timeTotal.textContent);
+
+  // Stand a rendered song up by hand — the transport's own cache is what position() measures.
+  el.player.rendered.set(el.player.displayN, { buffer: { duration: 80 }, info: null });
+  el.syncPosition();
+  check('a rendered song enables the bar', el.els.seekIn.disabled === false);
+  check('…and reports its length', el.els.timeTotal.textContent === '1:20', el.els.timeTotal.textContent);
+
+  // A drag: `input` moves the label only, `change` (the release) is what seeks. Paused, that lands
+  // as the offset the next play comes in at.
+  el.els.seekIn.value = '500';
+  el.els.seekIn.oninput();
+  check('a drag moves the elapsed time with the thumb', el.els.timeAt.textContent === '0:40', el.els.timeAt.textContent);
+  check('…and does not seek yet', el.player.resumeOffset === 0, String(el.player.resumeOffset));
+  el.els.seekIn.onchange();
+  check('releasing the thumb seeks', Math.abs(el.player.resumeOffset - 40) < 0.01, String(el.player.resumeOffset));
+  el.player.rendered.clear();
+  el.player.resumeOffset = 0;
+  el.syncPosition();
+}
 
 {
   const seen = [];

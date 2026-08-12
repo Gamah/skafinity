@@ -44,12 +44,25 @@ exactly that tree) rather than picking files out of it.
 | `volume` | `0`–`1.5` | remembered, else `0.8` | Master volume. |
 | `shuffle` | `on` \| `off` | `on` | Re-roll genre and knobs for every new song. |
 
-Properties: `seed` (get/set), `playing`, `themeInfo`, and methods `play()`, `pause()`, `load()`,
-`refreshTheme()`.
+Properties: `seed` (get/set), `playing`, `position`, `themeInfo`, and methods `play()`, `pause()`,
+`seek(seconds)`, `load()`, `refreshTheme()`.
+
+`position` is `{n, time, duration, ratio, playing}`, measured off the audio clock. **`duration` is
+`0` until the song is rendered** — songs differ in length, so there is no length to state before
+then, and the widget's own bar goes inert rather than drawing against a guess.
 
 Events (all `CustomEvent`, bubbling and composed): `song` (`{n, seed, vibe, tag, genre, genreName}`),
-`play`, `pause`, `progress` (`{loaded, total, ratio, done}`), `ready`, `error`, and `theme`
-(`{mode, accent, source}`).
+`play`, `pause`, `position` (the `position` shape), `progress` (`{loaded, total, ratio, done}`),
+`ready`, `error`, and `theme` (`{mode, accent, source}`).
+
+The `position` event marks the **discontinuities** — a pause, a resume, a scrub, a new song. A host
+drawing its own progress bar polls `el.position` on an animation frame instead; the widget does, and
+that is why there is no per-frame event to subscribe to.
+
+Pause is a pause: the transport cannot suspend the AudioContext (it is shared with the other widgets
+on the page), so it carries the playhead itself and the next play re-schedules the PCM it is already
+holding. Seeking within a song is the same move with a different offset — the whole song is in
+memory, so a scrub costs nothing to fetch.
 
 Static: `SkafinityPlayerElement.playerDefaults` — transport options every element on the page is
 built with. A page that already runs Web Audio sets `audioContext` here (before the first widget
@@ -121,7 +134,8 @@ honest on the flagship page.
 
 The shadow root keeps the host page's CSS out (and the widget's out of the page), so anything you
 want to restyle has to be a part: `board` `transport` `transport-button` `play-button` `now-playing`
-`buffer-state` `volume` `volume-slider` `progress` `progress-bar` `seed-bar` `seed-input` `seed-go`
+`buffer-state` `volume` `volume-slider` `seek` `seek-slider` `time-elapsed` `time-total`
+`progress` `progress-bar` `seed-bar` `seed-input` `seed-go`
 `seed-copy` `panel` `vibe` `vibe-body` `genre-select` `reroll-button` `shuffle-button` `knob-slider`
 `knob-select` `playlist` `playlist-row` `playlist-row-now` `jump` `jump-input` `jump-go`
 `export-button` `button` `slider` `message`.

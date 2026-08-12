@@ -171,6 +171,79 @@ function invariantHolds(p, pool) {
   p.destroy();
 }
 
+// ── A resume is a seek, not a rebuild ──────────────────────────────────────────
+// Nothing about the timeline changed while it was paused, so the PCM in hand is still the song:
+// resuming through the hard restart path would drop that cache and the ledger with it, and answer
+// a press of ▶ with a re-render — seconds of silence, and a playlist redrawing itself.
+{
+  allWorkers.length = 0;
+  const pool = new RenderPool(() => new FakeWorker(), 3);
+  const p = makePlayer({ pool });
+  await p.play();
+  for (const w of liveWorkers()) w.finishAll();
+  await wait(240);
+  const cachedBefore = [...p.rendered.keys()].sort((a, b) => a - b).join(',');
+  const ledgerBefore = p.ledger.size;
+  const wasN = p.current.n;
+  p.ctx.currentTime = p.current.startTime + 1;
+  p.pause();
+  await p.play();
+  check('a resume keeps every rendered song', [...p.rendered.keys()].sort((a, b) => a - b).join(',') === cachedBefore,
+    `${[...p.rendered.keys()].join(',')} vs ${cachedBefore}`);
+  check('a resume keeps the frozen-vibe ledger', p.ledger.size >= ledgerBefore, `${p.ledger.size} vs ${ledgerBefore}`);
+  check('a resume re-schedules the audio it already had', p.activeNodes.length > 0);
+  check('nothing is re-rendered to resume', !allWorkers.some((w) => w.jobs.some((j) => j.n === wasN)),
+    allWorkers.flatMap((w) => w.jobs.map((j) => j.n)).join(','));
+
+  // …but a knob moved while paused HAS to rebuild: the cache no longer describes the song the
+  // seed now names.
+  p.ctx.currentTime = p.current ? p.current.startTime + 1 : 1;
+  p.pause();
+  p.setGenre(2);
+  await p.play();
+  check('a genre changed while paused does rebuild the timeline', p.rendered.size === 0 && p.gen.claimed.size > 0,
+    `${p.rendered.size} cached, ${p.gen.claimed.size} claimed`);
+  p.destroy();
+}
+
+// ── Scrubbing inside the song ──────────────────────────────────────────────────
+{
+  allWorkers.length = 0;
+  const pool = new RenderPool(() => new FakeWorker(), 3);
+  const p = makePlayer({ pool });
+  check('no position before anything is rendered', p.position().duration === 0 && p.position().ratio === 0);
+  await p.play();
+  for (const w of liveWorkers()) w.finishAll();
+  await wait(240);
+  const dur = p.current.duration;
+  p.ctx.currentTime = p.current.startTime + 1;
+  check('the position reads the audio clock', Math.abs(p.position().time - 1) < 0.01, String(p.position().time));
+  check('…as a ratio of the whole song', Math.abs(p.position().ratio - 1 / dur) < 0.01);
+
+  p.seekWithin(dur * 0.5);
+  await wait(100);                      // the scrubbed song becomes audible on the schedule delay
+  check('a scrub comes in at the offset it was given', p.current && Math.abs(p.current.offset - dur / 2) < 0.01,
+    JSON.stringify(p.current));
+  check('a scrub does not throw the timeline away', p.rendered.size > 0, `${p.rendered.size} cached`);
+  // Past the end there is nothing to come in on, so the scrub is held inside the song.
+  p.seekWithin(dur + 10);
+  await wait(100);
+  check('a scrub past the end lands inside the song', p.current && p.current.offset < dur,
+    JSON.stringify(p.current));
+
+  p.seekWithin(dur * 0.25);
+  await wait(100);
+  p.ctx.currentTime = p.current.startTime + 0.5;
+  p.pause();
+  const off = p.resumeOffset;
+  check('a pause mid-song leaves an offset to resume from', off > 0, String(off));
+  p.next();
+  check('a Next taken while paused does not inherit that offset', p.resumeOffset === 0, String(p.resumeOffset));
+  p.seekWithin(3);
+  check('a scrub while paused moves where the next play comes in', p.resumeOffset === 3, String(p.resumeOffset));
+  p.destroy();
+}
+
 // ── A seek never strands an index ──────────────────────────────────────────────
 // This is the bug queue.js exists for: dropping queued work without releasing its claims made every
 // affected index permanently un-queueable, and the timeline is walked in order, so the first one it
