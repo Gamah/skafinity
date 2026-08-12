@@ -113,15 +113,75 @@ function makeMod(E) {
   };
 }
 
-async function boot() {
-  const { getAssemblyExports, getConfig } = await dotnet.create();
+// Download progress. The runtime is ~7.5 MB and, since the element only fetches it on the first
+// press of play, somebody is watching an empty box while it arrives — so the boot reports bytes.
+//
+// [SOURCE] read out of web/_framework/dotnet.js on 2026-08-12 — implementation detail of the
+// loader, not a documented contract, so re-check it if a runtime bump breaks this:
+//   * `withResourceLoader(fn)` installs `fn` as `loadBootResource`, called as
+//     `fn(type, name, defaultUri, integrityHash, behavior)`;
+//   * for `type === 'dotnetjs'` it MUST return a URL string (it asserts, then `import()`s it);
+//   * anything else may return a `Promise<Response>`, which is used as-is.
+// The two js modules therefore report no bytes (they are ~400 KB of the 7.5 MB); the five wasm
+// assets are streamed here and counted.
+//
+// The TOTAL is not knowable up front — the boot config carries names and hashes but no sizes — so
+// it is the sum of the Content-Lengths seen so far. The runtime kicks all the asset downloads off
+// together, so in practice the total settles within one round trip; until it does, `total` is 0 and
+// a caller should show something indeterminate rather than a bar at 100%.
+//
+// The integrity hash is passed straight through to fetch, so taking over the request does NOT drop
+// the subresource-integrity check the default path would have done.
+function progressLoader(onProgress) {
+  let loaded = 0, total = 0, pending = 0;
+  const report = (done = false) => onProgress({ loaded, total, ratio: total > 0 ? Math.min(1, loaded / total) : 0, done });
+  return (type, name, defaultUri, integrity) => {
+    if (type === 'dotnetjs') return defaultUri;
+    // Only http(s) is ours to stream. Returning undefined hands the asset back to the runtime's own
+    // default path, which is what has to happen for the boots that are not a browser over a server:
+    // node (test/page.mjs, test/smoke.mjs) resolves assets off the filesystem, and `fetch` there
+    // rejects a relative URL outright.
+    if (!/^https?:/i.test(String(defaultUri))) return undefined;
+    pending++;
+    return (async () => {
+      const res = await fetch(defaultUri, integrity ? { integrity, cache: 'force-cache' } : { cache: 'force-cache' });
+      const len = parseInt(res.headers.get('content-length') || '', 10);
+      if (Number.isFinite(len)) { total += len; report(); }
+      if (!res.body || !res.ok) return res;   // no stream to read (or an error the runtime handles)
+      const reader = res.body.getReader();
+      const chunks = [];
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.byteLength;
+        // A compressed transfer (nginx serving the .br twin) reports the COMPRESSED length while
+        // the reader yields decompressed bytes, so loaded can outrun total. Grow the total rather
+        // than showing 140%.
+        if (loaded > total) total = loaded;
+        report();
+      }
+      if (--pending === 0) report(true);
+      return new Response(new Blob(chunks), { status: res.status, headers: res.headers });
+    })();
+  };
+}
+
+async function boot(onProgress) {
+  const builder = onProgress ? dotnet.withResourceLoader(progressLoader(onProgress)) : dotnet;
+  const { getAssemblyExports, getConfig } = await builder.create();
   const exports = await getAssemblyExports(getConfig().mainAssemblyName);
+  if (onProgress) onProgress({ loaded: 1, total: 1, ratio: 1, done: true });
   return makeMod(exports.Engine);
 }
 
-// Default export keeps the old call site (`mod = await Skafinity()`) working unchanged.
-export default function Skafinity() {
+// Default export keeps the old call site (`mod = await Skafinity()`) working unchanged; the options
+// bag is optional and only the FIRST caller's is honoured, since the runtime boots once per realm.
+export default function Skafinity(opts) {
   if (_mod) return Promise.resolve(_mod);
-  if (!_booting) _booting = boot().then((m) => (_mod = m));
+  // `withResourceLoader` is a builder method the single-file bundle's shim does not have — there,
+  // every asset is already in memory and there is nothing to report progress on.
+  const onProgress = opts && opts.onProgress && dotnet.withResourceLoader ? opts.onProgress : null;
+  if (!_booting) _booting = boot(onProgress).then((m) => (_mod = m));
   return _booting;
 }

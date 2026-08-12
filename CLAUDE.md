@@ -146,7 +146,11 @@ Moved to `docs/seed-format.md`.
 
 ## Audio scheduling (replaces s&box SoundStream)
 
-`web/app.js` keeps the controller's model over Web Audio:
+`web/player.js` keeps the controller's model over Web Audio. **It is a class, not a page** — the
+transport was pulled out of `app.js` so a second copy of it can exist, which is what
+`<skafinity-player>` (`web/skafinity-element.js`, see `docs/embedding.md`) is built on and what the
+toy page itself now consumes. Anything that reaches for the document, the URL or an un-namespaced
+storage key belongs above it, not in it, and `test/player.mjs` asserts exactly that.
 
 - `engine.js`'s `generateSong(seed, cfg)` renders **one full structured song** (stereo) —
   intro → chorus → verse(0) → chorus → verse(1) → chorus → ending (see `BuildStructure` in
@@ -166,7 +170,7 @@ release its claims with it (`dropQueued`) — a claim with no queue entry and no
 permanent, and `want()` will then refuse that index forever. The timeline is walked in order, so one
 stranded index stops playback for the rest of the session rather than skipping a song. That is why
 the queue is a DOM-free object with its own node test (`test/queue.mjs`, in `make test`) instead of
-two collections inline in `app.js`: everything else in the scheduler needs a browser, and this does
+two collections inline in the scheduler: everything else in it needs a browser, and this does
 not. The same asymmetry applies to workers — `seekTo` terminates only renders that fall outside the
 cache window (a Prev/Next is still rendering songs the timeline wants, and a terminate costs a
 runtime reboot), while `startSequence` abandons everything. And `activeNodes` is what is still
@@ -187,6 +191,29 @@ same seed starts on a clean attack (check it with `--render` and look at the fir
 not at a block envelope, which cannot tell an attack from a mid-decay start).
 
 ---
+
+## The embeddable element (`web/skafinity-element.js`)
+
+Full reference in **`docs/embedding.md`** (attributes, parts, custom properties, cross-origin). The
+three facts a session needs before touching the web layer:
+
+- **The toy page is a CONSUMER of the element, not a second implementation.** `web/index.html` is a
+  header, a `<skafinity-player>`, and a footer; `web/app.js` is the host script that syncs
+  `location.hash` and drives the page's light/dark switch. If the widget breaks, the flagship page
+  breaks with it — which is deliberate, because the alternative is a demo nobody looks at.
+- **The palette is derived, never shipped.** `web/palette.js` is a port of
+  `Code/UI/SkafinityTheme.cs` and `test/palette.mjs` reads the factors back out of that C# — so the
+  s&box panel and the web widget cannot drift into two colour schemes. Light mode is those same
+  factors reflected (`1 - f`, `Scale`↔`Mix`), not a second scheme. Add a token in one place and the
+  test tells you about the other.
+- **Nothing is fetched until the first play**, in the element AND on the toy page. A widget that
+  costs every visitor 7.5 MB on page view is not embeddable, so `preload` is opt-in and the boot
+  reports real bytes through a progress bar.
+
+`web/embed-light.html` and `web/embed-dark.html` are two deliberately opposite host pages (light and
+Bootstrap-ish; dark, serif and hand-rolled) carrying the same unconfigured element. They are the only
+way to see whether the sniff is working — no test can look at it, and `test/element.mjs` runs against
+a stub DOM that has no CSS engine and says so.
 
 ## Deploy (`make up`) — loopback only, Caddy fronts it
 
@@ -303,7 +330,8 @@ on the site that came from a build nobody listened to. It consumes the **committ
 once you have run a full local publish and committed the re-staged bundle — the same
 bundle-matches-glue rule as ever, except Pages makes forgetting it *invisible* rather than loud:
 the site keeps serving the old engine while `master` claims the new one. Page-only edits
-(`index.html`, `app.js`, `style.css`, `config.json`) need no publish; push and the site follows.
+(`index.html`, the embed demos, `app.js`, `player.js`, `palette.js`, `skafinity-element.js`,
+`style.css`, `config.json`) need no publish; push and the site follows.
 
 **The stale-bundle gate.** Because the deploy packages rather than compiles, an engine commit
 that forgets to re-stage `web/_framework` breaks nothing visibly — no 404, no failing test, just
@@ -358,7 +386,8 @@ GitHub only serves a branch's root or `/docs`, never `web/`, and it would run Je
   skips AOT for speed; `make serve` → `python3 -m http.server` rooted at `web/` (a quick
   no-Docker preview — `make up` is the real nginx-parity host). `make test-engine` → the
   engine-only C# tests (the check that runs on a bare dev host). `make test` → the node
-  tests (wasm boundary, page surface, scheduler queue). `make fast`/`up`/`rebuild`/`down`/
+  tests (wasm boundary, page surface, scheduler queue, transport, element, palette — the last
+  four need neither wasm nor a browser). `make fast`/`up`/`rebuild`/`down`/
   `logs`/`ps` drive the container. `make dist` → the two handout artifacts (above);
   `make test-dist` boots the single-file one.
 - **The page must be served** (http), not opened via `file://` — the runtime is a fetched

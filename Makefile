@@ -151,13 +151,19 @@ stage:
 check-bundle:
 	@sh tools/bundle-stamp.sh check
 
-# Three parts: queue.mjs checks the scheduler's generation queue (no wasm needed — it runs on a
-# bare checkout); smoke.mjs checks the raw [JSExport] boundary; page.mjs checks the surface the
-# PAGE uses (the `mod` object engine.js returns, against every call app.js/worker.js make).
-# The latter two derive what they expect from the source, so a new export or a new mod.* call is
-# covered without editing a list here.
+# Five parts. Three need no wasm at all and run on a bare checkout: queue.mjs (the scheduler's
+# generation queue), player.mjs (the headless transport, driven with an injected engine/context/
+# worker — the embed properties: one pool for N widgets, namespaced storage, no DOM), and
+# palette.mjs (the widget palette, checked against the factors read out of SkafinityTheme.cs).
+# Then smoke.mjs checks the raw [JSExport] boundary and page.mjs the surface the PAGE uses (the
+# `mod` object engine.js returns, against every call the player/element/worker make). The last two
+# derive what they expect from the source, so a new export or a new mod.* call is covered without
+# editing a list here.
 test:
 	$(NODE) test/queue.mjs
+	$(NODE) test/palette.mjs
+	$(NODE) test/player.mjs
+	$(NODE) test/element.mjs
 	$(NODE) test/smoke.mjs
 	$(NODE) test/page.mjs
 
@@ -205,7 +211,9 @@ dist:
 		echo "Build it with 'make' (local .NET SDK) or 'make up' (Docker)." >&2; exit 1; }
 	rm -rf dist
 	mkdir -p dist
-	cp web/index.html web/app.js web/engine.js web/worker.js web/queue.js web/style.css dist/
+	cp web/index.html web/embed-light.html web/embed-dark.html web/app.js web/engine.js \
+		web/worker.js web/queue.js web/palette.js web/player.js web/skafinity-element.js \
+		web/style.css dist/
 	cp sbox-library/Skafinity/skafinity.config.json dist/config.json
 	mkdir -p dist/_framework
 	find web/_framework -maxdepth 1 -type f ! -name '*.br' ! -name '*.gz' -exec cp {} dist/_framework/ \;

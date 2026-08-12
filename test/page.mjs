@@ -23,7 +23,9 @@ const mod = await Skafinity();
 // ── the surface the page relies on ──
 // Derived from the page source, not hand-listed: adding a mod.* call to app.js is then
 // automatically covered, which is exactly the gap that let a missing export ship.
-const pageSrc = ['app.js', 'worker.js']
+// The transport and the element are where the mod.* calls live now that app.js is only a host for
+// <skafinity-player>; app.js and worker.js stay in the list because either may grow one back.
+const pageSrc = ['app.js', 'worker.js', 'player.js', 'skafinity-element.js']
   .map((f) => readFileSync(new URL('../web/' + f, import.meta.url), 'utf8'))
   .join('\n');
 const used = [...new Set([...pageSrc.matchAll(/\bmod\.([A-Za-z_]\w*)\s*\(/g)].map((m) => m[1]))].sort();

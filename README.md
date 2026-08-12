@@ -101,8 +101,8 @@ the same `make dist` you run locally, so the live tree can't drift from a dev bo
 > which keeps deploys at ~30 s and means the audio on the site is a build someone actually
 > listened to. The consequence: a change to `Code/Engine/**`, `wasm/Exports.cs` or
 > `web/engine.js` reaches the site only once you've run `make` locally and committed the
-> re-staged `web/_framework`. Page-only edits (`index.html`, `app.js`, `style.css`,
-> `config.json`) just need a push.
+> re-staged `web/_framework`. Page-only edits (`index.html`, `app.js`, `player.js`,
+> `palette.js`, `skafinity-element.js`, `style.css`, `config.json`) just need a push.
 
 ## What's here
 
@@ -113,15 +113,21 @@ the same `make dist` you run locally, so the live tree can't drift from a dev bo
 | `wasm/Exports.cs` | The `[JSExport]` boundary (generate, vibe codec, WAV, config) — the only web-specific code. |
 | `wasm/Skafinity.Wasm.csproj` | `browser-wasm` project that `<Compile Include>`s the shared `.cs` and builds the runtime. |
 | `web/engine.js` | Boots the .NET runtime and adapts the exports to the small `mod` API the app uses. |
-| `web/index.html` · `app.js` · `worker.js` · `style.css` | The page: Web Audio crossfade scheduler, rolling playlist, vibe editor, WAV export, shuffle. |
+| `web/skafinity-element.js` · `player.js` · `palette.js` | The embeddable widget: `<skafinity-player>` (shadow root, UI, host-style sniffing), the headless transport it drives (crossfade scheduler, rolling playlist, look-ahead), and the palette derivation ported from the s&box panel's. See [`docs/embedding.md`](docs/embedding.md). |
+| `web/index.html` · `app.js` · `worker.js` · `style.css` | The toy page — a host for the element like any other page, plus URL-is-the-song hash sync and a light/dark switch. |
 | `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence / stereo-width knobs). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix or the width without a rebuild. |
 | `tools/bundle-single.mjs` | Builds `dist/skafinity.html` — inlines the runtime behind `dotnet.withResourceLoader`. Every rewrite is anchored on an exact source pattern and hard-fails if it stops matching. |
 | `test/smoke.mjs` · `test/page.mjs` · `test/dist-single.mjs` | Node tests: the raw `[JSExport]` boundary, the surface the page actually calls, and the single-file artifact booting its inlined runtime. |
+| `test/queue.mjs` · `test/player.mjs` · `test/element.mjs` · `test/palette.mjs` | Node tests that need neither wasm nor a browser: the generation queue's claims, the transport (with the engine/audio/workers injected), the element against a stub DOM, and the palette against the factors read out of `SkafinityTheme.cs`. |
 | `test/engine/` | The engine-only C# harness (`make test-engine`) — composition, harmony, patterns, melody, form, mix balance, render digests. The check that runs without a browser. |
 | `docker/` | `Dockerfile` (SDK build stage → nginx runtime stage), `docker-compose.yml` (`make up`: project `skafinity`, container `skafinity-1`, loopback 6970), `docker-compose.fast.yml` (`make fast`: stock nginx over the committed bundle), `nginx.conf` (docroot + cache headers). |
 
 ## Features
 
+- **Embeddable in one line** — `<skafinity-player>` is a custom element that drops into any page
+  and derives its palette from whatever CSS is already there (accent, light/dark, font, radius),
+  so it looks like it belongs rather than pasted on. Nothing is downloaded until somebody presses
+  play. [`docs/embedding.md`](docs/embedding.md); the toy page is just another host for it.
 - **Rolling playlist** — `n` auto-advances on every crossfade and is persisted; a full
   playlist panel shows played / now-playing / up-next, with click-to-jump and per-song
   export.

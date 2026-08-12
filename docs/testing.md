@@ -140,9 +140,22 @@ balances — and a kit that gets quieter because it started reading velocity and
 not regressed, it has started breathing.
 
 `make test` is the other half: it boots the *published wasm* runtime under node and checks the
-JS↔wasm boundary (generation, vibe round-trip, WAV output). It needs `web/_framework`, so it
-only runs where the bundle has been built — except `test/queue.mjs`, which touches no wasm and
-runs on a bare checkout (see the scheduling section).
+JS↔wasm boundary (generation, vibe round-trip, WAV output). That part needs `web/_framework`, so
+it only runs where the bundle has been built. **Four of the six files touch no wasm at all and
+run on a bare checkout**, because what they check is a state machine rather than a sound:
+
+- `test/queue.mjs` — the generation queue's claims (see the scheduling section).
+- `test/player.mjs` — the headless transport, with the engine, the AudioContext and the workers all
+  injected. It checks the properties that make the thing embeddable and that a browser would not
+  have told us about anyway: the queue invariant across a seek, N widgets sharing ONE worker pool,
+  storage namespaced per instance, and `destroy()` actually letting go.
+- `test/element.mjs` — `<skafinity-player>` against a hand-rolled stub DOM. **It has no CSS engine**,
+  so it proves the element builds its tree, wires its events, derives a palette and tears down —
+  and proves nothing whatever about layout, cascade or how any of it looks. The demo pages are the
+  only way to see that, and a person has to look at them.
+- `test/palette.mjs` — the palette derivation, with the factors READ OUT of
+  `Code/UI/SkafinityTheme.cs` rather than hardcoded. Two files implementing one colour rule is the
+  classic silent fork; change either side and this fails.
 
 **A commit that changes `wasm/Exports.cs` or `web/engine.js` MUST re-publish and re-stage
 `web/_framework` in that same commit.** `web/_framework` is committed so a checkout is runnable

@@ -35,20 +35,28 @@ skafinity/
     Exports.cs            # [JSExport] boundary: generate, vibe codec, WAV, config <-> double[]
     runtimeconfig.template.json
   web/
-    index.html            # the page + vibe UI
-    engine.js             # boots .NET, exposes the `mod` API app.js/worker.js expect
-    app.js                # Web Audio sequencer (port of the controller's scheduling)
+    index.html            # the toy page — a header, a <skafinity-player>, a footer
+    embed-light.html      # a light/Bootstrap-ish host page for the element (sniff demo)
+    embed-dark.html       # a dark/hand-rolled host page for the element (sniff demo)
+    engine.js             # boots .NET (with download progress), exposes the `mod` API
+    skafinity-element.js  # <skafinity-player>: shadow root, UI, host-style sniffing
+    player.js             # THE TRANSPORT: scheduling/look-ahead/timeline, headless + instanceable
+    palette.js            # the palette derivation — a port of Code/UI/SkafinityTheme.cs, DOM-free
+    app.js                # the toy page's host script (hash sync, light/dark switch) — ~60 lines
     queue.js              # the sequencer's generation queue — DOM-free so a node test can drive it
     worker.js             # generation worker (its own runtime instance)
-    style.css
+    style.css             # the PAGE's chrome only; the widget styles itself in its shadow root
     config.json           # house-mix overlay fetched at startup (make-copied from sbox-library)
     _framework/           # published runtime bundle (committed; rebuilt by `make`)
   tools/
     bundle-single.mjs     # builds dist/skafinity.html (the whole runtime inlined into one file)
   test/
     smoke.mjs             # node smoke test of the JS↔wasm boundary
-    page.mjs              # the mod.* surface app.js/worker.js actually call
+    page.mjs              # the mod.* surface the player/element/worker actually call
     queue.mjs             # the scheduler's generation queue (no wasm — runs on a bare checkout)
+    player.mjs            # the headless transport, with engine/context/worker injected
+    element.mjs           # <skafinity-player> against a stub DOM (no CSS engine — see its header)
+    palette.mjs           # the palette, checked against the factors read out of SkafinityTheme.cs
     dist-single.mjs       # boots dist/skafinity.html's inlined runtime under node
     engine/               # engine-only C# harness (make test-engine) — runs without s&box
   Makefile
