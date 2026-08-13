@@ -14,8 +14,9 @@ It ships as **two pieces** you can mix and match:
   + streams the music (optionally onto a named mixer channel) and exposes the whole knob set.
   This is all you need; drive it from the inspector or from code.
 - **The optional panel** — `SkafinityMusicPanel`, a drop-in Razor `PanelComponent` that finds
-  a `SkafinityPlayer` and offers the knobs as in-game UI. Add it only if you want players to
-  tweak the vibe themselves; the engine needs nothing from it.
+  a `SkafinityPlayer` and draws the whole transport as in-game UI — the same board the web
+  widget is, down to the wording. Add it only if you want players driving the music themselves;
+  the engine needs nothing from it.
 
 ## Install
 
@@ -34,8 +35,10 @@ Copy the `Skafinity/` folder there:
     SkafinityCommands.cs # console commands for driving it in the editor (see below)
     Skafinity.csproj
     UI/
-      SkafinityMusicPanel.razor       # optional drop-in settings panel (PanelComponent)
+      SkafinityMusicPanel.razor       # optional drop-in settings board (PanelComponent)
       SkafinityMusicPanel.razor.scss  # its layout/type tokens
+      SkafinityBoard.cs               # its wording + presentation rules (no s&box types)
+      SkafinitySlider.cs              # its slider, drawn from code (see the note in that file)
       SkafinityTheme.cs               # its palette — one accent colour (see below)
 ```
 
@@ -60,14 +63,25 @@ music.NextSong();          // n+1, crossfades when the current loop runs out
 music.PrevSong();          // n-1
 music.SetN( 100 );         // jump
 
+// Transport
+music.TogglePlay();        // pause / resume, keeping the place in the song
+music.SeekWithin( 30 );    // scrub to 30 s into the playing song
+var at = music.Playhead(); // { Position, Time, Duration, Ratio, Playing } — Duration 0 = not rendered yet
+
 // Vibe knobs (the shareable subset of the config)
-music.RerollVibe();                    // randomise the vibe knobs, keep per-instrument volumes
-music.RerollVibe( includeVolumes: true, includeGenre: true ); // opt-in full shuffle (also rolls volumes + genre)
+music.RerollVibe();                    // throw every knob somewhere new and PIN it, keeping volumes + genre
+music.RerollVibe( includeVolumes: true, includeGenre: true ); // opt-in full shuffle
 music.SetVibe( 0, 0.5f );              // set field 0 of VibeCodec.Fields(genre) from a 0..1 fraction
-music.SetGenre( 1 );                   // switch genre (re-encodes the vibe so it sticks)
-music.RandomEverySong = true;          // re-roll the vibe each new song (keeps your volumes + genre)
+music.SetGenre( 1 );                   // pin a genre (re-encodes the vibe so it sticks)
+music.RollGenre();                     // …and hand it back: every song rolls its own again
+music.RollVibe();                      // the same, for the knobs
+
+// The line
+music.RerollStation();                 // a fresh random station at song 0; anything pinned stays pinned
+music.SetShuffle( true );              // every NEXT song is a whole new station rather than the next of this one
 
 string seed = music.CurrentSeed;       // fully resolved — share this and they hear THIS song
+string line = music.StationSeed;       // the seed as it stands — what it leaves rolling keeps rolling
 var cfg     = music.EffectiveConfig(); // the MusicGen.Config currently in effect
 
 // Write the current loop to a WAV under FileSystem.Data
@@ -79,7 +93,7 @@ You can also generate audio without the component, off any thread:
 ```csharp
 // The tag is the PRNG stream, "{station}:{n}". Build it with SeedCodec.SongSeed rather than by
 // hand — it decides the station an empty tag falls back to, and every target must agree.
-string seed = VibeCodec.SongSeed( "mytag", 0 );   // "mytag:0"
+string seed = SeedCodec.SongSeed( "mytag", 0 );   // "mytag:0"
 
 // One-shot WAV bytes
 byte[] wav = MusicGen.Generate( seed, new MusicGen.Config() );
@@ -99,9 +113,15 @@ That's it. The panel auto-finds a `SkafinityPlayer` in the scene (or set its `Pl
 property explicitly). The board's visibility is **host-driven** — it ships no launcher of its
 own, so it imposes nothing on your HUD. Show it by setting `IsOpen` (or calling `Toggle()`)
 from your game; bind that to a hotkey, your pause menu, or your own button. When open it
-offers: now-playing seed + copy, prev/next, paste-a-seed, mute, volume, genre, per-instrument
-vibe mixer, global knobs, reroll, "random every song", and save-to-`.wav`. Every control just
-calls the player's public API, so anything the panel does you can do from code too.
+offers: prev/play/next over a scrubbable seek bar, volume, the seed box with a **this-song** and
+a **this-station** copy button, a genre dropdown whose Random entry is the way back out of a
+genre, reroll, shuffle, the per-instrument vibe mixer behind a **tinker** button, and a playlist
+you can jump to and export from a row at a time. Every control just calls the player's public
+API, so anything the board does you can do from code too.
+
+**It is the same board as the web widget** (`<skafinity-player>`), deliberately: the two are one
+product, so the wording and the small derived decisions live in `UI/SkafinityBoard.cs` — which has
+no s&box types in it — rather than in either drawing of them.
 
 **Re-theming — one colour.** The board is **neutral gray/black out of the box**, because a
 drop-in library shouldn't impose a palette on your world. Give it your own accent and the whole
@@ -132,7 +152,10 @@ launcher and the accent is a static:
 | `skafinity_seed <seed>` | Play `vibe:tag:n`, `tag:n`, a bare `tag`, or `default`. |
 | `skafinity_next` / `skafinity_prev` | Step the sequence. |
 | `skafinity_genre <n>` | Switch genre; a junk index prints the roster. |
-| `skafinity_reroll` | New genre + knobs, keeping your volumes. |
+| `skafinity_reroll` | Throw every knob somewhere new and pin it, keeping your genre + volumes. |
+| `skafinity_station` | A fresh random station at song 0; anything pinned stays pinned. |
+| `skafinity_shuffle` | Flip shuffle — whether NEXT is the next song of this station or a new one. |
+| `skafinity_pause` | Pause / resume, keeping the place in the song. |
 | `skafinity_save` | Write the playing song to a `.wav`. |
 | `skafinity_status` | Seed, transport, and whether `skafinity.config.json` actually mounted. |
 | `skafinity_explain` | What the composer decided — tempo, swing, key, changes, voicing, groove, form. |
@@ -143,7 +166,7 @@ They're client-side, like the player itself. Delete the file if you don't want t
 
 | Group | What it does |
 |---|---|
-| **Music** | Master `Enabled` / `Volume`, `LiveReload` (regenerate on knob change), `MixerName`, `AutoPlay`, `RandomEverySong` (shuffle) |
+| **Music** | Master `Enabled` / `Volume`, `LiveReload` (regenerate on knob change), `MixerName`, `AutoPlay`, `RandomGenreEverySong` / `RandomVibeEverySong` (what the seed leaves rolling), `Shuffle` (whether NEXT walks this station or jumps to a new one) |
 | **Seed** | `Tag`, `StartN`, `Vibe` override, `PersistProgress` + `SaveSlot` (resume across sessions) |
 | **Output** | `SampleRate` (32 kHz — below the engine's own default, since a game renders while it draws), `RenderThreads` (synthesis is split across worker threads) |
 | **Crossfade** | `Crossfade` window, `CrossfadeOverlap`, `AheadCount` (look-ahead depth), `PcmCacheRadius` |

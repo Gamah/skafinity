@@ -5,19 +5,32 @@
 // that the theme owns.
 //
 // Two rules keep the split clean:
-//   * The stylesheet owns every BORDER and the razor sets none, so a :hover / .selected
+//   * The stylesheet owns every BORDER and the razor sets none, so a :hover / .on
 //     border rule is never in competition with an inline style.
 //   * Hover feedback is therefore a border, not a fill — the fill is themed.
 // Both are neutral white alphas, which read against any accent the host passes in.
+//
+// The split has one edge worth naming: a control this library did not write cannot be dressed
+// from here AT ALL — not by a rule, which does not cross a component boundary, and not by an
+// inline style, which cannot reach a panel it did not create. That is why the board's slider is
+// its own (SkafinitySlider) and is painted from C# rather than from this file.
+//
+// web/palette.js reads the six alphas below out of THIS FILE (test/palette.mjs asserts it), so the
+// widget and the board cannot drift into two schemes. Keep the `$name: rgba(255,255,255,a)` shape.
 
 $radius:     2px;
 $font:       Consolas, 'Roboto Mono', monospace;
+// Type scale in one place, because "a bit smaller" is a tuning pass and should be one edit.
+$fs-title:   20px;
+$fs-body:    12px;   // buttons, labels, the seed box
+$fs-small:   11px;   // times, playlist rows, the jump line
+$fs-tiny:    10px;   // column headers, knob names, section headings
 $edge:       rgba(255,255,255,0.12);   // the board's own outline
-$rule:       rgba(255,255,255,0.10);   // dividers
+$rule:       rgba(255,255,255,0.10);   // dividers, panel outlines
 $hover:      rgba(255,255,255,0.35);   // hover border
 $pick:       rgba(255,255,255,0.85);   // selected / current border
-$busy:       rgba(255,255,255,0.55);   // a queue entry mid-render
-$surface:    rgba(255,255,255,0.07);   // neutral inputs (seed box, n, text entry)
+$busy:       rgba(255,255,255,0.55);   // a playlist entry mid-render
+$surface:    rgba(255,255,255,0.07);   // neutral inputs (seed box, jump box), progress-bar troughs
 // ────────────────────────────────────────────────────────────────────────────────
 
 skafinitymusicpanel {
@@ -27,128 +40,187 @@ skafinitymusicpanel {
 	justify-content: center; align-items: center;
 	pointer-events: none;
 	font-family: $font;
+	font-size: $fs-body;
 
-	// The board — sized to its content (no scroll range to drag-pan). Keep it lean enough
-	// to fit a 1080-tall reference; it extends past the box rather than scrolling.
-	.music {
+	// The board — sized to its content (no scroll range to drag-pan). Narrower than the old
+	// wall-of-cells layout, because the sliders stack rather than spreading.
+	.board {
 		flex-shrink: 0;
-		width: 96%; max-width: 1320px;
+		width: 94%; max-width: 1180px;
 		flex-direction: column;
 		align-items: stretch;
-		padding: 14px 32px;
+		padding: 14px;
 		border: 1.5px solid $edge;
 		border-radius: 4px;
-		gap: 6px;
+		gap: 14px;
 		pointer-events: all;
 	}
 
-	.music > div { flex-shrink: 0; }
+	.board > div { flex-shrink: 0; }
 
 	.header { flex-direction: row; align-items: center; justify-content: space-between; }
 
 	.title {
 		justify-content: center; white-space: nowrap;
-		font-size: 26px; font-weight: bold; letter-spacing: 6px; color: white;
+		font-size: $fs-title; font-weight: bold; letter-spacing: 6px; color: white;
 	}
 
 	.close {
-		width: 34px; height: 34px; justify-content: center; align-items: center;
-		font-size: 20px; font-weight: bold; color: rgba(255,255,255,0.6);
+		width: 30px; height: 30px; justify-content: center; align-items: center;
+		font-size: 16px; font-weight: bold; color: rgba(255,255,255,0.6);
 		background-color: rgba(255,255,255,0.08); border-radius: $radius;
 		cursor: pointer; pointer-events: all;
 
 		&:hover { color: #ffffff; background-color: rgba(255,255,255,0.2); }
 	}
 
-	.divider { height: 2px; background-color: $rule; margin: 0; }
+	// ── Rows ──
+	.row { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
+	.grow { flex-grow: 1; }
+	// Pushes a control to the far end of its row (volume, tinker, save).
+	.right { margin-left: auto; }
+	.label { font-size: $fs-body; letter-spacing: 2px; white-space: nowrap; }
 
-	.top { flex-direction: row; flex-wrap: wrap; gap: 6px 32px; }
-	.top > .row { width: 46%; }
-
-	.row { flex-direction: column; gap: 3px; }
-	.genre-row .cells { gap: 6px; }
-
-	.label { font-size: 14px; letter-spacing: 2px; white-space: nowrap; }
-
-	.play-row { flex-direction: row; align-items: center; gap: 8px; }
-
-	.seed-box, .num {
-		justify-content: center; align-items: center; height: 32px; padding: 0 14px;
-		font-size: 15px; letter-spacing: 1px; color: white;
-		background-color: $surface; border-radius: $radius;
-	}
-	.num { min-width: 60px; font-weight: bold; }
-
-	.tag-input {
-		width: 360px; height: 32px; padding: 0 12px; font-size: 15px; color: white;
-		background-color: $surface;
-		border: 2px solid rgba(255,255,255,0.15); border-radius: $radius; pointer-events: all;
-	}
-
-	.cells { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px; }
-
+	// ── Buttons ──
 	.btn {
-		justify-content: center; align-items: center; height: 32px; padding: 0 16px;
-		font-size: 14px;
+		flex-direction: row;
+		justify-content: center; align-items: center; height: 30px; padding: 0 14px;
+		font-size: $fs-body; white-space: nowrap;
 		border: 2px solid transparent; border-radius: $radius; cursor: pointer; pointer-events: all;
 
-		&.wide { min-width: 96px; }
-		&.reroll { height: 28px; padding: 0 12px; font-size: 13px; margin-left: 12px; }
+		// A square button for a glyph — the three transport keys.
+		&.big { width: 40px; height: 32px; padding: 0; font-size: 16px; }
+		&.primary { font-weight: bold; }
 		&:hover { border-color: $hover; }
 		&.toggle.on { border-color: $pick; }
+		// Nothing to hand back / nothing to do: dimmed rather than hidden, so the control keeps
+		// its place and its explanation.
+		&.off { opacity: 0.45; }
+		&.off:hover { border-color: transparent; }
 	}
 
-	.cell {
-		justify-content: center; align-items: center; height: 19px;
-		font-size: 13px; color: rgba(255,255,255,0.8);
+	// ── Transport ──
+	.transport { flex-direction: column; gap: 8px; }
+	// flex-grow, not the volume's margin-left:auto, is what puts the volume at the far end of the
+	// row: an auto margin held the button in the row below out there but did nothing for the
+	// volume, and a spacer that grows needs no such adjudication.
+	.now { flex-direction: row; align-items: center; gap: 5px; flex-grow: 1; font-size: $fs-body; white-space: nowrap; }
+	.now b { font-weight: bold; }
+	.bufstate { font-size: $fs-body; white-space: nowrap; }
+	.vol { flex-direction: row; align-items: center; gap: 6px; font-size: $fs-body; }
+
+	.seek { flex-direction: row; align-items: center; gap: 10px; }
+	.time {
+		font-size: $fs-small; min-width: 40px; white-space: nowrap;
+		justify-content: flex-start;
+	}
+	.time.total { justify-content: flex-end; }
+
+	// ── Sliders ──
+	// There are none here. SkafinitySlider builds and paints its own three panels from C#, because
+	// a stylesheet cannot reach into another component's insides and a static class attribute never
+	// arrived on one — see the remarks on that class for what the live panel tree showed.
+
+	// ── Text entries ──
+	.seed-input, .jump-input {
+		height: 28px; padding: 0 10px; font-size: $fs-body; color: white;
+		background-color: $surface;
+		border: 2px solid rgba(255,255,255,0.15); border-radius: $radius; pointer-events: all;
+
+		&:focus { border-color: $hover; }
+	}
+	.jump-input { width: 70px; }
+
+	// ── Dropdowns ──
+	.genre, .knob-select {
+		height: 28px; padding: 0 10px; font-size: $fs-body;
 		border: 2px solid transparent; border-radius: $radius; cursor: pointer; pointer-events: all;
 
 		&:hover { border-color: $hover; }
-		&.choice { padding: 0 10px; height: 28px; }
-		&.tick { width: 11px; }
-		&.selected { border-color: $pick; }
 	}
+	.genre { min-width: 120px; }
+	.knob-select { height: 22px; font-size: $fs-small; }
 
-	// GLOBAL knobs: four compact columns.
-	.vibe-grid { flex-direction: row; flex-wrap: wrap; gap: 6px 16px; }
-	.vibe { width: 22%; flex-direction: column; gap: 2px; }
-	.vibe-head { flex-direction: row; justify-content: flex-start; align-items: center; gap: 6px; }
-	.vibe-name { font-size: 12px; letter-spacing: 1px; color: rgba(255,255,255,0.55); white-space: nowrap; }
-	.vibe-val { font-size: 12px; color: white; white-space: nowrap; }
+	// ── Panels (the vibe box, the playlist box) ──
+	.panel {
+		flex-direction: column;
+		padding: 12px;
+		border: 1px solid $rule; border-radius: $radius;
+		gap: 8px;
+	}
+	.h2 { font-size: $fs-tiny; font-weight: bold; letter-spacing: 2px; white-space: nowrap; }
 
-	// instrument mixer matrix: rows = voices, Volume leftmost
-	.matrix { flex-direction: column; gap: 3px; }
-	.mrow { flex-direction: row; align-items: flex-start; gap: 12px; }
-	.mvoice { width: 76px; flex-shrink: 0; align-items: flex-start; justify-content: flex-start;
-		font-size: 13px; font-weight: bold; letter-spacing: 1px; color: white; }
-	.mhead .mlabel { font-size: 11px; letter-spacing: 2px; color: rgba(255,255,255,0.4); }
-	.mcell { width: 0; flex-grow: 1; flex-direction: column; gap: 3px; }
+	// ── The mixer matrix — rows are voices, VOLUME leftmost ──
+	// Five columns across the board is not much per knob, so the cells are given room in the only
+	// two ways that do not cost a column: a wider gutter between them, and a header that reads as
+	// one thing (below).
+	.matrix { flex-direction: column; gap: 10px; }
+	.mrow { flex-direction: row; align-items: flex-start; gap: 16px; }
+	.mhead { align-items: center; }
+	.mvoice {
+		width: 68px; flex-shrink: 0; align-items: flex-start; justify-content: flex-start;
+		font-size: $fs-small; font-weight: bold; letter-spacing: 1px; color: white;
+	}
+	.mhlabel { font-size: 9px; letter-spacing: 2px; }
+	.mcell { width: 0; flex-grow: 1; flex-direction: column; }
 
-	.hint { font-size: 14px; letter-spacing: 1px; white-space: nowrap; }
+	// GLOBAL knobs: three compact columns under a rule.
+	.glabel { font-size: $fs-tiny; letter-spacing: 2px; padding-top: 8px; border-top: 1px solid $rule; }
+	.global-grid { flex-direction: row; flex-wrap: wrap; gap: 8px 14px; }
+	.knob-cell { width: 30%; }
 
-	// ── Progress bar (queue entries + buffering banner) ──
+	.knob { flex-direction: column; gap: 2px; }
+	// Name and value TOGETHER at the left, not pushed to opposite ends. Spread across a narrow cell
+	// they stop reading as one label and start reading as two: a value hard against the right edge
+	// sits closer to the next column's name than to its own, so "40%" and "BUSY" — one the tone of
+	// the drums, the other the name of their character knob — look like a single caption.
+	.knob-head { flex-direction: row; justify-content: flex-start; align-items: baseline; gap: 5px; }
+	// Empty in the columns whose header already names the knob (VOLUME, TONE) — the value then
+	// simply starts the line rather than floating mid-cell.
+	.knob-name { font-size: 9px; letter-spacing: 1px; white-space: nowrap; }
+	.knob-val { font-size: 9px; white-space: nowrap; }
+
+	// ── The playlist ──
+	.playlist { flex-direction: column; gap: 2px; max-height: 260px; overflow: scroll; }
+	.plrow {
+		flex-direction: row; align-items: center; gap: 8px;
+		padding: 4px 6px;
+		border-radius: $radius;
+		border-left: 2px solid transparent;
+
+		&.cached { border-left-color: $busy; }
+		&.gen { border-left-color: $hover; }
+		&.now { border-left-color: $pick; }
+	}
+	// Three panels rather than one string, and the hash gets its own for a reason that is not
+	// layout: a label of more than one character beginning with `#` is read as a localisation token
+	// (SkafinityBoard.Copy.Hash). Alone in a panel it is one character, and survives.
+	.pllabel {
+		flex-direction: row; align-items: center;
+		min-width: 58px; font-size: $fs-small; color: white; white-space: nowrap;
+		cursor: pointer; pointer-events: all;
+
+		&:hover { color: #ffffff; text-decoration: underline; }
+	}
+	// A column, so every row's number starts at the same x whether or not it is the one playing.
+	.plcaret { width: 12px; flex-shrink: 0; }
+	.plhash { flex-shrink: 0; }
+	.plgenre { flex-grow: 1; font-size: $fs-tiny; letter-spacing: 1px; white-space: nowrap; }
+	.plstatus { min-width: 52px; font-size: $fs-tiny; white-space: nowrap; justify-content: flex-end; }
+	.pldl {
+		width: 24px; height: 22px; justify-content: center; align-items: center;
+		font-size: $fs-small; border-radius: $radius; cursor: pointer; pointer-events: all;
+
+		&:hover { background-color: rgba(255,255,255,0.12); }
+	}
+	.jump { font-size: $fs-small; }
+
+	// ── Progress bar (a playlist entry mid-render) ──
 	.bar {
-		width: 100%; height: 6px; background-color: rgba(255,255,255,0.08);
+		width: 46px; height: 5px; background-color: $surface;
 		border-radius: $radius; overflow: hidden;
 	}
-	.bar-fill { height: 6px; border-radius: $radius; }
+	.bar-fill { height: 5px; border-radius: $radius; }
 
-	// ── Buffering banner ("Generating…" while playback waits on a seek) ──
-	.buffering { flex-direction: column; gap: 4px; }
-	.buffering-label { font-size: 14px; letter-spacing: 1px; white-space: nowrap; }
-
-	// ── Queue / timeline strip — history · current · look-ahead, click an entry to jump ──
-	.queue { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-	.qitem {
-		width: 88px; flex-direction: column; gap: 3px;
-		padding: 6px 8px;
-		border: 2px solid transparent; border-radius: $radius; cursor: pointer; pointer-events: all;
-
-		&:hover { border-color: $hover; }
-		&.gen { border-color: $busy; }
-		&.current { border-color: $pick; }
-	}
-	.qn { font-size: 14px; font-weight: bold; color: white; }
-	.qgenre { font-size: 12px; letter-spacing: 1px; white-space: nowrap; }
-	.qstate { font-size: 11px; color: rgba(255,255,255,0.5); min-height: 6px; white-space: nowrap; }
+	.msg { font-size: $fs-small; letter-spacing: 1px; }
 }

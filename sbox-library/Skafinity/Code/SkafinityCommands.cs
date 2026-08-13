@@ -217,7 +217,9 @@ public static class SkafinityCommands
 		Log.Info( $"[Skafinity] genre {genre} = {VibeCodec.Genres[genre]} — {p.CurrentSeed}" );
 	}
 
-	/// <summary>Reroll the vibe: a new genre and every knob, keeping your per-instrument volumes.</summary>
+	/// <summary>Reroll the vibe: every knob thrown somewhere new and PINNED there, keeping the genre
+	/// and your per-instrument volumes. <c>skafinity_station</c> is the other die — a different song
+	/// rather than a different taste.</summary>
 	[ConCmd( "skafinity_reroll" )]
 	public static void Reroll()
 	{
@@ -226,6 +228,41 @@ public static class SkafinityCommands
 
 		p.RerollVibe();
 		Log.Info( $"[Skafinity] rerolled — {p.CurrentSeed}" );
+	}
+
+	/// <summary>A fresh random station at song 0. Anything pinned stays pinned.</summary>
+	[ConCmd( "skafinity_station" )]
+	public static void Station()
+	{
+		var p = Player();
+		if ( p == null ) return;
+
+		p.RerollStation();
+		Log.Info( $"[Skafinity] new station — {p.StationSeed}" );
+	}
+
+	/// <summary>Flip shuffle: on, every next song is a whole new station rather than the next song of
+	/// this one.</summary>
+	[ConCmd( "skafinity_shuffle" )]
+	public static void ToggleShuffle()
+	{
+		var p = Player();
+		if ( p == null ) return;
+
+		p.SetShuffle( !p.Shuffle );
+		Log.Info( $"[Skafinity] shuffle {( p.Shuffle ? "on" : "off" )} — {p.StationSeed}" );
+	}
+
+	/// <summary>Pause or resume, keeping the place in the song.</summary>
+	[ConCmd( "skafinity_pause" )]
+	public static void TogglePause()
+	{
+		var p = Player();
+		if ( p == null ) return;
+
+		p.TogglePlay();
+		var at = p.Playhead();
+		Log.Info( $"[Skafinity] {( p.IsPaused ? "paused" : "playing" )} at {SkafinityBoard.Time( at.Time, at.Duration > 0 )}" );
 	}
 
 	/// <summary>Write the playing song to a .wav under the s&amp;box data folder.</summary>
@@ -250,12 +287,17 @@ public static class SkafinityCommands
 		if ( p == null ) return;
 
 		int genre = p.EffectiveConfig()?.Genre ?? 0;
+		var at = p.Playhead();
 		Log.Info( "── skafinity_status ──" );
 		Log.Info( $"   seed      {p.CurrentSeed}   (n {p.N}, genre {genre} = {VibeCodec.Genres[genre]})" );
+		Log.Info( $"   station   {p.StationSeed}   (position {p.Position} on the line)" );
 		Log.Info( $"   transport {( p.Enabled ? "on" : "MUTED" )}, vol {p.Volume:0.00}, "
-			+ $"{( p.IsPlaying ? "playing" : "not playing" )}"
+			+ $"{( p.IsPaused ? "paused" : p.IsPlaying ? "playing" : "not playing" )} "
+			+ $"{SkafinityBoard.Time( at.Time, at.Duration > 0 )} / {SkafinityBoard.Time( at.Duration, at.Duration > 0 )}"
 			+ $"{( p.IsBuffering ? ", BUFFERING" : p.IsGenerating ? ", generating ahead" : "" )}" );
-		Log.Info( $"   shuffle   {( p.RandomEverySong ? "on — every song freezes a fresh vibe + genre" : "off" )}" );
+		Log.Info( $"   rolling   genre {( p.GenrePinned ? "pinned" : "per song" )}, "
+			+ $"vibe {( p.VibePinned ? "pinned" : "per song" )}" );
+		Log.Info( $"   shuffle   {( p.Shuffle ? "on — every next song is a new station" : "off — walking this station" )}" );
 		Log.Info( $"   output    {p.SampleRate} Hz, {p.RenderThreads} render thread(s)" );
 		// Zero here is the interesting case: the baseline mix is then the engine's compiled
 		// defaults, not the file the web toy reads, and nothing else would ever say so.

@@ -33,7 +33,9 @@ the single source of truth for both the game and this web toy**. The web build c
 | `test/engine/` | Engine-only test harness (`make test-engine`) — compiles `Engine/**` alone into the same assembly as the tests, so it runs on a plain dev host where s&box cannot. The safety net for engine work. |
 | `sbox-library/Skafinity/skafinity.config.json` | The single shared **house-mix config** (peak balances / kit presence). Canonical here; the s&box plugin reads it at runtime and `make` copies it to `web/config.json`. Edit it to retune the baseline mix without a rebuild. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
-| `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and exposes its knobs as in-game UI (seed/prev-next, genre, per-instrument vibe mixer, mute/volume, reroll, save). s&box-only; not in the web build. |
+| `sbox-library/Skafinity/Code/UI/SkafinityMusicPanel.razor` (`.scss`) | Optional drop-in Razor `PanelComponent` — finds a `SkafinityPlayer` and draws the whole transport as in-game UI. **Drawn against `<skafinity-player>` as its design**, so it is the same product: prev/play/next with a scrubbable seek bar, the seed box with this-song/this-station copy, a genre dropdown with a Random entry, reroll, shuffle, the per-instrument vibe mixer behind a TINKER button, and a playlist that jumps and exports per row. s&box-only; not in the web build. |
+| `sbox-library/Skafinity/Code/UI/SkafinitySlider.cs` | The board's slider, built and painted from C# because **a stock `Sandbox.UI` control cannot be drawn in this project.** `SliderControl` is built and takes the mouse, but every panel inside it sits at zero height: the base addon's stylesheet does not reach this UI, and neither a rule nor an inline style can cross into another component's insides to size them instead. Not slider-specific — a stock `SwitchControl` is equally invisible, and terryball's own settings screen, copied in whole, does not draw its sliders here either. **So do not reach for a stock `Sandbox.UI` component in this panel; it will lay out, accept input, and draw nothing, with no error anywhere.** Tracked in [Gamah/sbox-public#6](https://github.com/Gamah/sbox-public/issues/6). |
+| `sbox-library/Skafinity/Code/UI/SkafinityBoard.cs` | The board's **presentation rules** with no widget toolkit in them — every user-visible string, the m:ss and percent formatting, the playlist row's state word, and the vibe field → grid layout. Framework-free on purpose: the web keeps its own copy today, and the file is written so it can move under `Engine/` the day the widget asks the wasm for it instead. What is NOT shared is layout — Razor and the DOM lay out differently enough that a common row description would be the worse of both. |
 | `sbox-library/Skafinity/Code/UI/SkafinityTheme.cs` | The panel's palette, derived at RUNTIME from one `Accent` colour so a consuming game can retint a *vendored* copy without editing it. Unset = neutral gray/black. |
 | `reference/*.cs` | The original Rotaliate-client copies, kept for context. **Read-only.** The `sbox-library` copies are what actually compile. |
 
@@ -59,8 +61,9 @@ doubt the C# is right.
   What the string leaves out rolls; what it writes down is pinned. Such a link is honoured on
   arrival and then taken back OUT of the address bar; the widget's two copy buttons rebuild it on
   demand instead — one for this song, one for the station (see the embeddable-element section).
-- The web has real `<input type=range>` sliders (s&box did not), so the vibe editor is
-  nicer here than in the game.
+- The web has real `<input type=range>` sliders and gets keyboard, arrow keys and a screen
+  reader with them for free. s&box's board has real sliders too now — it just had to build
+  them (`SkafinitySlider`, and the note in that file for why).
 
 ---
 
