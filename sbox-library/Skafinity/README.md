@@ -38,6 +38,7 @@ Copy the `Skafinity/` folder there:
       SkafinityMusicPanel.razor       # optional drop-in settings board (PanelComponent)
       SkafinityMusicPanel.razor.scss  # its layout/type tokens
       SkafinityBoard.cs               # its wording + presentation rules (no s&box types)
+      SkafinitySlider.cs              # its slider, drawn from code (see the note in that file)
       SkafinityTheme.cs               # its palette — one accent colour (see below)
 ```
 

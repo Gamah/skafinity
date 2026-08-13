@@ -8,26 +8,25 @@ namespace Skafinity;
 /// A draggable slider, built out of panels this library owns and styled entirely from code.
 /// </summary>
 /// <remarks>
-/// <para><b>Why not <c>Sandbox.UI.SliderControl</c>.</b> It works, but it cannot be dressed from
-/// here, and the board's whole look is a runtime palette. Two separate walls, both found by dumping
-/// the live panel tree (<c>skafinity_ui_dump</c>) rather than by reading code:</para>
+/// <para><b>Why not <c>Sandbox.UI.SliderControl</c>: in this project it cannot be drawn at all.</b>
+/// It is built, and it takes the mouse — dragging one moves its value — but every panel inside it
+/// (<c>.inner</c>, <c>.track</c>, <c>.thumb</c>) sits at zero height, and a track with no height
+/// paints nothing however it is coloured. Nothing sizes them: the base addon's stylesheet, which is
+/// what dresses these parts in a game, does not reach this UI, and a stylesheet here cannot cross
+/// into another component's insides to do it instead. Nor can an inline style, which cannot reach a
+/// panel we did not create.</para>
 ///
-/// <list type="bullet">
-/// <item><description>A <b>static</b> <c>class="…"</c> on a razor COMPONENT is dropped — the control
-/// came back carrying only its own <c>.slidercontrol</c>. The same attribute on a plain
-/// <see cref="Panel"/> subclass (<c>DropDown</c>) applies fine, and a class whose value is a razor
-/// expression applies too, which is why exactly one of the board's sliders looked different from
-/// the rest.</description></item>
-/// <item><description>Its <c>.inner</c> / <c>.track</c> / <c>.thumb</c> are built by its own razor,
-/// and a stylesheet does not reach across that boundary: every rule written for them here matched
-/// nothing, and the panels sat at zero height with nothing else styling them either. A track with no
-/// height paints nothing however it is coloured — the control laid out, and took the mouse, and drew
-/// nothing at all.</description></item>
-/// </list>
+/// <para>That is not a guess and it is not slider-specific. A stock <c>SwitchControl</c> — another
+/// base component with its own sheet and an unmistakable pill to draw — is equally invisible, and
+/// terryball's own settings screen, copied in whole with only its wiring removed, does not draw its
+/// sliders either. A panel known to work where it came from does not work here, so the difference is
+/// the project rather than anything written in this library. Whether that is a library-vs-game
+/// thing is still open; it is being tracked separately.</para>
 ///
 /// <para>So this owns the whole thing: three child panels, every value set as an INLINE style, and
 /// no dependency on a cascade that may not arrive. That also hands the accent back — the theme is a
-/// runtime colour, and a panel we build is a panel we can paint.</para>
+/// runtime colour, and a panel we build is a panel we can paint, which the stock control could never
+/// have been.</para>
 ///
 /// <para>The drag is <see cref="SliderControl"/>'s, because that part of it was never the problem:
 /// press anywhere on the track to jump there, and <see cref="Panel.HasActive"/> is what keeps a drag
