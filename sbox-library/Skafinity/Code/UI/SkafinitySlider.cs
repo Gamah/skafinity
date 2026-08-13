@@ -83,6 +83,7 @@ public sealed class SkafinitySlider : Panel
 		Style.FlexDirection = FlexDirection.Row;
 		Style.AlignItems = Align.Center;
 		Style.Height = Length.Pixels( Height );
+		// Only until the first Tick, which owns width/grow/shrink together — they are one decision.
 		Style.FlexShrink = 0;
 		Style.PointerEvents = PointerEvents.All;
 
@@ -134,11 +135,18 @@ public sealed class SkafinitySlider : Panel
 			{
 				Style.Width = Length.Pixels( wanted );
 				Style.FlexGrow = 0;
+				Style.FlexShrink = 0;
 			}
 			else
 			{
+				// 100% is a BASE size, not a final one: in a column it is what stops the slider being
+				// as narrow as nothing, and in a row it is a full row's width asked for before the
+				// labels beside it have had theirs. So it must also be allowed to shrink — without
+				// that, a slider in a row overflows its panel by exactly the width of its siblings,
+				// and whatever sits to its right is pushed off the edge.
 				Style.Width = Length.Percent( 100 );
 				Style.FlexGrow = 1;
+				Style.FlexShrink = 1;
 			}
 		}
 
