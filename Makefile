@@ -151,10 +151,12 @@ stage:
 check-bundle:
 	@sh tools/bundle-stamp.sh check
 
-# Five parts. Three need no wasm at all and run on a bare checkout: queue.mjs (the scheduler's
+# Six parts. Four need no wasm at all and run on a bare checkout: queue.mjs (the scheduler's
 # generation queue), player.mjs (the headless transport, driven with an injected engine/context/
-# worker — the embed properties: one pool for N widgets, namespaced storage, no DOM), and
-# palette.mjs (the widget palette, checked against the factors read out of SkafinityTheme.cs).
+# worker — the embed properties: one pool for N widgets, namespaced storage, no DOM),
+# palette.mjs (the widget palette, checked against the factors read out of SkafinityTheme.cs) and
+# encode.mjs (the export's Ogg muxer, demuxed back out against the framing spec — the encoder
+# itself is the browser's and cannot run here).
 # Then smoke.mjs checks the raw [JSExport] boundary and page.mjs the surface the PAGE uses (the
 # `mod` object engine.js returns, against every call the player/element/worker make). The last two
 # derive what they expect from the source, so a new export or a new mod.* call is covered without
@@ -163,6 +165,7 @@ test:
 	$(NODE) test/queue.mjs
 	$(NODE) test/palette.mjs
 	$(NODE) test/player.mjs
+	$(NODE) test/encode.mjs
 	$(NODE) test/element.mjs
 	$(NODE) test/smoke.mjs
 	$(NODE) test/page.mjs
@@ -212,7 +215,7 @@ dist:
 	rm -rf dist
 	mkdir -p dist
 	cp web/index.html web/embed-light.html web/embed-dark.html web/app.js web/engine.js \
-		web/worker.js web/queue.js web/palette.js web/player.js web/skafinity-element.js \
+		web/worker.js web/queue.js web/palette.js web/encode.js web/player.js web/skafinity-element.js \
 		web/style.css dist/
 	cp sbox-library/Skafinity/skafinity.config.json dist/config.json
 	mkdir -p dist/_framework

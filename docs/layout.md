@@ -43,6 +43,7 @@ skafinity/
     skafinity-element.js  # <skafinity-player>: shadow root, UI, host-style sniffing
     player.js             # THE TRANSPORT: scheduling/look-ahead/timeline, headless + instanceable
     palette.js            # the palette derivation — a port of Code/UI/SkafinityTheme.cs, DOM-free
+    encode.js             # the export: WebCodecs encode + the FLAC/Ogg muxers, DOM-free
     app.js                # the toy page's host script (hash sync, light/dark switch) — ~60 lines
     queue.js              # the sequencer's generation queue — DOM-free so a node test can drive it
     worker.js             # generation worker (its own runtime instance)

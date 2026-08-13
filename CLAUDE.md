@@ -239,6 +239,19 @@ three facts a session needs before touching the web layer:
   costs every visitor 7.5 MB on page view is not embeddable, so `preload` is opt-in and the boot
   reports real bytes through a progress bar.
 
+**The save button is a CODEC, not a file write (`web/encode.js`).** A song as raw PCM is ~13 MB, so
+the web export encodes in the browser: FLAC where a browser offers it, else Opus at 256 kb/s, else
+the engine's WAV — probed once with `AudioEncoder.isConfigSupported`, which is also what LABELS the
+button, because promising an extension the browser cannot produce is worse than a second of delay.
+Two things about it are easy to get wrong. **WebCodecs hands back encoded chunks and no container**,
+so the muxing is ours — a concatenation for FLAC, a real page-by-page Ogg stream for Opus (granule
+positions counted at 48 kHz whatever rate the encoder was fed, starting at the pre-skip, and Ogg's
+CRC is the NON-reflected one, so a stock `crc32` is wrong there). And it is **web-only by choice**:
+`Engine/` is untouched and s&box still writes WAV through `Wav.cs`, so the two targets deliberately
+save different things. `test/encode.mjs` demuxes the Ogg back out against the framing spec on a bare
+node; the encoder half is the browser's and nothing here can run it, which is why the file's spec
+citations are dated — re-read them if a browser update breaks the output.
+
 `web/embed-light.html` and `web/embed-dark.html` are two deliberately opposite host pages (light and
 Bootstrap-ish; dark, serif and hand-rolled) carrying the same unconfigured element. They are the only
 way to see whether the sniff is working — no test can look at it, and `test/element.mjs` runs against
@@ -359,7 +372,7 @@ on the site that came from a build nobody listened to. It consumes the **committ
 once you have run a full local publish and committed the re-staged bundle — the same
 bundle-matches-glue rule as ever, except Pages makes forgetting it *invisible* rather than loud:
 the site keeps serving the old engine while `master` claims the new one. Page-only edits
-(`index.html`, the embed demos, `app.js`, `player.js`, `palette.js`, `skafinity-element.js`,
+(`index.html`, the embed demos, `app.js`, `player.js`, `palette.js`, `encode.js`, `skafinity-element.js`,
 `style.css`, `config.json`) need no publish; push and the site follows.
 
 **The stale-bundle gate.** Because the deploy packages rather than compiles, an engine commit

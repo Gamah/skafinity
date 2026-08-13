@@ -15,6 +15,7 @@
 // key for you. A host that wants the URL to be the song wires that up from the `song` event.
 import Skafinity from './engine.js';
 import { GenQueue } from './queue.js';
+import { pickAudioFormat, encodeSong } from './encode.js';
 
 // ── Tunables (mirror MusicController defaults) ──
 // Songs have an intro→…→ending structure, so each plays once start-to-end (no internal loop) and
@@ -978,11 +979,36 @@ export class SkafinityPlayer extends EventTarget {
   // ── Export ───────────────────────────────────────────────────────────────────
   // Export the song's frozen vibe (its ledger cfg under shuffle), so a downloaded #k matches what
   // the timeline plays — not just whatever the live editor currently shows.
-  exportWav(songN) {
-    const bytes = this.mod.songToWav(this.seedFor(songN), this.cfgForN(songN).slice());
+  //
+  // The song is COMPRESSED in the browser (web/encode.js): raw stereo PCM is ~13 MB a song, which
+  // is not a file to hand somebody over a link. A browser with no usable AudioEncoder still gets
+  // the engine's WAV rather than nothing, which is why `songToWav` is still here.
+  async exportSong(songN) {
     const s = this.songAt(songN);
     const safeTag = (s.tag ? lower(s.tag) : 'unknown').replace(/[^a-z0-9_-]/g, '') || 'unknown';
-    return { blob: new Blob([bytes], { type: 'audio/wav' }), filename: `${safeTag}_${s.n}.wav` };
+    const name = `${safeTag}_${s.n}`;
+    const fmt = await pickAudioFormat();
+    if (!fmt) {
+      const bytes = this.mod.songToWav(this.seedFor(songN), this.cfgForN(songN).slice());
+      return { blob: new Blob([bytes], { type: 'audio/wav' }), filename: `${name}.wav` };
+    }
+    // The fully-resolved seed, not the station's: a saved file names the song it actually is.
+    const r = this.resolve(songN);
+    const title = this.mod.formatSeed(s.tag, s.n, r.genre, r.vibe);
+    const bytes = await encodeSong(this.pcmFor(songN), fmt, { title });
+    return { blob: new Blob([bytes], { type: fmt.mime }), filename: `${name}.${fmt.ext}` };
+  }
+
+  // The samples to export. A song still in the PCM cache is already rendered — asking the engine
+  // for it again would freeze the tab for seconds to reproduce bytes we are holding.
+  pcmFor(songN) {
+    const cached = this.rendered.get(songN);
+    if (cached) {
+      const b = cached.buffer;
+      return { left: b.getChannelData(0), right: b.getChannelData(1), sampleRate: b.sampleRate };
+    }
+    const m = this.mod.generateSong(this.seedFor(songN), this.cfgForN(songN).slice());
+    return { left: m.left, right: m.right, sampleRate: m.sampleRate };
   }
 
   // ── Teardown ─────────────────────────────────────────────────────────────────

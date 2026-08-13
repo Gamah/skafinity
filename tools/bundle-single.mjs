@@ -71,7 +71,7 @@ function assertScriptSafe(name, text) {
 
 // ── Inputs ──
 for (const f of ['index.html', 'app.js', 'engine.js', 'worker.js', 'queue.js', 'palette.js',
-                 'player.js', 'skafinity-element.js', 'style.css', 'config.json'])
+                 'encode.js', 'player.js', 'skafinity-element.js', 'style.css', 'config.json'])
   try { readFileSync(join(web, f)); } catch { fail(`web/${f} is missing.`); }
 try { readFileSync(join(fw, 'dotnet.js')); } catch {
   fail(`web/_framework/dotnet.js is missing — build the bundle first ('make' with the .NET SDK, or 'make up').`);
@@ -132,6 +132,18 @@ assertScriptSafe('palette.js', paletteSrc);
   if (hasTopLevelVar(paletteSrc)) fail('palette.js declares a top-level `var` — use let/const.');
 }
 
+// ── encode.js: un-export the muxers so they can sit in one scope with the rest ──
+// Main thread only (the export is a button, not a render), so it goes in the main bundle.
+let encodeSrc = read(join(web, 'encode.js'));
+assertScriptSafe('encode.js', encodeSrc);
+{
+  const before = (encodeSrc.match(/^export /gm) || []).length;
+  if (before < 4) fail(`encode.js has ${before} top-level exports — expected the encoder plus its muxers. ` +
+    `Fix tools/bundle-single.mjs rather than shipping a broken bundle.`);
+  encodeSrc = encodeSrc.replace(/^export /gm, '');
+  if (hasTopLevelVar(encodeSrc)) fail('encode.js declares a top-level `var` — use let/const.');
+}
+
 // ── player.js: drop its imports, inline the config fetch, build workers from the blob module ──
 // The worker construction and the house-mix fetch moved here out of app.js when the transport was
 // extracted; they are still the only two things in it that assume a server.
@@ -139,6 +151,8 @@ let playerSrc = read(join(web, 'player.js'));
 assertScriptSafe('player.js', playerSrc);
 playerSrc = sub(playerSrc, "import Skafinity from './engine.js';", '', 'player.js engine import');
 playerSrc = sub(playerSrc, "import { GenQueue } from './queue.js';", '', 'player.js queue import');
+playerSrc = sub(playerSrc, "import { pickAudioFormat, encodeSong } from './encode.js';", '',
+  'player.js encode import');
 playerSrc = sub(playerSrc, "const res = await fetch(url, { cache: 'no-store' });",
   'const res = await __skafConfigResponse();', 'player.js config.json fetch');
 // Both branches of defaultCreateWorker: there is no worker.js to fetch here, same-origin or not.
@@ -157,6 +171,7 @@ elementSrc = sub(elementSrc, "import { SkafinityPlayer } from './player.js';", '
 elementSrc = sub(elementSrc,
   "import { derivePalette, chooseMode, pickAccent, parseColor, NEUTRAL_ACCENT } from './palette.js';",
   '', 'element palette import');
+elementSrc = sub(elementSrc, "import { pickAudioFormat } from './encode.js';", '', 'element encode import');
 elementSrc = elementSrc.replace(/^export /gm, '');
 elementSrc = sub(elementSrc, 'default SkafinityPlayerElement;', '', 'element default export');
 if (hasTopLevelVar(elementSrc)) fail('skafinity-element.js declares a top-level `var` — use let/const.');
@@ -268,6 +283,7 @@ function __skafMakeWorker() {
   runtimeBlock('__skafAssets'),
   queueSrc,
   paletteSrc,
+  encodeSrc,
   playerSrc,
   elementSrc,
   appSrc,
