@@ -50,7 +50,7 @@ static class Program
 				: Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ) );
 			return 0;
 		}
-		// --render vibe:tag:n [path]: the song, as a WAV. The diagnostics either side of this one
+		// --render tag:n[:genre][:vibe] [path]: the song, as a WAV. The diagnostics either side of this one
 		// answer "what did the composer decide" and "how loud is this voice"; sometimes the
 		// question is just "what does it sound like", and this host has no browser to answer it in.
 		int rn = Array.IndexOf( args, "--render" );
@@ -103,6 +103,7 @@ static class Program
 			( "structure",          StructureTests ),
 			( "arrangement",        ArrangementTests ),
 			( "vibe codec",         VibeTests ),
+			( "seed strings",       SeedTests ),
 			( "wav container",      WavTests ),
 			( bless ? "render digest (blessing)" : "render digest", () => RenderDigestTests( bless ) ),
 		};
@@ -134,18 +135,22 @@ static class Program
 
 	/// <summary>Genre, tag and index chosen to cover every genre and both the default and a
 	/// non-trivial vibe. Keep this list append-only so old digests stay comparable.</summary>
-	static readonly (string Vibe, string Tag, int N)[] Matrix =
+	// Real seed strings, in the format a listener would paste: the genre pinned, the vibe left to
+	// roll off (tag, n). Rendering them through SeedCodec is deliberate — the digests then cover
+	// the resolve path as well as the composer, so a change to what "absent means rolled" resolves
+	// to shows up here rather than only in someone's ears.
+	static readonly string[] Matrix =
 	{
-		( "0", "rotaliate", 0 ),
-		( "0", "skafinity", 7 ),
-		( "1", "rotaliate", 0 ),
-		( "1", "gamah", 3 ),
-		( "2", "rotaliate", 0 ),
-		( "3", "rotaliate", 0 ),
-		( "3", "doom", 11 ),
-		( "4", "rotaliate", 0 ),
-		( "5", "rotaliate", 0 ),
-		( "5", "bubblegum", 23 ),
+		"rotaliate:0:0",
+		"skafinity:7:0",
+		"rotaliate:0:1",
+		"gamah:3:1",
+		"rotaliate:0:2",
+		"rotaliate:0:3",
+		"doom:11:3",
+		"rotaliate:0:4",
+		"rotaliate:0:5",
+		"bubblegum:23:5",
 	};
 
 	// ── checks ───────────────────────────────────────────────────────────────────────────
@@ -181,11 +186,11 @@ static class Program
 			if ( second != null )
 				Check( $"song {seed} renders identically twice", first == second );
 
-		// Different n ⇒ a different song (the infinite sequence must actually advance). 0:rotaliate:0
-		// is in the matrix, so only its neighbour needs rendering.
-		var stepped = Digest( Render( "0", "rotaliate", 1 ) );
+		// Different n ⇒ a different song (the infinite sequence must actually advance).
+		// rotaliate:0:0 is in the matrix, so only its neighbour needs rendering.
+		var stepped = Digest( Render( "rotaliate:1:0" ) );
 		Check( "stepping n produces a different song",
-			MatrixDigest( "0:rotaliate:0" ) != stepped );
+			MatrixDigest( "rotaliate:0:0" ) != stepped );
 	}
 
 	static void HarmonyTests()
@@ -1679,22 +1684,25 @@ static class Program
 	{
 		Check( "there are genres", VibeCodec.GenreCount > 0 );
 		Check( "genre names match genre count", VibeCodec.Genres.Count == VibeCodec.GenreCount );
+		// A genre is one hex char in a seed. Sixteen is the ceiling that buys, and passing it is a
+		// format change (two chars), not something to find out from a seed that silently mis-parses.
+		Check( "genres still fit in one hex char", VibeCodec.GenreCount <= 16,
+			$"{VibeCodec.GenreCount} genres" );
+
+		// ── the wire is one global grid ──
+		// Every vibe is the same width in every genre, because the whole point is that a pinned vibe
+		// survives a genre rolling out from under it.
+		Check( "a vibe is the whole grid",
+			VibeCodec.VibeLength == VibeCodec.VoiceCount * VibeCodec.WireColumns,
+			$"{VibeCodec.VibeLength} chars" );
 
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 		{
 			var cfg = new MusicGen.Config { Genre = g };
 			var enc = VibeCodec.Encode( cfg );
 
-			Check( $"genre {g} encodes to its own first char",
-				enc.Length > 0 && VibeCodec.Alphabet.IndexOf( enc[0] ) == g );
-
-			// The wire is exactly the genre char plus one char per WIRE column of each instrument
-			// row — no filler block in front of it, and no column-0 slot per row. A seed is short
-			// because every position in it is a knob somebody can hear.
-			int rows = 0;
-			foreach ( var f in VibeCodec.Fields( g ) ) if ( VibeCodec.IsVolume( f ) ) rows++;
-			Check( $"genre {g} vibe is the genre char plus its grid",
-				enc.Length == 1 + rows * VibeCodec.WireColumns, $"{enc.Length} for {rows} rows" );
+			Check( $"genre {g} encodes to a full-width vibe",
+				enc.Length == VibeCodec.VibeLength, $"{enc.Length}" );
 
 			// Volume is a local mix preference, so moving one must not change the shared string.
 			var loud = new MusicGen.Config { Genre = g };
@@ -1703,10 +1711,9 @@ static class Program
 
 			// Round-trip: decode onto a fresh Config, re-encode, expect the same string. This
 			// is the property that actually matters — a shared URL must reproduce the knobs.
-			var back = new MusicGen.Config();
-			VibeCodec.Apply( enc, back );
+			var back = new MusicGen.Config { Genre = g };
+			Check( $"genre {g} vibe applies", VibeCodec.Apply( enc, back ) );
 			Check( $"genre {g} vibe round-trips", VibeCodec.Encode( back ) == enc );
-			Check( $"genre {g} survives the round-trip", back.Genre == g );
 
 			// Every knob at full and at zero must also round-trip (the quantiser's endpoints
 			// are where an off-by-one in Levels shows up).
@@ -1715,109 +1722,132 @@ static class Program
 				var c2 = new MusicGen.Config { Genre = g };
 				foreach ( var f in VibeCodec.Fields( g ) ) f.SetNorm( c2, extreme );
 				var e2 = VibeCodec.Encode( c2 );
-				var r2 = new MusicGen.Config();
+				var r2 = new MusicGen.Config { Genre = g };
 				VibeCodec.Apply( e2, r2 );
 				Check( $"genre {g} round-trips with every knob at {extreme}",
 					VibeCodec.Encode( r2 ) == e2 );
 			}
 		}
 
-		// ── stream names ──
-		// The station a tag resolves to is part of WHAT SONG a seed is, so both stream names must
-		// spell it the same way and the empty-tag fallback is a fixed word rather than a host's
-		// choice. A host that picks its own makes an untagged seed a different song there than on
-		// every other target — which is the only parity guarantee this repo makes.
-		Check( "an untagged song seed falls back to the shared station",
-			VibeCodec.SongSeed( "", 7 ) == "rotaliate:7", VibeCodec.SongSeed( "", 7 ) );
-		Check( "the vibe stream uses the same station as the song stream",
-			VibeCodec.VibeSeed( "", 7 ).StartsWith( "rotaliate:" )
-			&& VibeCodec.VibeSeed( "Gamah", 7 ).StartsWith( "gamah:" ) );
-		Check( "a tag is trimmed and lower-cased into a station",
-			VibeCodec.SongSeed( "  Gamah  ", 7 ) == VibeCodec.SongSeed( "gamah", 7 ) );
-		// The two streams must not collide: the same tag and n feed the composer and the vibe
-		// roll, and one string for both would make a song's vibe its own PRNG line.
-		Check( "the song and vibe streams are distinct",
-			VibeCodec.SongSeed( "x", 7 ) != VibeCodec.VibeSeed( "x", 7 ) );
-
-		// ── reroll ──
-		// One definition of "reroll" shared by every player. A seeded roll is the shuffle line,
-		// so the same tag and index must give the same vibe anywhere.
+		// THE portability property. A vibe rolled anywhere, applied under one genre and re-encoded
+		// under another, is the same 36 characters — no cell means a different thing, and none is
+		// dropped for being a voice this genre does not play. Everything else in this row rests on
+		// it: without it, pinning a vibe and letting the genre roll silently rewrites the vibe.
+		var portable = SeedCodec.RollVibeFor( "gamah", 11 );
+		bool survivesEveryGenre = true;
+		string portableDetail = null;
 		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 		{
-			var a = new MusicGen.Config { Genre = g };
-			var b = new MusicGen.Config { Genre = g };
-			VibeCodec.RollFrom( a, VibeCodec.VibeSeed( "gamah", 4 ) );
-			VibeCodec.RollFrom( b, VibeCodec.VibeSeed( "gamah", 4 ) );
-			Check( $"a seeded roll is reproducible (from genre {g})", VibeCodec.Encode( a ) == VibeCodec.Encode( b ) );
-
-			// …and must not depend on where it started, or the shuffle line would differ between
-			// two listeners whose live knobs differ.
-			Check( $"a seeded roll ignores the starting genre {g}",
-				VibeCodec.Encode( a ) == VibeCodec.Encode( Rolled( "gamah", 4, 0 ) ) );
+			var c = new MusicGen.Config { Genre = g };
+			VibeCodec.Apply( portable, c );
+			var re = VibeCodec.Encode( c );
+			if ( re != portable ) { survivesEveryGenre = false; portableDetail ??= $"genre {g}: {portable} -> {re}"; }
 		}
+		Check( "a vibe means the same thing in every genre", survivesEveryGenre, portableDetail );
 
+		// A genre may rename a cell and may hide one, but it may never repoint one. Two properties
+		// carry that: a slider moves exactly ONE cell, and no two sliders in a genre move the SAME
+		// cell — an alias would make one knob silently overwrite another through the wire.
+		bool oneCellEach = true, noAliases = true;
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var claimed = new HashSet<int>();
+			foreach ( var f in VibeCodec.Fields( g ) )
+			{
+				if ( VibeCodec.IsVolume( f ) ) continue;
+				var atMin = new MusicGen.Config { Genre = g };
+				var atMax = new MusicGen.Config { Genre = g };
+				f.SetNorm( atMin, 0f );
+				f.SetNorm( atMax, 1f );
+				string a = VibeCodec.Encode( atMin ), b = VibeCodec.Encode( atMax );
+				int at = -1, moved = 0;
+				for ( int i = 0; i < a.Length; i++ ) if ( a[i] != b[i] ) { moved++; at = i; }
+				oneCellEach &= moved == 1;
+				if ( at >= 0 ) noAliases &= claimed.Add( at );
+			}
+		}
+		Check( "every slider moves exactly one wire cell", oneCellEach );
+		Check( "no two sliders share a wire cell", noAliases );
+
+		// ── reroll ──
+		// One definition of "reroll" shared by every player, and it produces a STRING: a rolled vibe
+		// is an ordinary full-width vibe, so it can be pinned into a seed and heard again.
+		Check( "a rolled vibe is a vibe", VibeCodec.IsVibe( SeedCodec.RollVibeFor( "gamah", 4 ) ) );
+		Check( "a seeded roll is reproducible",
+			SeedCodec.RollVibeFor( "gamah", 4 ) == SeedCodec.RollVibeFor( "gamah", 4 ) );
 		Check( "stepping n gives a different vibe",
-			VibeCodec.Encode( Rolled( "gamah", 4, 0 ) ) != VibeCodec.Encode( Rolled( "gamah", 5, 0 ) ) );
+			SeedCodec.RollVibeFor( "gamah", 4 ) != SeedCodec.RollVibeFor( "gamah", 5 ) );
 		Check( "a different tag gives a different line",
-			VibeCodec.Encode( Rolled( "gamah", 4, 0 ) ) != VibeCodec.Encode( Rolled( "skafinity", 4, 0 ) ) );
-		Check( "tag case does not fork the line",
-			VibeCodec.VibeSeed( "Gamah", 3 ) == VibeCodec.VibeSeed( "gamah", 3 ) );
-		Check( "an empty tag falls back rather than producing a bare line",
-			VibeCodec.VibeSeed( "", 0 ) == VibeCodec.VibeSeed( "rotaliate", 0 ) );
+			SeedCodec.RollVibeFor( "gamah", 4 ) != SeedCodec.RollVibeFor( "skafinity", 4 ) );
 
 		// A roll reaches every genre — a station stuck on one genre would not be a shuffle.
 		var seen = new HashSet<int>();
-		for ( int i = 0; i < 400; i++ ) seen.Add( Rolled( "gamah", i, 0 ).Genre );
+		for ( int i = 0; i < 400; i++ ) seen.Add( SeedCodec.RollGenreFor( "gamah", i ) );
 		Check( "the shuffle line reaches every genre", seen.Count == VibeCodec.GenreCount,
 			$"reached {seen.Count} of {VibeCodec.GenreCount}" );
 
-		// Volumes are a local mix preference: a reroll must leave them alone by default, or a
-		// listener's levels would be trampled on every song.
+		// A roll reaches the whole range of every cell, or a knob would be quietly pinned near its
+		// middle for every shuffled song ever played.
+		var lo = new bool[VibeCodec.VibeLength];
+		var hi = new bool[VibeCodec.VibeLength];
+		for ( int i = 0; i < 400; i++ )
+		{
+			var v = SeedCodec.RollVibeFor( "spread", i );
+			for ( int k = 0; k < v.Length; k++ )
+			{
+				int q = VibeCodec.Hex.IndexOf( v[k] );
+				if ( q <= 1 ) lo[k] = true;
+				if ( q >= VibeCodec.Levels - 2 ) hi[k] = true;
+			}
+		}
+		bool fullTravel = true, holesStayEmpty = true;
+		for ( int k = 0; k < VibeCodec.VibeLength; k++ )
+			if ( VibeCodec.HasCell( k ) ) fullTravel &= lo[k] && hi[k];
+			else holesStayEmpty &= !lo[k] || !hi[k];
+		Check( "a rolled vibe uses every cell's whole travel", fullTravel );
+		// The grid is rectangular, so a voice with three columns reserves a fourth. A roll must leave
+		// those holes at '0' — a random digit there would re-encode to '0' and a rolled vibe would
+		// not survive being pinned, which is the one thing a rolled vibe has to do.
+		Check( "a rolled vibe leaves the grid's holes empty", holesStayEmpty );
+
+		// Volumes are a local mix preference: they are not in the wire at all, so applying a rolled
+		// vibe must leave a listener's levels exactly where they were.
 		var volCfg = new MusicGen.Config { Genre = 0 };
 		foreach ( var f in VibeCodec.Fields( 0 ) ) if ( VibeCodec.IsVolume( f ) ) f.SetNorm( volCfg, 0.25f );
-		VibeCodec.RollFrom( volCfg, VibeCodec.VibeSeed( "gamah", 1 ), includeGenre: false );
+		VibeCodec.Apply( SeedCodec.RollVibeFor( "gamah", 1 ), volCfg );
 		bool volsKept = true;
 		foreach ( var f in VibeCodec.Fields( 0 ) )
 			if ( VibeCodec.IsVolume( f ) ) volsKept &= Math.Abs( f.GetNorm( volCfg ) - 0.25f ) < 0.001f;
 		Check( "a reroll leaves per-instrument volumes alone", volsKept );
 
-		// The tempo knob scales whatever the genre drew, so a reroll must never land it at or
-		// near zero (a song at 0 bpm is an infinite bar) or somewhere the genre's band would be
-		// unrecognisable at the other end.
-		bool tempoSane = true;
-		for ( int i = 0; i < 200; i++ )
-		{
-			var c = Rolled( "tempo", i, 0 );
-		}
-		Check( "a rolled tempo scale stays musical", tempoSane );
-
-		// The caller owns the randomness; a degenerate generator must not index off the genre table.
-		var edge = new MusicGen.Config();
+		// The caller owns the randomness; a degenerate generator must not index off either table.
 		bool edgeThrew = false;
-		try { VibeCodec.Roll( edge, () => 1f ); } catch { edgeThrew = true; }
-		Check( "a generator returning 1.0 stays in range", !edgeThrew && edge.Genre < VibeCodec.GenreCount );
+		int edgeGenre = 0;
+		string edgeVibe = null;
+		try { edgeGenre = VibeCodec.RollGenre( () => 1f ); edgeVibe = VibeCodec.RollVibe( () => 1f ); }
+		catch { edgeThrew = true; }
+		Check( "a generator returning 1.0 stays in range",
+			!edgeThrew && edgeGenre < VibeCodec.GenreCount && VibeCodec.IsVibe( edgeVibe ) );
 
-		// Malformed input must degrade, never throw — these strings arrive from a URL bar.
-		foreach ( var junk in new[] { "", "   ", "!!!!", "zzzzzzzzzzzzzzzzzzzz", "0!!0!!0" } )
+		// ── what is NOT a vibe ──
+		// Short does not degrade: a half-read grid is a song nobody chose, and the wire has no
+		// append room to make "shorter" mean "older" any more.
+		var full = VibeCodec.Encode( new MusicGen.Config() );
+		Check( "a short string is not a vibe", !VibeCodec.IsVibe( full.Substring( 1 ) ) );
+		Check( "a long string is not a vibe", !VibeCodec.IsVibe( full + "0" ) );
+		Check( "base-36 is not hex", !VibeCodec.IsVibe( new string( 'z', VibeCodec.VibeLength ) ) );
+		foreach ( var junk in new string[] { null, "", "   ", "!!!!", "0!!0!!0" } )
 		{
 			bool threw = false;
-			try { VibeCodec.Apply( junk, new MusicGen.Config() ); } catch { threw = true; }
-			Check( $"Apply(\"{junk}\") does not throw", !threw );
+			bool applied = true;
+			try { applied = VibeCodec.Apply( junk, new MusicGen.Config() ); } catch { threw = true; }
+			Check( $"Apply(\"{junk ?? "null"}\") refuses without throwing", !threw && !applied );
 		}
-
-		// A short vibe must apply its prefix and leave the rest at defaults, which is what
-		// makes the wire format append-only.
-		var trunc = new MusicGen.Config();
-		VibeCodec.Apply( "1", trunc );
-		Check( "a one-char vibe still selects the genre", trunc.Genre == 1 );
-
-		Check( "LooksLikeVibe rejects a player tag", !VibeCodec.LooksLikeVibe( "rotaliate" ) );
-		// Every genre, not just the widest: the floor has to clear a tag while still admitting the
-		// LEANEST grid, which is the one a shortened wire would drop below first.
-		bool everyGenreLooksLikeOne = true;
-		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-			everyGenreLooksLikeOne &= VibeCodec.LooksLikeVibe( VibeCodec.Encode( new MusicGen.Config { Genre = g } ) );
-		Check( "LooksLikeVibe accepts a real vibe from every genre", everyGenreLooksLikeOne );
+		// …and refusing means TOUCHING NOTHING, or a rejected paste would still half-change the song.
+		var untouched = new MusicGen.Config { Genre = 2 };
+		var before = VibeCodec.Encode( untouched );
+		VibeCodec.Apply( full.Substring( 1 ), untouched );
+		Check( "a refused vibe leaves the config alone", VibeCodec.Encode( untouched ) == before );
 
 		// AdvancedFields is the "config value, not a vibe slider" marker — the two registries
 		// must stay disjoint or a house-mix knob would leak into the shareable seed.
@@ -1839,6 +1869,158 @@ static class Program
 		}
 		catch { advThrew = true; }
 		Check( "ApplyAdvanced ignores an unknown key", !advThrew );
+	}
+
+	/// <summary>The seed string — <c>tag:n[:genre][:vibe]</c>. What is asserted here is the whole
+	/// contract a shared link rests on: what parses, what is refused (rather than coerced into a
+	/// different song), what "absent means rolled" resolves to, and that pinning one of the two
+	/// rolled parts leaves the other exactly where it was.</summary>
+	static void SeedTests()
+	{
+		var vibe = SeedCodec.RollVibeFor( "gamah", 3 );
+
+		// ── stream names ──
+		// The station a tag resolves to is part of WHAT SONG a seed is, so every stream name must
+		// spell it the same way and the empty-tag fallback is a fixed word rather than a host's
+		// choice. A host that picks its own makes an untagged seed a different song there than on
+		// every other target — which is the only parity guarantee this repo makes.
+		Check( "an untagged song seed falls back to the shared station",
+			SeedCodec.SongSeed( "", 7 ) == "rotaliate:7", SeedCodec.SongSeed( "", 7 ) );
+		Check( "every stream uses the same station",
+			SeedCodec.VibeSeed( "Gamah", 7 ).StartsWith( "gamah:" )
+			&& SeedCodec.GenreSeed( "Gamah", 7 ).StartsWith( "gamah:" ) );
+		Check( "a tag is trimmed and lower-cased into a station",
+			SeedCodec.SongSeed( "  Gamah  ", 7 ) == SeedCodec.SongSeed( "gamah", 7 ) );
+		// The three streams must not collide: the same tag and n feed the composer, the vibe roll
+		// and the genre roll, and one string for two of them would tie together things a listener
+		// is meant to be able to pin separately.
+		Check( "the song, vibe and genre streams are all distinct",
+			SeedCodec.SongSeed( "x", 7 ) != SeedCodec.VibeSeed( "x", 7 )
+			&& SeedCodec.SongSeed( "x", 7 ) != SeedCodec.GenreSeed( "x", 7 )
+			&& SeedCodec.VibeSeed( "x", 7 ) != SeedCodec.GenreSeed( "x", 7 ) );
+		Check( "tag case does not fork the line",
+			SeedCodec.VibeSeed( "Gamah", 3 ) == SeedCodec.VibeSeed( "gamah", 3 ) );
+
+		// ── what parses ──
+		Check( "a bare tag is song 0 of that station",
+			SeedCodec.TryParse( "gamah", out var bare, out _ )
+			&& bare.Tag == "gamah" && bare.N == 0 && !bare.GenrePinned && !bare.VibePinned );
+		Check( "tag:n rolls both",
+			SeedCodec.TryParse( "gamah:23", out var rolling, out _ )
+			&& rolling.N == 23 && !rolling.GenrePinned && !rolling.VibePinned );
+		Check( "a one-char part is the genre",
+			SeedCodec.TryParse( "gamah:23:3", out var pinnedG, out _ )
+			&& pinnedG.Genre == 3 && !pinnedG.VibePinned );
+		Check( "a full-width part is the vibe",
+			SeedCodec.TryParse( $"gamah:23:{vibe}", out var pinnedV, out _ )
+			&& pinnedV.Vibe == vibe && !pinnedV.GenrePinned );
+		// Order-free: the two are told apart by length, so a hand-edited seed cannot be wrong about
+		// which is which.
+		Check( "genre and vibe are order-free",
+			SeedCodec.TryParse( $"gamah:23:3:{vibe}", out var ab, out _ )
+			&& SeedCodec.TryParse( $"gamah:23:{vibe}:3", out var ba, out _ )
+			&& ab.Genre == ba.Genre && ab.Vibe == ba.Vibe );
+		Check( "a vibe parses in any case",
+			SeedCodec.TryParse( $"gamah:1:{vibe.ToUpperInvariant()}", out var upper, out _ )
+			&& upper.Vibe == vibe );
+		Check( "an empty tag is the shared station",
+			SeedCodec.TryParse( ":23", out var untagged, out _ )
+			&& SeedCodec.SongSeed( untagged.Tag, untagged.N ) == "rotaliate:23" );
+
+		// ── what is REFUSED ──
+		// Every one of these could have been coerced into something playable. None is: a seed that
+		// quietly becomes a different seed is worse than one that is turned down, because the person
+		// who sent it has no way to find out.
+		var bad = new[]
+		{
+			"", "   ",                                   // nothing to play
+			"gamah/x:1", "ga mah:1", "gamah!:1",         // outside the tag charset
+			"gamah:x", "gamah:-1", "gamah:1.5", "gamah:",// not a song number
+			"gamah:1:g", "gamah:1:zz",                   // not hex
+			$"gamah:1:{VibeCodec.Hex[VibeCodec.GenreCount]}",  // a genre that does not exist
+			"gamah:1:abc",                               // neither a genre nor a full-width vibe
+			$"gamah:1:{vibe.Substring( 1 )}", $"gamah:1:{vibe}0",   // near-miss widths
+			$"gamah:1:1:2", $"gamah:1:{vibe}:{vibe}",    // two genres / two vibes
+			$"gamah:1:2:{vibe}:extra",                   // too many parts
+		};
+		bool allRefused = true, allExplained = true;
+		foreach ( var s in bad )
+		{
+			bool ok = SeedCodec.TryParse( s, out _, out var err );
+			if ( ok ) { allRefused = false; Console.WriteLine( $"    accepted \"{s}\"" ); }
+			else allExplained &= !string.IsNullOrWhiteSpace( err );
+		}
+		Check( "a malformed seed is refused, never coerced", allRefused );
+		Check( "every refusal comes with something to show the listener", allExplained );
+
+		// ── absent means rolled ──
+		SeedCodec.TryParse( "gamah:5", out var loose, out _ );
+		var resolved = SeedCodec.Resolved( loose );
+		Check( "an absent genre resolves to the rolled one",
+			resolved.Genre == SeedCodec.RollGenreFor( "gamah", 5 ) );
+		Check( "an absent vibe resolves to the rolled one",
+			resolved.Vibe == SeedCodec.RollVibeFor( "gamah", 5 ) );
+		// …and a resolved seed is a seed: this is what the "copy this song" button hands over, so
+		// it has to come back through the parser as exactly the same song.
+		Check( "a resolved seed round-trips",
+			SeedCodec.TryParse( SeedCodec.Format( resolved ), out var again, out _ )
+			&& again.Genre == resolved.Genre && again.Vibe == resolved.Vibe && again.N == resolved.N );
+
+		// THE reason genre and vibe roll from separate streams: pinning one must not move the other.
+		// Pin a vibe and the station plays the same genres it always did; pin a genre and it rolls
+		// the same vibes. One shared stream would make either choice silently rewrite the other.
+		bool genresUnmoved = true, vibesUnmoved = true;
+		for ( int n = 0; n < 20; n++ )
+		{
+			var pinV = new SeedCodec.Seed { Tag = "gamah", N = n, Genre = SeedCodec.RolledGenre, Vibe = vibe };
+			var pinG = new SeedCodec.Seed { Tag = "gamah", N = n, Genre = 2, Vibe = null };
+			genresUnmoved &= SeedCodec.Resolved( pinV ).Genre == SeedCodec.RollGenreFor( "gamah", n );
+			vibesUnmoved &= SeedCodec.Resolved( pinG ).Vibe == SeedCodec.RollVibeFor( "gamah", n );
+		}
+		Check( "pinning the vibe leaves the genre line alone", genresUnmoved );
+		Check( "pinning the genre leaves the vibe line alone", vibesUnmoved );
+
+		// ── the shuffled line ──
+		// Shuffle answers "next" with a new STATION rather than the next song of this one, and the
+		// stations are derived so the line stays a line: reproducible, walkable backwards, and still
+		// just a seed. Position 0 is the root, or a pasted seed would not play the song it names.
+		Check( "a shuffled line starts on the seed it was given",
+			SeedCodec.RollTagFor( "gamah", 0 ) == "gamah" );
+		Check( "a shuffled line is reproducible",
+			SeedCodec.RollTagFor( "gamah", 5 ) == SeedCodec.RollTagFor( "gamah", 5 ) );
+		Check( "a shuffled line moves",
+			SeedCodec.RollTagFor( "gamah", 5 ) != SeedCodec.RollTagFor( "gamah", 6 ) );
+		Check( "two roots shuffle differently",
+			SeedCodec.RollTagFor( "gamah", 5 ) != SeedCodec.RollTagFor( "skafinity", 5 ) );
+		// A derived station has to be a station: it goes straight back into a seed string, and one
+		// stray character there would make every shuffled song unshareable.
+		bool derivedParse = true;
+		for ( int p = 1; p < 60; p++ )
+			derivedParse &= SeedCodec.TryParse( $"{SeedCodec.RollTagFor( "gamah", p )}:0", out _, out _ );
+		Check( "every derived station is a legal tag", derivedParse );
+
+		// ── onto a config ──
+		var cfg = new MusicGen.Config();
+		SeedCodec.TryParse( $"gamah:1:4:{vibe}", out var exact, out _ );
+		SeedCodec.Apply( exact, cfg );
+		Check( "a pinned seed puts its genre and its knobs on the config",
+			cfg.Genre == 4 && VibeCodec.Encode( cfg ) == vibe );
+		// Two players handed the same string must be playing the same song, whatever they were
+		// playing before — the entire point of a shareable seed.
+		var elsewhere = new MusicGen.Config { Genre = 1 };
+		VibeCodec.Apply( SeedCodec.RollVibeFor( "somewhere", 99 ), elsewhere );
+		SeedCodec.Apply( exact, elsewhere );
+		Check( "the same seed is the same song wherever it lands",
+			elsewhere.Genre == cfg.Genre && VibeCodec.Encode( elsewhere ) == VibeCodec.Encode( cfg ) );
+
+		// Format is the canonical spelling, and the parser accepts what it emits.
+		Check( "a rolling station formats without its rolled parts",
+			SeedCodec.Format( loose ) == "gamah:5" , SeedCodec.Format( loose ) );
+		Check( "a pinned genre formats as one hex char",
+			SeedCodec.Format( new SeedCodec.Seed
+			{
+				Tag = "t", N = 0, Genre = VibeCodec.GenreCount - 1, Vibe = null,
+			} ) == $"t:0:{VibeCodec.Hex[VibeCodec.GenreCount - 1]}" );
 	}
 
 	/// <summary>The arrangement has to survive contact with the renderer. Velocity, section energy
@@ -2284,20 +2466,33 @@ static class Program
 
 	static double Db( double a, double b ) => 20 * Math.Log10( Math.Max( 1e-9, a ) / Math.Max( 1e-9, b ) );
 
+	/// <summary>A seed string as the diagnostics want it: the tag and index to compose from, and a
+	/// Config with the seed's song already on it. One parser for every tool here, so a diagnostic
+	/// cannot disagree with the players about what a seed means — which is the whole reason the
+	/// format lives in the engine. A seed that will not parse is fatal rather than coerced: these
+	/// are hand-typed on a command line, and silently auditioning a different song is worse than
+	/// being told to fix the string.</summary>
+	static (string Tag, int N, MusicGen.Config Cfg) FromSeed( string seed, int rate )
+	{
+		if ( !SeedCodec.TryParse( seed, out var s, out var err ) )
+		{
+			Console.Error.WriteLine( $"'{seed}' is not a seed: {err}" );
+			Environment.Exit( 2 );
+		}
+		var cfg = new MusicGen.Config { SampleRate = rate };
+		SeedCodec.Apply( s, cfg );
+		return (s.Tag, s.N, cfg);
+	}
+
 	/// <summary>Explain one seed: what the vibe decodes to and what the composer did with it.
 	/// The tool for "this seed sounds wrong" — it is far easier to read the decisions than to
-	/// infer them from the audio. Usage: <c>-- --seed vibe:tag:n</c>.</summary>
+	/// infer them from the audio. Usage: <c>-- --seed tag:n[:genre][:vibe]</c>.</summary>
 	/// <summary>The song, rendered to a WAV at full rate — the mix as it actually ships, master
 	/// bus and all, which is the one thing the audition deliberately is not.</summary>
 	static void Render( string seed, string path )
 	{
-		var bits = seed.Split( ':' );
-		string vibe = bits.Length >= 3 ? bits[0] : "";
-		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
-		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
-		var cfg = new MusicGen.Config { SampleRate = 44100 };
-		VibeCodec.Apply( vibe, cfg );
-		var wav = MusicGen.Generate( $"{tag}:{n}", cfg );
+		var (tag, n, cfg) = FromSeed( seed, 44100 );
+		var wav = MusicGen.Generate( SeedCodec.SongSeed( tag, n ), cfg );
 		File.WriteAllBytes( path, wav );
 		Console.WriteLine( $"{seed}  genre {cfg.Genre} ({VibeCodec.Genres[cfg.Genre]})  "
 			+ $"-> {path}  ({wav.Length / (1024 * 1024)} MiB)" );
@@ -2305,24 +2500,22 @@ static class Program
 
 	static void Explain( string seed )
 	{
-		var bits = seed.Split( ':' );
-		string vibe = bits.Length >= 3 ? bits[0] : "";
-		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
-		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
-
-		var cfg = new MusicGen.Config { SampleRate = 22050 };
-		VibeCodec.Apply( vibe, cfg );
+		var (tag, n, cfg) = FromSeed( seed, 22050 );
+		SeedCodec.TryParse( seed, out var parsed, out _ );
 		Console.WriteLine( $"seed      {seed}" );
-		Console.WriteLine( $"genre     {cfg.Genre} ({VibeCodec.Genres[cfg.Genre]})" );
-		Console.WriteLine( $"prng seed \"{tag}:{n}\"" );
-		Console.WriteLine( $"re-encode {VibeCodec.Encode( cfg )}" );
+		Console.WriteLine( $"resolved  {SeedCodec.Format( SeedCodec.Resolved( parsed ) )}" );
+		Console.WriteLine( $"genre     {cfg.Genre} ({VibeCodec.Genres[cfg.Genre]})"
+			+ (parsed.GenrePinned ? " (pinned)" : " (rolled)") );
+		Console.WriteLine( $"prng seed \"{SeedCodec.SongSeed( tag, n )}\"" );
+		Console.WriteLine( $"vibe      {VibeCodec.Encode( cfg )}"
+			+ (parsed.VibePinned ? " (pinned)" : " (rolled)") );
 
 		Console.WriteLine();
 		Console.WriteLine( "knobs off the wire:" );
 		foreach ( var f in VibeCodec.Fields( cfg.Genre ) )
-			Console.WriteLine( $"  {f.Voice ?? "GLOBAL",-10} {f.Name,-12} {f.Display( cfg )}" );
+			Console.WriteLine( $"  {f.Voice,-10} {f.Name,-12} {f.Display( cfg )}" );
 
-		var g = MusicGen.BeginPlan( $"{tag}:{n}", cfg );
+		var g = MusicGen.BeginPlan( SeedCodec.SongSeed( tag, n ), cfg );
 		Console.WriteLine();
 		Console.WriteLine( g.Explain() );
 	}
@@ -2333,24 +2526,15 @@ static class Program
 	/// whether the band agrees about the beat. Neither answers "what happens at bar 13" — and a
 	/// listening note is always about a MOMENT. This solos each voice, reads its audible notes
 	/// back off the plan, and prints them at bar.beat with their pitch, next to the section and
-	/// the chord each bar is on. Usage: <c>-- --score vibe:tag:n [fromBar] [toBar]</c> (bars are
+	/// the chord each bar is on. Usage: <c>-- --score tag:n[:genre][:vibe] [fromBar] [toBar]</c> (bars are
 	/// 1-based, counted from the song's first downbeat).</summary>
 	static void Score( string seed, int fromBar, int toBar )
 	{
-		var bits = seed.Split( ':' );
-		string vibe = bits.Length >= 3 ? bits[0] : "";
-		string tag = bits.Length >= 3 ? bits[1] : bits.Length == 2 ? bits[0] : seed;
-		int n = int.TryParse( bits[^1], out var parsed ) ? parsed : 0;
-
-		MusicGen.Config Base()
-		{
-			var c = new MusicGen.Config { SampleRate = 22050 };
-			VibeCodec.Apply( vibe, c );
-			return c;
-		}
+		var (tag, n, _) = FromSeed( seed, 22050 );
+		MusicGen.Config Base() => FromSeed( seed, 22050 ).Cfg;
 
 		// The ruler: bar lines in ticks, and which section each bar belongs to.
-		var ruler = MusicGen.BeginPlan( $"{tag}:{n}", Base() );
+		var ruler = MusicGen.BeginPlan( SeedCodec.SongSeed( tag, n ), Base() );
 		var barTicks = ruler.BarTickLines();
 		// The SONG's form, not a second derivation of the genre's: a form varies per song now, and
 		// a ruler built from another draw is a ruler for a different song.
@@ -2624,16 +2808,19 @@ static class Program
 
 	// ── plumbing ─────────────────────────────────────────────────────────────────────────
 
-	/// <summary>Render one song exactly the way the players do: default Config, vibe overlaid,
-	/// PRNG seeded on <c>"{tag}:{n}"</c> — but at <see cref="MatrixRate"/> rather than the
-	/// player's rate, which is the single biggest cost in this harness and buys nothing here.
-	/// Every check over these renders (determinism, the digest tripwire) is about whether two
-	/// runs of the same code agree, and that is as true at 22.05 kHz as at 44.1.</summary>
-	static short[] Render( string vibe, string tag, int n )
+	/// <summary>Render one seed exactly the way the players do: default Config, the seed's genre and
+	/// vibe resolved onto it, PRNG seeded on <see cref="SeedCodec.SongSeed"/> — but at
+	/// <see cref="MatrixRate"/> rather than the player's rate, which is the single biggest cost in
+	/// this harness and buys nothing here. Every check over these renders (determinism, the digest
+	/// tripwire) is about whether two runs of the same code agree, and that is as true at 22.05 kHz
+	/// as at 44.1.</summary>
+	static short[] Render( string seed )
 	{
+		if ( !SeedCodec.TryParse( seed, out var s, out var err ) )
+			throw new InvalidOperationException( $"{seed} is not a seed: {err}" );
 		var cfg = new MusicGen.Config { SampleRate = MatrixRate };
-		VibeCodec.Apply( vibe, cfg );
-		return MusicGen.GenerateSamples( $"{tag}:{n}", cfg, out _ );
+		SeedCodec.Apply( s, cfg );
+		return MusicGen.GenerateSamples( SeedCodec.SongSeed( s.Tag, s.N ), cfg, out _ );
 	}
 
 	const int MatrixRate = 22050;
@@ -2667,17 +2854,12 @@ static class Program
 		var second = new string[Matrix.Length];
 		System.Threading.Tasks.Parallel.ForEach( jobs, j =>
 		{
-			var (vibe, tag, n) = Matrix[j.Row];
-			var digest = Digest( Render( vibe, tag, n ) );
+			var digest = Digest( Render( Matrix[j.Row] ) );
 			if ( j.Second ) second[j.Row] = digest; else first[j.Row] = digest;
 		} );
 
 		var rows = new (string, string, string)[Matrix.Length];
-		for ( int i = 0; i < Matrix.Length; i++ )
-		{
-			var (vibe, tag, n) = Matrix[i];
-			rows[i] = (Seed( vibe, tag, n ), first[i], second[i]);
-		}
+		for ( int i = 0; i < Matrix.Length; i++ ) rows[i] = (Matrix[i], first[i], second[i]);
 		return _matrix = rows;
 	}
 
@@ -2687,14 +2869,12 @@ static class Program
 		throw new InvalidOperationException( $"{seed} is not in the matrix" );
 	}
 
-	static string Seed( string vibe, string tag, int n ) => $"{vibe}:{tag}:{n}";
-
 	/// <summary>Song <paramref name="n"/>'s shuffle vibe, rolled from a config starting at
 	/// <paramref name="fromGenre"/> — used to show the result doesn't depend on that start.</summary>
 	static MusicGen.Config Rolled( string tag, int n, int fromGenre )
 	{
 		var c = new MusicGen.Config { Genre = fromGenre };
-		VibeCodec.RollFrom( c, VibeCodec.VibeSeed( tag, n ) );
+		VibeCodec.Apply( SeedCodec.RollVibeFor( tag, n ), c );
 		return c;
 	}
 

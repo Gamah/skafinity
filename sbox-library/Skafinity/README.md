@@ -52,7 +52,7 @@ Crossfade, Tempo, Mix, Tone, Feel, Stereo, Instrument, Horns, Genre, Guitars / K
 ```csharp
 var music = gameObject.Components.Get<SkafinityPlayer>();
 
-// Play a specific shareable seed: "vibe:tag:n", "tag:n", or just "tag"
+// Play a specific shareable seed: "tag:n[:genre][:vibe]" (a bare tag is song 0)
 music.PlaySeed( "bd44ac2a:23" );
 
 // Walk the infinite sequence
@@ -67,7 +67,7 @@ music.SetVibe( 0, 0.5f );              // set field 0 of VibeCodec.Fields(genre)
 music.SetGenre( 1 );                   // switch genre (re-encodes the vibe so it sticks)
 music.RandomEverySong = true;          // re-roll the vibe each new song (keeps your volumes + genre)
 
-string seed = music.CurrentSeed;       // "vibe:tag:n" — share this
+string seed = music.CurrentSeed;       // fully resolved — share this and they hear THIS song
 var cfg     = music.EffectiveConfig(); // the MusicGen.Config currently in effect
 
 // Write the current loop to a WAV under FileSystem.Data
@@ -77,7 +77,7 @@ string file = music.SaveCurrentToFile();
 You can also generate audio without the component, off any thread:
 
 ```csharp
-// The tag is the PRNG stream, "{station}:{n}". Build it with VibeCodec.SongSeed rather than by
+// The tag is the PRNG stream, "{station}:{n}". Build it with SeedCodec.SongSeed rather than by
 // hand — it decides the station an empty tag falls back to, and every target must agree.
 string seed = VibeCodec.SongSeed( "mytag", 0 );   // "mytag:0"
 

@@ -33,7 +33,7 @@ exactly that tree) rather than picking files out of it.
 
 | Attribute | Values | Default | What it does |
 |---|---|---|---|
-| `seed` | `vibe:tag:n`, `tag:n`, `tag` | a fresh random song | The song to start on. Set it any time; the element re-seeds. |
+| `seed` | `tag:n[:genre][:vibe]` (see `docs/seed-format.md`) | a fresh random station | The song to start on. Set it any time; the element re-seeds. A seed that will not parse is refused with a message under the box and changes nothing. |
 | `theme` | `auto` \| `light` \| `dark` | `auto` | `auto` measures the host page (below). The other two are an instruction. |
 | `accent` | any CSS colour | sniffed | Overrides the accent the whole palette derives from. |
 | `controls` | `all`, or a space/comma list of `transport` `seed` `vibe` `playlist` | `all` | Which sections show. An unrecognised name is ignored. |
@@ -42,17 +42,17 @@ exactly that tree) rather than picking files out of it.
 | `preload` | `none` \| `auto` | `none` | `auto` downloads the engine as soon as the element connects. |
 | `autoplay` | present/absent | absent | Best-effort — browsers block audio without a gesture, and the widget then just sits there showing play. |
 | `volume` | `0`–`1.5` | remembered, else `0.8` | Master volume. |
-| `shuffle` | `on` \| `off` | `on` | Re-roll genre and knobs for every new song. |
-| `share-base` | a URL | — | The page that reproduces a seed on your site; the copy button hangs `#<seed>` off it and says "copy link". Absent, it copies the seed alone. |
+| `shuffle` | `on` \| `off` | `off` | What **next** means: `off` walks this station (`n+1`), `on` jumps to a whole new station at song 0 each time. NOT "a different vibe every song" — that is what a seed with nothing pinned already does, and it needs no attribute. |
+| `share-base` | a URL | — | The page that reproduces a seed on your site; the copy buttons hang `#<seed>` off it and say "copy link". Absent, they copy the seed alone. |
 
-Properties: `seed` (get/set), `playing`, `position`, `themeInfo`, and methods `play()`, `pause()`,
+Properties: `seed` (get/set — the seed AS IT STANDS, rolled parts left out), `playing`, `position`, `themeInfo`, and methods `play()`, `pause()`,
 `seek(seconds)`, `load()`, `refreshTheme()`.
 
 `position` is `{n, time, duration, ratio, playing}`, measured off the audio clock. **`duration` is
 `0` until the song is rendered** — songs differ in length, so there is no length to state before
 then, and the widget's own bar goes inert rather than drawing against a guess.
 
-Events (all `CustomEvent`, bubbling and composed): `song` (`{n, seed, vibe, tag, genre, genreName}`),
+Events (all `CustomEvent`, bubbling and composed): `song` (`{n, position, seed, resolvedSeed, vibe, tag, genre, genreName, genrePinned, vibePinned}` — `n` is the song's index in its own station, `position` its slot on the timeline, and the two differ only under `shuffle`),
 `play`, `pause`, `position` (the `position` shape), `progress` (`{loaded, total, ratio, done}`),
 `ready`, `error`, and `theme` (`{mode, accent, source}`).
 
@@ -83,6 +83,11 @@ becomes "copy link" instead of "copy seed":
 
 Anything after a `#` in the base is replaced with the seed that is playing when the button is
 pressed. Absent, it copies the bare seed, which reproduces the song in any skafinity.
+
+**There are two copy buttons, because there are two things "share this" can mean.** The default one
+hands over the song **fully resolved** — the genre and vibe written down even where this station
+rolled them — so the recipient hears what is playing here. The second hands over the string **as it
+stands**, so a station that is still rolling keeps rolling for them too.
 
 Honouring an inbound link is the host's other half, and `web/app.js` is the worked example:
 
@@ -148,7 +153,8 @@ The shadow root keeps the host page's CSS out (and the widget's out of the page)
 want to restyle has to be a part: `board` `transport` `transport-button` `play-button` `now-playing`
 `buffer-state` `volume` `volume-slider` `seek` `seek-slider` `time-elapsed` `time-total`
 `progress` `progress-bar` `seed-bar` `seed-input` `seed-go`
-`seed-copy` `panel` `vibe` `vibe-body` `genre-select` `reroll-button` `shuffle-button` `knob-slider`
+`seed-copy` `seed-copy-station` `panel` `vibe` `vibe-body` `genre-select` `reroll-button`
+`shuffle-button` `tinker-button` `vibe-random` `knob-slider`
 `knob-select` `playlist` `playlist-row` `playlist-row-now` `jump` `jump-input` `jump-go`
 `export-button` `button` `slider` `message`.
 

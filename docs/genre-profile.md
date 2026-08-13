@@ -14,7 +14,7 @@ profile comment block names its era; a genre added or retuned without one is not
 **Genre 0 is `Ska-Punk`, and "Ska" is deliberately not taken.** Genre 0 is the third wave —
 straight, fast, clean-skank verses into distorted choruses — and calling it the umbrella is what
 would block two-tone or a first-wave/rocksteady genre from ever being added under an honest name.
-The seed's genre is an INDEX (the first base-36 char of the vibe), so the display name is
+The seed's genre is an INDEX (one hex char, its own part of the seed), so the display name is
 display-only and renaming one breaks no seed; the C# identifiers match it (`VibeCodec.SkaPunk()`,
 `Harmony.SkaPunk*`, `CompFigure.SkaPunk`/`SkaPunkLoud`, `DrumGroove.SkaPunk`, `SongForm.SkaPunk`).
 The repo stays *skafinity*: it is ska + infinity, and the toy is still a ska toy.
@@ -386,7 +386,7 @@ the timbre" looks like when the answer is actually neither.
 
 **`--cymbal [dir]` writes one dry hit per cymbal for `tools/spectool` to re-measure**, and a
 spectrum fitted to a measurement is not fitted until the RESULT has been measured the same way. It
-is the only check on these voices that does not need ears. **`--render vibe:tag:n [path]`** writes a
+is the only check on these voices that does not need ears. **`--render tag:n[:genre][:vibe] [path]`** writes a
 whole song as a WAV — the mix as it ships, master bus and all, which is the one thing the audition
 deliberately is not, and the only way to answer "is this voice too strong" on a host with no
 browser.
@@ -413,9 +413,10 @@ the rest of the song. Two helpers exist to keep that true: `PickWeighted` is one
 weights say, and `PickOrNull` takes its draw even for a genre whose table is `null` (pop has no
 second chordal voice; it still pays for the slot).
 
-Retiring a knob leaves a **reserved slot** in the wire rather than shifting positions — see the
-`VibeCodec` header. That is why the encoded vibe can be longer than the live knob count, so never
-assert "vibe length == field count + 1".
+The wire is ONE GLOBAL GRID: every voice in every genre, whether or not this genre plays it — see
+the `VibeCodec` header and `docs/seed-format.md`. A vibe is therefore the same length in every
+genre and is always longer than the genre's own knob count, so never assert a relationship between
+the two. A genre chooses which cells it SHOWS; it never chooses what a cell means.
 
 ---
 

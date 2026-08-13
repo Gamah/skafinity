@@ -1,42 +1,102 @@
 ## The seed format
 
-`vibe:tag:n` (same as the game's `SkafinityPlayer.CurrentSeed`):
+```
+tag:n[:genre][:vibe]
+```
 
-- `tag` — any string (a name, a word). It seeds the PRNG together with `n`: the per-song PRNG
-  seed string is **`"{tag}:{n}"`** (empty tag ⇒ `"rotaliate"`).
-- `n` — song index in the infinite sequence (0, 1, 2 …). Prev/Next step `n`.
-- `vibe` — a base-36 string at **16 levels/knob** (`VibeCodec.Levels`), encoding the genre + knob
-  overrides. The **first char is the genre** (0 = Ska-Punk, 1 = Rock, 2 = Country, 3 = Metal, 4 = Punk, 5 = Pop); the rest
-  follow the fixed wire grid below. Empty/absent ⇒ default knobs (genre 0).
+Four parts, two of them optional and **order-free**. `SeedCodec` (in `Code/Engine/`) is the only
+parser on either target — the web asks the wasm rather than re-implementing it, because a seed is
+precisely the thing two people have to agree about, and two parsers eventually disagree.
 
-Parsing (in `web/engine.js`, `parseSeed`) mirrors the controller: accept `vibe:tag:n`,
-`tag:n`, or `tag`. The page reads a seed out of `location.hash` at boot and then clears it; the
-widget's copy button is what builds a shareable link back out of the seed that is playing
-(`share-base` in `docs/embedding.md`).
+- **`tag`** — the station. `[A-Za-z0-9_-]` only; anything else (a colon, a space, a slash) is a
+  parse **error**, never a coerced string. It is trimmed and lower-cased into a *station*, so
+  `Gamah` and ` gamah ` are one station rather than three, and an empty tag is the fixed word
+  `rotaliate` (`SeedCodec.Station`). That fallback is load-bearing on both targets: a host that
+  spells it differently plays a different song from the same seed.
+- **`n`** — the song index in that station's endless line, and it keeps the job it has always had:
+  **Prev/Next are `n±1`**, the look-ahead queue walks an ordered timeline of them, and `n` is what
+  lets you go back to a song fifty ago that nothing anywhere remembers — no history is stored,
+  because none has to be. Optional in the string: a bare `tag` is song 0 of that station, which is
+  how you go somewhere new by typing a word.
+- **`genre`** — one hex char. One is enough until there are more than 16 genres, at which point it
+  becomes two; that is a straightforward future change, not something to design for now.
+- **`vibe`** — exactly `VibeCodec.VibeLength` hex chars (36 today). Anything else is an error.
 
-### VibeCodec wire format (genre-aware, append-only)
+The two optional parts are told apart by **length**, so their order does not matter: one char is a
+genre, a full-width string is a vibe.
 
-The wire layout is **genre-independent**: `[genre char][global block][instrument grid]`,
-where the grid reserves up to `MaxInstruments` (8) blocks of one char per **wire column**.
-A row has 4 columns (volume / tone / character / extra) but only columns
-`WireFirstColumn`..3 travel: **column 0 is VOLUME**, a local mix preference persisted per voice
-rather than part of the song's identity, so the whole column is skipped instead of being encoded
-as filler. **The global block is empty** — every knob that ever lived there turned out to belong
-to `GenreProfile` or to the house config, and the block sits in front of the grid, so putting one
-back would shift every position and invalidate every shared seed (see the note in `VibeCodec.cs`).
-Between them that is why a seed has no fixed run of `0`s in it: ska is 22 chars, metal 13, and
-each one is a knob.
+### Absent means rolled, present means pinned
 
-Wire column `c` of instrument `i` lives at `1 + globals + i*WireColumns + (c - WireFirstColumn)`,
-so adding a genre, an instrument, or a 5th column never shifts an existing position.
-**Append-only means**: append instrument slots (≤ 8), and only ever append columns past the
-last — never reorder/remove. A retired knob *inside a row* still holds its cell (filler char, and
-`Pop` has two). `Apply` ignores
-trailing positions a shorter string lacks (older/other-genre seeds degrade gracefully). Each
-genre defines its own instrument grid (Ska-Punk 6 instruments, Rock 4). The JS UI reads the field
-list — including each field's `voice`/`column` — straight from the wasm exports
-(`VibeFieldName/Min/Max/IsInt/Voice/Column/Choices`, all genre-parameterized) and lays out
-the matrix generically, so there's no second field table to keep in lockstep — just edit
-`VibeCodec.cs`.
+An omitted genre or vibe is **derived deterministically from (tag, n)** and therefore changes with
+every song — the station keeps being a station. A written-down one is **pinned** and every song
+plays it. So:
+
+| seed | what it does |
+|---|---|
+| `gamah:0` | a station: both genre and vibe roll, every song different |
+| `gamah:0:3` | metal forever, vibes still rolling |
+| `gamah:0:8a4c…` | one vibe, heard through whatever genre each song rolls |
+| `gamah:0:3:8a4c…` | one song, exactly — move only `n` |
+
+Genre and vibe roll from **separate PRNG streams** (`SeedCodec.GenreSeed` / `VibeSeed`, alongside
+the composer's own `SongSeed`), so pinning one never moves the other: pin a vibe and the station
+plays the genres it always did.
+
+**Old seeds break.** That is the standing rule for this repo (see the top of `PLAN.md`) — there is
+no back-compat shim and none is wanted.
+
+### Nothing degrades
+
+A malformed seed is refused with a sentence, and **nothing changes**: typed mid-session it leaves
+the music playing, arriving from a link it leaves the widget silent. There is deliberately no
+"apply the part I understood" path — half a seed is a song nobody asked for, and the person who
+sent the link has no way to find out it landed wrong.
+
+### The vibe is ONE GLOBAL GRID (`VibeCodec`)
+
+```
+[voice 0 cols 1..4][voice 1 cols 1..4]…      one hex digit per cell
+```
+
+`VoiceCount` × `WireColumns` = `VibeLength` characters, always, in every genre. The nine voices are
+DRUMS, BASS, SKANK, ORGAN, MELODY, HORNS, KEYS, RHYTHM GTR, LEAD GTR, and **an instrument sits at
+the same index whether or not the genre plays it**. Every cell is a fixed (Config field, range)
+pair that no genre may redefine.
+
+That is what makes a vibe portable, and portability is the whole reason for the shape: pin a vibe,
+let the genre roll, and each song reads the same 36 numbers through whatever band it happens to be.
+A per-genre grid — which is what this used to be — would make a pinned vibe nonsense the moment the
+genre changed under it.
+
+A genre chooses only **which cells it shows as sliders and what to call them**. Ska's `LEAD` is the
+MELODY voice and pop's `LEAD` is the LEAD GTR voice; pop's `SYNTH` is rock's KEYS; pop hides the
+DISTORTION cell on both of its voices because its voice code runs them clean. A hidden cell still
+travels — every vibe is full width — so a genre change hears what was already there.
+
+Everything a genre *sounds* like lives in its voice code and in `GenreProfile`. Guitar.cs and
+Lead.cs already offset the drive per genre, which is why the knob's range does not need to.
+
+- **The wire carries a normalised level** (0..15 over the cell's own range), not a raw value. Same
+  fraction of travel, whatever the genre.
+- **Column 0 is VOLUME and never travels.** It is a local mix preference, persisted per voice name
+  and overlaid after the seed (`VibeCodec.ReadVolumes`/`ApplyVolumes`).
+- **Lossy but stable**: `Encode(Apply(s)) == s` for any valid `s`, in every genre.
+- **Growing the grid is a format break**, not an append: a voice or a fifth column changes
+  `VibeLength` and invalidates every shared vibe. There is no append room left, on purpose — the
+  old format's append-only rule bought back-compat nobody wanted and cost a genre-shaped wire.
+
+The JS UI reads the field list — each field's `voice`, `column`, name and range — straight from the
+wasm exports (`VibeFieldName/Min/Max/IsInt/Voice/Column/Choices`, genre-parameterised) and lays the
+matrix out generically. There is no second field table: edit `VibeCodec.cs`.
+
+### Shuffle is about the LINE, not the knobs
+
+"A different vibe every song" needs no switch — it is what a seed with nothing pinned already does.
+The shuffle toggle answers a different question: whether **next** means the next song of this
+station (off) or a **whole new station at song 0** (on).
+
+Those stations are *derived* (`SeedCodec.RollTagFor`), not drawn fresh, and position 0 is always the
+root. Otherwise Prev could only work by remembering every station visited and a reload would lose
+the lot; derived, a shuffled line is still just a seed.
 
 ---

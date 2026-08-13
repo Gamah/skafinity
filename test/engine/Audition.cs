@@ -688,18 +688,18 @@ static class Audition
 		// genres whose energy reaches a crash-ride at all (with punk); ska is here for the hats.
 		string[] seeds =
 		{
-			"1:rotaliate:0", "1:gamah:3", "1:rotaliate:5", "3:doom:11", "3:rotaliate:0",
-			"4:rotaliate:0", "0:skafinity:7", "1:kit:2", "3:kit:4", "4:kit:6", "5:rotaliate:0",
+			"rotaliate:0:1", "gamah:3:1", "rotaliate:5:1", "doom:11:3", "rotaliate:0:3",
+			"rotaliate:0:4", "skafinity:7:0", "kit:2:1", "kit:4:3", "kit:6:4", "rotaliate:0:5",
 		};
 
 		void Find( string title, Func<MusicGen.SectionInfo, bool> want, bool needsOpenHats = false )
 		{
 			foreach ( var seed in seeds )
 			{
-				var bits = seed.Split( ':' );
+				SeedCodec.TryParse( seed, out var s, out _ );
 				var cfg = new MusicGen.Config { SampleRate = Rate };
-				VibeCodec.Apply( bits[0], cfg );
-				var g = MusicGen.BeginPlan( $"{bits[1]}:{bits[2]}", cfg );
+				SeedCodec.Apply( s, cfg );
+				var g = MusicGen.BeginPlan( SeedCodec.SongSeed( s.Tag, s.N ), cfg );
 				if ( needsOpenHats && !g.AuditionGrooveOpens ) continue;
 				g.RenderPitchedRange( 0, g.TotalSamples );
 				var pcm = g.FinishStereo();

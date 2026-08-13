@@ -25,11 +25,11 @@
 	convenience for players who want to tweak the vibe rather than tune it in the inspector.
 
 	The vibe editor is driven entirely from the library's VibeCodec field metadata for the
-	current genre: each field reports its voice (matrix row, or null for a GLOBAL knob) and
-	column (0 volume / 1 tone / 2 character / 3 extra). A new genre — or a new knob — is a pure
+	current genre: each field reports its voice (matrix row) and
+	column (0 volume, then the four travelling columns). A new genre — or a new knob — is a pure
 	engine change; there is no field table here. s&box has no slider widget, so each knob is a
-	strip of tick cells (one per base-36 level the seed encodes); each change re-encodes the
-	vibe and restarts the player on a short debounce.
+	strip of tick cells (one per level the seed encodes); each change re-encodes the vibe and
+	restarts the player on a short debounce.
 
 	Re-theming: the board derives its whole palette from one colour. Set SkafinityTheme.Accent
 	from your game (e.g. to your own UI accent) and the board follows; leave it unset and it is
@@ -68,7 +68,7 @@
 			<div class="row">
 				<div class="label" style="@LabelStyle">PLAY A SEED</div>
 				<div class="play-row">
-					<TextEntry @ref="_tagEntry" placeholder="Paste vibe:tag:n (or a tag — blank = default)" class="tag-input" />
+					<TextEntry @ref="_tagEntry" placeholder="Paste tag:n[:genre][:vibe] (or just a tag)" class="tag-input" />
 					<div class="btn" style="@BtnStyle" onclick="@Play">Play</div>
 					<div class="btn" style="@BtnStyle" onclick="@UseDefault">Use default</div>
 				</div>
@@ -214,7 +214,10 @@
 
 	// One tick cell per base-36 level the seed encodes (VibeCodec.Levels).
 	static int UiTicks => VibeCodec.Levels;
-	static readonly string[] ColHeaders = { "VOLUME", "TONE", "CHARACTER", "EXTRA" };
+	// One header per grid column. Column 0 (VOLUME) is a local mix preference and never travels;
+	// columns 1..4 are the wire. The grid is rectangular, so a voice with nothing in its last
+	// column simply leaves that cell empty.
+	static readonly string[] ColHeaders = { "VOLUME", "TONE", "CHARACTER", "EXTRA", "MORE" };
 
 	// Volume control steps over the player's 0..2 range.
 	static readonly float[] VolumeSteps = { 0f, 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f };
@@ -368,8 +371,11 @@
 
 	void Play()
 	{
-		Player?.PlaySeed( _tagEntry?.Text );
-		_msg = Player != null ? $"Playing {Player.CurrentSeed}" : null;
+		if ( Player == null ) { _msg = null; return; }
+		// A seed that will not parse leaves playback exactly where it was and says why, rather than
+		// starting something adjacent to what was typed.
+		_msg = Player.PlaySeed( _tagEntry?.Text, out var error )
+			? $"Playing {Player.CurrentSeed}" : error;
 	}
 
 	void UseDefault()
