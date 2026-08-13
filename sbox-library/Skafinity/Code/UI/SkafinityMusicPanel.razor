@@ -257,6 +257,8 @@
 	TextEntry _seedEntry;
 	TextEntry _jumpEntry;
 	bool _seedInit;
+	// The station seed this panel last wrote into the box — what tells a stale box from a typed one.
+	string _seedShown;
 	// Both copy buttons keep their own label so pressing one doesn't report "copied!" on the other.
 	string _copySongLabel = SkafinityBoard.Copy.CopySong;
 	string _copyStationLabel = SkafinityBoard.Copy.CopyStation;
@@ -282,12 +284,22 @@
 
 	protected override void OnUpdate()
 	{
-		// One-time seed of the text entry with the station as it stands, once the board opens.
+		// The text entry follows the station as it stands — not once at open, but whenever the station
+		// moves out from under it. Reroll, a pasted seed and a genre pin all change what the station
+		// IS, and a box still showing the previous one reads as a reroll that did nothing.
+		//
+		// Only ever overwrites text this panel wrote: the moment somebody types, the box is theirs and
+		// a background change to the station leaves it alone rather than eating what they were typing.
 		if ( !IsOpen ) { _seedInit = false; return; }
-		if ( !_seedInit && _seedEntry != null )
+		if ( _seedEntry != null )
 		{
-			_seedEntry.Text = Player?.StationSeed ?? "";
-			_seedInit = true;
+			var station = Player?.StationSeed ?? "";
+			if ( !_seedInit || ( station != _seedShown && _seedEntry.Text == _seedShown ) )
+			{
+				_seedEntry.Text = station;
+				_seedShown = station;
+				_seedInit = true;
+			}
 		}
 
 		// The held scrub, applied once the drag settles. See _scrubTo.

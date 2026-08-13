@@ -336,10 +336,19 @@ public static class VibeCodec
 	/// <summary>Flat list of the sliders <paramref name="genre"/> shows, in display order: each
 	/// row's volume then its exposed cells. Each field carries its <see cref="Field.Voice"/> /
 	/// <see cref="Field.Column"/>, so the UI lays the matrix out without a second table.</summary>
+	/// <remarks>The returned fields are STABLE: the same genre hands back the same objects every
+	/// call, because a UI identifies a knob by reference to find its wire index. <see cref="Labelled"/>
+	/// mints a fresh <see cref="Field"/> for any row its genre renames, so a list rebuilt per call
+	/// makes those knobs unfindable — they draw and drag and set nothing, and only on the genres that
+	/// rename a row. Cached per genre for that reason first and for the allocations second.</remarks>
 	public static IReadOnlyList<Field> Fields( int genre )
 	{
+		int g = Math.Clamp( genre, 0, GenreDefs.Length - 1 );
+		var cache = _fields ??= new IReadOnlyList<Field>[GenreDefs.Length];
+		if ( cache[g] != null ) return cache[g];
+
 		var list = new List<Field>();
-		foreach ( var row in Def( genre ).Rows )
+		foreach ( var row in GenreDefs[g].Rows )
 		{
 			var v = Voices[row.Voice];
 			list.Add( Labelled( v.Volume, row.Label, null ) );
@@ -357,8 +366,13 @@ public static class VibeCodec
 				}
 			}
 		}
+		cache[g] = list;
 		return list;
 	}
+
+	// One list per genre, built on first ask. Lazy rather than a static initialiser so it cannot
+	// depend on field-initialisation order with GenreDefs.
+	static IReadOnlyList<Field>[] _fields;
 
 	/// <summary>True if <paramref name="f"/> is a per-instrument VOLUME knob — column 0 of an
 	/// instrument row, kept out of the shareable seed and persisted per-voice instead.</summary>
