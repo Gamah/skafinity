@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Sandbox;
 
@@ -119,23 +120,37 @@ public static class SkafinityCommands
 		Dump( root, 0 );
 	}
 
-	/// <summary>Show/hide the slider test card — three stock <c>SliderControl</c>s with nothing of
-	/// this library's styling on them, on a plain panel of their own. TEMPORARY, and paired with
-	/// <see cref="SkafinitySliderTest"/>: it asks whether the stock control draws in this project at
-	/// all, which the music board cannot ask because it has a stylesheet and a palette in the way.
-	/// Follow it with <c>skafinity_ui_dump_test</c> for the rects.</summary>
+	/// <summary>Show/hide a slider test card. TEMPORARY scaffolding, paired with
+	/// <see cref="SkafinitySliderTest"/> and <see cref="SkafinityTerryballCopy"/>.</summary>
+	/// <param name="which">Empty for this library's own card — three stock <c>SliderControl</c>s
+	/// with nothing of its styling on them, plus two probes for whether a base-addon stylesheet
+	/// reaches this project at all. <c>terryball</c> for terryball's WorldSettings screen copied
+	/// here with its wiring removed and nothing else touched: a panel KNOWN to draw where it came
+	/// from, standing unchanged in this project.</param>
+	/// <remarks>Either way it is asking what the music board cannot, because the board has a
+	/// stylesheet, a runtime palette and five columns of layout around every slider. Follow with
+	/// <c>skafinity_ui_dump_test</c> for the rects.</remarks>
 	[ConCmd( "skafinity_slider_test" )]
-	public static void ToggleSliderTest()
+	public static void ToggleSliderTest( string which = null )
 	{
 		var scene = Sandbox.Game.ActiveScene;
 		if ( scene == null ) { Log.Warning( "[Skafinity] no active scene." ); return; }
 		if ( scene.IsEditor ) { Log.Warning( "[Skafinity] press play first." ); return; }
 
-		var existing = scene.GetAllComponents<SkafinitySliderTest>().FirstOrDefault();
-		if ( existing != null )
+		bool terryball = !string.IsNullOrWhiteSpace( which )
+			&& which.Trim().StartsWith( "terry", StringComparison.OrdinalIgnoreCase );
+
+		// Whichever card is up comes down, so the two can never be stacked on each other — they are
+		// both full-screen and both centred.
+		var card = scene.GetAllComponents<SkafinitySliderTest>().FirstOrDefault()?.GameObject;
+		var copy = scene.GetAllComponents<SkafinityTerryballCopy>().FirstOrDefault()?.GameObject;
+		bool wasUp = card != null || copy != null;
+		bool sameAsAsked = terryball ? copy != null : card != null;
+		card?.Destroy();
+		copy?.Destroy();
+		if ( wasUp && sameAsAsked )
 		{
-			existing.GameObject?.Destroy();
-			Log.Info( "[Skafinity] slider test card removed." );
+			Log.Info( "[Skafinity] test card removed." );
 			return;
 		}
 
@@ -143,21 +158,35 @@ public static class SkafinityCommands
 		var go = new GameObject( true, SliderTestName ) { Flags = GameObjectFlags.NotSaved };
 		go.NetworkMode = NetworkMode.Never;
 		go.Components.Create<ScreenPanel>();
-		go.Components.Create<SkafinitySliderTest>();
-		Log.Info( "[Skafinity] slider test card up. Drag each of the three; the number at the top "
-			+ "follows whichever one works. skafinity_ui_dump_test prints their rects." );
+		if ( terryball )
+		{
+			go.Components.Create<SkafinityTerryballCopy>();
+			Log.Info( "[Skafinity] terryball's WorldSettings screen, wiring removed and nothing else "
+				+ "changed. If its sliders draw here, the panel is the problem and this file is the "
+				+ "diff to read." );
+		}
+		else
+		{
+			go.Components.Create<SkafinitySliderTest>();
+			Log.Info( "[Skafinity] slider test card up. Drag each of the three; the number at the top "
+				+ "follows whichever one works. `skafinity_slider_test terryball` swaps in terryball's "
+				+ "own screen; skafinity_ui_dump_test prints the rects of whichever is up." );
+		}
 	}
 
 	const string SliderTestName = "Skafinity Slider Test";
 
-	/// <summary>The panel tree of the test card, same format as <see cref="DumpUi"/>. TEMPORARY.</summary>
+	/// <summary>The panel tree of whichever test card is up, same format as <see cref="DumpUi"/>.
+	/// TEMPORARY.</summary>
 	[ConCmd( "skafinity_ui_dump_test" )]
 	public static void DumpSliderTest()
 	{
-		var card = Sandbox.Game.ActiveScene?.GetAllComponents<SkafinitySliderTest>().FirstOrDefault();
-		if ( card?.Panel == null ) { Log.Warning( "[Skafinity] no test card — run skafinity_slider_test first." ); return; }
+		var scene = Sandbox.Game.ActiveScene;
+		var root = scene?.GetAllComponents<SkafinitySliderTest>().FirstOrDefault()?.Panel
+			?? scene?.GetAllComponents<SkafinityTerryballCopy>().FirstOrDefault()?.Panel;
+		if ( root == null ) { Log.Warning( "[Skafinity] no test card — run skafinity_slider_test first." ); return; }
 		Log.Info( "── skafinity_ui_dump_test ──   element  type  .classes  [x y w h]" );
-		Dump( card.Panel, 0 );
+		Dump( root, 0 );
 	}
 
 	static void Dump( Sandbox.UI.Panel p, int depth )
