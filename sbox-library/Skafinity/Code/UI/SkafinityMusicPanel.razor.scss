@@ -10,11 +10,10 @@
 //   * Hover feedback is therefore a border, not a fill — the fill is themed.
 // Both are neutral white alphas, which read against any accent the host passes in.
 //
-// The exception, and the reason it is an exception: the INSIDE of a control this library did not
-// write. SliderControl builds its own track and thumb, so no inline style can reach them. `color`
-// inherits and `currentColor` resolves against it, so the razor puts the accent on the control's own
-// `color` and the rules below spend it — see `.ska-slider`, which also carries the sizing that
-// control needs to exist at all.
+// The same split settles a control this library did not write. SliderControl builds its own track
+// and thumb, and no inline style reaches another component's panels — so those are NEUTRAL here,
+// alongside the borders, rather than themed. See `.ska-slider`, which also carries the sizing that
+// control needs in order to exist at all.
 //
 // web/palette.js reads the six alphas below out of THIS FILE (test/palette.mjs asserts it), so the
 // widget and the board cannot drift into two schemes. Keep the `$name: rgba(255,255,255,a)` shape.
@@ -31,7 +30,7 @@ $rule:       rgba(255,255,255,0.10);   // dividers, panel outlines
 $hover:      rgba(255,255,255,0.35);   // hover border
 $pick:       rgba(255,255,255,0.85);   // selected / current border
 $busy:       rgba(255,255,255,0.55);   // a playlist entry mid-render
-$surface:    rgba(255,255,255,0.07);   // neutral inputs (seed box, jump box) and slider tracks
+$surface:    rgba(255,255,255,0.07);   // neutral inputs (seed box, jump box), progress-bar troughs
 // ────────────────────────────────────────────────────────────────────────────────
 
 skafinitymusicpanel {
@@ -102,7 +101,10 @@ skafinitymusicpanel {
 
 	// ── Transport ──
 	.transport { flex-direction: column; gap: 8px; }
-	.now { flex-direction: row; align-items: center; gap: 5px; font-size: $fs-body; white-space: nowrap; }
+	// flex-grow, not the volume's margin-left:auto, is what puts the volume at the far end of the
+	// row: an auto margin held the button in the row below out there but did nothing for the
+	// volume, and a spacer that grows needs no such adjudication.
+	.now { flex-direction: row; align-items: center; gap: 5px; flex-grow: 1; font-size: $fs-body; white-space: nowrap; }
 	.now b { font-weight: bold; }
 	.bufstate { font-size: $fs-body; white-space: nowrap; }
 	.vol { flex-direction: row; align-items: center; gap: 6px; font-size: $fs-body; }
@@ -128,13 +130,17 @@ skafinitymusicpanel {
 		// to that pair of braces.
 		.value-tooltip { display: none; }
 
-		// The accent arrives as `color` on the control (inline, from the razor) and is spent here:
-		// no inline style can reach another component's inner panels, but currentColor resolves
-		// against the colour they inherit. The child combinators are not decoration — the base
-		// sheet styles `.slidercontrol > .inner > .track`, so a flatter selector would lose to it.
-		> .inner > .track { background-color: $surface; }
-		> .inner > .track > .track-active { background-color: currentColor; }
-		> .inner > .track > .thumb { background-color: currentColor; }
+		// A slider's insides are NEUTRAL, like every border in this file, and for the same reason:
+		// no inline style reaches another component's panels, so the theme cannot own them. The
+		// accent is not merely awkward to get in here — it is unreachable, and the attempt is what
+		// made these invisible: `currentColor` is a recent engine feature, and a build without it
+		// paints nothing at all. White alphas read against any accent a host passes in.
+		//
+		// The child combinators are not decoration: the base sheet styles
+		// `.slidercontrol > .inner > .track`, so a flatter selector would silently lose to it.
+		> .inner > .track { background-color: $hover; }
+		> .inner > .track > .track-active { background-color: $pick; }
+		> .inner > .track > .thumb { background-color: $pick; }
 
 		// Unknown length — the bar is inert rather than drawn against a guess.
 		&.off { opacity: 0.4; pointer-events: none; }

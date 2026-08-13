@@ -61,7 +61,7 @@
 				<div class="btn big" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.NextTitle"
 					 onclick="@( () => Step( 1 ) )">@SkafinityBoard.Copy.Next</div>
 
-				<div class="now" style="@LabelStyle">@SkafinityBoard.Copy.NowPlaying <b style="@TextStyle">#@( Player?.N ?? 0 )</b></div>
+				<div class="now" style="@LabelStyle">@SkafinityBoard.Copy.NowPlaying <b style="@TextStyle">@SkafinityBoard.Copy.SongLabel( Player?.N ?? 0 )</b></div>
 
 				@* Playback stalled on the song you skipped to — as opposed to the silent background
 				   look-ahead, which nobody needs telling about. *@
@@ -72,7 +72,7 @@
 
 				<div class="vol right" style="@LabelStyle">
 					@SkafinityBoard.Copy.Volume
-					<SliderControl class="ska-slider vol-slider" style="@AccentTextStyle"
+					<SliderControl class="ska-slider vol-slider"
 								   Min="@(0f)" Max="@(1.5f)" Step="@(0.01f)" ShowValueTooltip="@(false)"
 								   Value="@( Player?.Volume ?? 1f )"
 								   OnValueChanged="@( (float v) => SetVolume( v ) )"></SliderControl>
@@ -85,7 +85,7 @@
 			   has been rendered and has a length worth stating. *@
 			<div class="seek">
 				<div class="time" style="@LabelStyle">@SkafinityBoard.Time( ShownTime( here ), known )</div>
-				<SliderControl class="ska-slider seek-slider @( known ? "" : "off" )" style="@AccentTextStyle"
+				<SliderControl class="ska-slider seek-slider @( known ? "" : "off" )"
 							   tooltip="@SkafinityBoard.Copy.SeekTitle"
 							   Min="@(0f)" Max="@(1000f)" Step="@(1f)" ShowValueTooltip="@(false)"
 							   Value="@( known ? ShownRatio( here ) * 1000f : 0f )"
@@ -201,7 +201,7 @@
 					var ee = e;
 					<div class="plrow @( e.Current ? "now" : "" ) @( e.Cached ? "cached" : "" ) @( e.Progress >= 0 ? "gen" : "" )"
 						 style="@RowStyle( e )">
-						<div class="pllabel" onclick="@( () => Player?.SeekTo( ee.Position ) )">@( e.Current ? "▶ " : "" )#@e.N</div>
+						<div class="pllabel" onclick="@( () => Player?.SeekTo( ee.Position ) )">@SkafinityBoard.RowLabel( e )</div>
 						<div class="plgenre" style="@LabelStyle">@SkafinityBoard.GenreName( e.Genre )</div>
 						<div class="plstatus" style="@LabelStyle">
 							@if ( e.Progress >= 0 )
@@ -303,10 +303,9 @@
 	// see the header comment there for why the two must not overlap.
 	//
 	// The one thing an inline style cannot reach is the INSIDE of a control this library did not
-	// write: SliderControl's track and thumb are its own panels. But `color` inherits and
-	// `currentColor` resolves against it, so a themed wrapper sets the colour and the scss spends it
-	// (`background-color: currentColor`) — which is why every slider here sits in a div carrying
-	// AccentTextStyle.
+	// write: SliderControl's track and thumb are its own panels, so the stylesheet paints those in
+	// the same neutral white alphas it uses for every border. The accent stops at the controls this
+	// file actually builds.
 	static string LabelStyle => $"color:{SkafinityTheme.TextDim};";
 	static string TextStyle => $"color:{SkafinityTheme.Text};";
 	static string AccentTextStyle => $"color:{SkafinityTheme.AccentCss};";
@@ -429,7 +428,7 @@
 			{
 				@* Snapped to the same discrete grid the seed encodes (one level per base-36 char), so
 				   the slider can only land on values the vibe can actually represent. *@
-				<SliderControl class="ska-slider" style="@AccentTextStyle"
+				<SliderControl class="ska-slider"
 							   Min="@(0f)" Max="@( (float)(VibeCodec.Levels - 1) )" Step="@(1f)"
 							   ShowValueTooltip="@(false)"
 							   Value="@( MathF.Round( norm * (VibeCodec.Levels - 1) ) )"

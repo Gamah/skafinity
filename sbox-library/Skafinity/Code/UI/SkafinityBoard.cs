@@ -121,6 +121,11 @@ public static class SkafinityBoard
 	public static string GenreName( int g ) =>
 		g >= 0 && g < VibeCodec.GenreCount ? VibeCodec.Genres[g] : "?";
 
+	/// <summary>What a playlist row is called: its song number, with a play caret on the one you are
+	/// hearing. <see cref="Copy.SongLabel"/> explains why this is not markup.</summary>
+	public static string RowLabel( SkafinityPlayer.QueueEntry e ) =>
+		e.Current ? $"▶ {Copy.SongLabel( e.N )}" : Copy.SongLabel( e.N );
+
 	/// <summary>What a playlist row says on its right-hand side. Generating rows draw a bar instead
 	/// and never reach this.</summary>
 	public static string RowStatus( SkafinityPlayer.QueueEntry e ) =>
@@ -141,6 +146,9 @@ public static class SkafinityBoard
 		public const string Next = "⏭";
 		public const string NextTitle = "Next song";
 		public const string NowPlaying = "now playing";
+		/// <summary>A song by its number. Built here rather than as a literal `#` next to a razor
+		/// expression, which is a construct the markup swallowed — "now playing 10", no hash.</summary>
+		public static string SongLabel( int n ) => $"#{n}";
 		public const string Volume = "vol";
 		public const string SeekTitle = "Seek within this song";
 		/// <summary>Playback is stalled on a song being rendered — as opposed to the silent
