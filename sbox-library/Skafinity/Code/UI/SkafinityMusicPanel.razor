@@ -11,196 +11,226 @@
 @implements Component.DontExecuteOnServer
 
 @*
-	The optional drop-in settings panel for the Skafinity music engine.
+	The optional drop-in settings board for the Skafinity music engine.
 
 	Add this PanelComponent to a GameObject under a ScreenPanel (or WorldPanel). It finds a
-	SkafinityPlayer in the scene (or set Player explicitly) and offers the whole knob surface
-	as UI — you don't have to wire anything. The board's visibility is host-driven: set IsOpen
-	(or call Toggle()) from your game — e.g. bind it to a hotkey or your own pause/menu UI.
-	This component intentionally ships no launcher of its own, so it imposes nothing on the
-	host's HUD — which also means a freshly-dropped panel shows nothing until you bind IsOpen.
-	Run `skafinity_panel` in the console to see it before you have (SkafinityCommands.cs).
+	SkafinityPlayer in the scene (or set Player explicitly) and offers the whole transport as UI —
+	you don't have to wire anything. The board's visibility is host-driven: set IsOpen (or call
+	Toggle()) from your game — e.g. bind it to a hotkey or your own pause/menu UI. This component
+	intentionally ships no launcher of its own, so it imposes nothing on the host's HUD — which also
+	means a freshly-dropped panel shows nothing until you bind IsOpen. Run `skafinity_panel` in the
+	console to see it before you have (SkafinityCommands.cs).
 
-	The engine needs nothing from this: SkafinityPlayer plays on its own. This panel is pure
-	convenience for players who want to tweak the vibe rather than tune it in the inspector.
+	The engine needs nothing from this: SkafinityPlayer plays on its own. This board is pure
+	convenience for players who want to drive the station rather than tune it in the inspector.
 
-	The vibe editor is driven entirely from the library's VibeCodec field metadata for the
-	current genre: each field reports its voice (matrix row) and
-	column (0 volume, then the four travelling columns). A new genre — or a new knob — is a pure
-	engine change; there is no field table here. s&box has no slider widget, so each knob is a
-	strip of tick cells (one per level the seed encodes); each change re-encodes the vibe and
-	restarts the player on a short debounce.
+	It is drawn against the WEB WIDGET as its design (web/skafinity-element.js) so the two are one
+	product with one set of habits, and the wording and the derived decisions both sides need live in
+	SkafinityBoard rather than in either drawing of it. What is deliberately NOT shared is layout:
+	Razor and the DOM lay out differently enough that a common description of a row would be a lowest
+	common denominator of both.
 
-	Re-theming: the board derives its whole palette from one colour. Set SkafinityTheme.Accent
-	from your game (e.g. to your own UI accent) and the board follows; leave it unset and it is
-	neutral gray-on-black. SkafinityMusicPanel.razor.scss holds only the layout/type tokens.
+	Re-theming: the board derives its whole palette from one colour. Set SkafinityTheme.Accent from
+	your game (e.g. to your own UI accent) and the board follows; leave it unset and it is neutral
+	gray-on-black. SkafinityMusicPanel.razor.scss holds only the layout/type tokens.
 *@
 
 <root class="@( IsOpen ? "open" : "" )">
 	@if ( IsOpen )
 	{
-	@{ var cfg = Player?.EffectiveConfig(); int genre = cfg?.Genre ?? 0; }
-	<div class="music" style="background-color:@SkafinityTheme.Bg;">
+	@{
+		var cfg = Player?.EffectiveConfig();
+		int genre = cfg?.Genre ?? 0;
+		var here = Player?.Playhead() ?? default;
+		bool known = here.Duration > 0;
+	}
+	<div class="board" style="background-color:@SkafinityTheme.Bg;">
 		<div class="header">
 			<div class="title">MUSIC</div>
 			<div class="close" onclick="@Toggle">✕</div>
 		</div>
-		<div class="divider"></div>
 
-		<div class="top">
+		@* ── Transport ─────────────────────────────────────────────────────────────────────
+		   Two rows: the buttons, and the bar that says where in the song they are acting. *@
+		<div class="transport">
 			<div class="row">
-				<div class="label" style="@LabelStyle">NOW PLAYING</div>
-				<div class="play-row">
-					<div class="seed-box">@Seed()</div>
-					<div class="btn" style="@BtnStyle" onclick="@CopySeed">@_copyLabel</div>
+				<div class="btn big" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.PrevTitle"
+					 onclick="@( () => Step( -1 ) )">@SkafinityBoard.Copy.Prev</div>
+				<div class="btn big primary" style="@BtnOnStyle" tooltip="@SkafinityBoard.Copy.PlayTitle"
+					 onclick="@TogglePlay">@( Playing ? SkafinityBoard.Copy.Pause : SkafinityBoard.Copy.Play )</div>
+				<div class="btn big" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.NextTitle"
+					 onclick="@( () => Step( 1 ) )">@SkafinityBoard.Copy.Next</div>
+
+				<div class="now" style="@LabelStyle">@SkafinityBoard.Copy.NowPlaying <b style="@TextStyle">#@( Player?.N ?? 0 )</b></div>
+
+				@* Playback stalled on the song you skipped to — as opposed to the silent background
+				   look-ahead, which nobody needs telling about. *@
+				@if ( Player?.IsBuffering == true )
+				{
+					<div class="bufstate" style="@AccentTextStyle">@SkafinityBoard.Copy.Generating( Player?.N ?? 0 )</div>
+				}
+
+				<div class="vol right" style="@LabelStyle">
+					@SkafinityBoard.Copy.Volume
+					<div class="slider" style="@AccentTextStyle">
+						<SliderControl Min="@(0f)" Max="@(1.5f)" Step="@(0.01f)"
+									   Value="@( Player?.Volume ?? 1f )"
+									   OnValueChanged="@( (float v) => SetVolume( v ) )" />
+					</div>
 				</div>
 			</div>
 
-			<div class="row">
-				<div class="label" style="@LabelStyle">SONG</div>
-				<div class="play-row">
-					<div class="btn wide" style="@BtnStyle" onclick="@( () => Step( -1 ) )">◀ Prev</div>
-					<div class="num">@( Player?.N ?? 0 )</div>
-					<div class="btn wide" style="@BtnStyle" onclick="@( () => Step( 1 ) )">Next ▶</div>
+			@* The seek bar. The whole song is already in memory, so a scrub is a stream restart on
+			   PCM we are holding rather than a fetch — which is why this is a plain slider and not a
+			   loading affordance. It goes inert, rather than drawing against a guess, until the song
+			   has been rendered and has a length worth stating. *@
+			<div class="seek">
+				<div class="time" style="@LabelStyle">@SkafinityBoard.Time( ShownTime( here ), known )</div>
+				<div class="slider grow @( known ? "" : "off" )" style="@AccentTextStyle" tooltip="@SkafinityBoard.Copy.SeekTitle">
+					<SliderControl Min="@(0f)" Max="@(1000f)" Step="@(1f)"
+								   Value="@( known ? ShownRatio( here ) * 1000f : 0f )"
+								   OnValueChanged="@( (float v) => Scrub( v / 1000f, here.Duration ) )" />
 				</div>
-			</div>
-
-			<div class="row">
-				<div class="label" style="@LabelStyle">PLAY A SEED</div>
-				<div class="play-row">
-					<TextEntry @ref="_tagEntry" placeholder="Paste tag:n[:genre][:vibe] (or just a tag)" class="tag-input" />
-					<div class="btn" style="@BtnStyle" onclick="@Play">Play</div>
-					<div class="btn" style="@BtnStyle" onclick="@UseDefault">Use default</div>
-				</div>
-			</div>
-
-			<div class="row">
-				<div class="label" style="@LabelStyle">MUTE</div>
-				<div class="play-row">
-					<div class="btn toggle @( Player?.Enabled == false ? "on" : "" )"
-						 style="@( Player?.Enabled == false ? BtnOnStyle : BtnStyle )"
-						 onclick="@ToggleMute">@( Player?.Enabled == false ? "MUTED" : "PLAYING" )</div>
-				</div>
-			</div>
-
-			<div class="row">
-				<div class="label" style="@LabelStyle">VOLUME</div>
-				<div class="cells">
-					@foreach ( var v in VolumeSteps )
-					{
-						var vv = v;
-						var on = ( Player?.Volume ?? 1f ) >= vv - 0.001f;
-						<div class="cell" style="@( on ? CellFilledStyle : CellStyle )"
-							 onclick="@( () => SetVolume( vv ) )">@VolLabel( vv )</div>
-					}
-				</div>
+				<div class="time total" style="@LabelStyle">@SkafinityBoard.Time( here.Duration, known )</div>
 			</div>
 		</div>
 
-		<div class="divider"></div>
+		@* ── The seed ──────────────────────────────────────────────────────────────────────
+		   TWO copy buttons, because "share this" means one of two things and neither can be
+		   recovered from the other: the song, with everything it left to chance written down, or
+		   the station as it stands, which keeps rolling for whoever is handed it. *@
+		<div class="row seed-bar">
+			<TextEntry @ref="_seedEntry" placeholder="@SkafinityBoard.Copy.SeedPlaceholder" class="grow seed-input" />
+			<div class="btn primary" style="@BtnOnStyle" onclick="@PlayTyped">@SkafinityBoard.Copy.SeedGo</div>
+			<div class="btn" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.CopySongTitle"
+				 onclick="@CopySong">@_copySongLabel</div>
+			<div class="btn" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.CopyStationTitle"
+				 onclick="@CopyStation">@_copyStationLabel</div>
+		</div>
 
-		@if ( Player?.IsBuffering == true )
+		@* ── What plays ────────────────────────────────────────────────────────────────────
+		   These are not knob controls — genre, reroll and shuffle change the seed, and tinker only
+		   opens the box — so they live on the board itself. Putting them in the mixer made them look
+		   like part of it AND hid them from everyone who never opened it. *@
+		<div class="row what-plays">
+			<div class="label" style="@LabelStyle">@SkafinityBoard.Copy.Genre</div>
+			@* The dropdown IS the seed's genre part: "Random" takes it out of the string so every
+			   song rolls its own again, and without that entry there is no way back out of a genre
+			   once one has been chosen. It reads as selected when nothing is pinned. *@
+			<DropDown class="genre" style="@BtnStyle" Value="@GenreValue" Options="@GenreOptions"
+					  ValueChanged="@( (string v) => PickGenre( v ) )" />
+			<div class="btn" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.RerollTitle"
+				 onclick="@RerollStation">@SkafinityBoard.Copy.Reroll</div>
+			<div class="btn toggle @( Shuffling ? "on" : "" )" style="@( Shuffling ? BtnOnStyle : BtnStyle )"
+				 tooltip="@SkafinityBoard.Copy.ShuffleTitle"
+				 onclick="@ToggleShuffle">@( Shuffling ? SkafinityBoard.Copy.ShuffleOn : SkafinityBoard.Copy.ShuffleOff )</div>
+			<div class="btn toggle right @( _tinkering ? "on" : "" )" style="@( _tinkering ? BtnOnStyle : BtnStyle )"
+				 onclick="@ToggleTinker">@( _tinkering ? SkafinityBoard.Copy.TinkerOpen : SkafinityBoard.Copy.Tinker )</div>
+		</div>
+
+		@* ── The knobs ─────────────────────────────────────────────────────────────────────
+		   Behind the tinker button. They are the deep end of the toy, and a wall of sliders is
+		   otherwise the first thing anybody meets. *@
+		@if ( _tinkering )
 		{
-			<div class="row">
-				<div class="label" style="@LabelStyle">STATUS — waiting on the song you skipped to</div>
-				<div class="buffering">
-					<div class="buffering-label" style="@AccentTextStyle">Generating…</div>
-					<div class="bar"><div class="bar-fill" style="@BarFillStyle( BufferingProgress )"></div></div>
+			<div class="panel vibe" style="@PanelStyle">
+				<div class="h2" style="@LabelStyle">@SkafinityBoard.Copy.VibeHeading</div>
+				<div class="matrix">
+					<div class="mrow mhead">
+						<div class="mvoice"></div>
+						@foreach ( var h in SkafinityBoard.ColumnHeaders )
+						{
+							<div class="mcell mhlabel" style="@LabelStyle">@h</div>
+						}
+					</div>
+					@foreach ( var row in SkafinityBoard.Matrix( genre ) )
+					{
+						<div class="mrow">
+							<div class="mvoice">@row.Voice</div>
+							@for ( int col = 0; col < SkafinityBoard.ColumnHeaders.Length; col++ )
+							{
+								var f = row.Cells[col];
+								<div class="mcell">
+									@if ( f != null )
+									{
+										@Knob( f, cfg, SkafinityBoard.KnobLabel( f, col ) )
+									}
+								</div>
+							}
+						</div>
+					}
+				</div>
+
+				@* Only when there IS a global knob. They have all been retired to reserved wire slots
+				   (tempo to GenreProfile, width and reverb to house config), and a heading over an
+				   empty grid reads as a panel that failed to draw something. *@
+				@if ( SkafinityBoard.Globals( genre ).Count > 0 )
+				{
+					<div class="glabel" style="@LabelStyle">@SkafinityBoard.Copy.GlobalHeading</div>
+					<div class="global-grid">
+						@foreach ( var f in SkafinityBoard.Globals( genre ) )
+						{
+							<div class="knob-cell">@Knob( f, cfg, f.Name )</div>
+						}
+					</div>
+				}
+
+				@* The only two buttons that act on the sliders, and they are not two dice. 🎲 always
+				   moves every knob, because it draws a fresh vibe and PINS it. ↺ is the way back out —
+				   dragging a knob pins the whole vibe, so without it one accidental drag turns an
+				   endless station into one song forever — and it is off when there is nothing pinned
+				   rather than looking like a die that did nothing. *@
+				<div class="row vibe-actions">
+					<div class="btn" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.VibeRollTitle"
+						 onclick="@RerollVibe">@SkafinityBoard.Copy.VibeRoll</div>
+					<div class="btn @( VibePinned ? "" : "off" )" style="@BtnStyle"
+						 tooltip="@SkafinityBoard.Copy.VibeRandomTitle"
+						 onclick="@RollVibe">@SkafinityBoard.Copy.VibeRandom</div>
 				</div>
 			</div>
 		}
 
-		<div class="row">
-			<div class="label" style="@LabelStyle">QUEUE — past · now · up next (click to jump)</div>
-			<div class="queue">
+		@* ── The playlist ──────────────────────────────────────────────────────────────────
+		   Past · now · up next. A row addresses its song by POSITION, which is its slot on the
+		   timeline; the number it SHOWS is the song's index in its own station, and under shuffle
+		   those are different things. *@
+		<div class="panel playlist-panel" style="@PanelStyle">
+			<div class="h2" style="@LabelStyle">@SkafinityBoard.Copy.PlaylistHeading</div>
+			<div class="playlist">
 				@foreach ( var e in Queue() )
 				{
 					var ee = e;
-					<div class="qitem @( e.Current ? "current" : "" ) @( e.Progress >= 0 ? "gen" : "" )"
-						 style="@QueueStyle( e )"
-						 onclick="@( () => Player?.SetN( ee.N ) )">
-						<div class="qn">@e.N</div>
-						<div class="qgenre" style="@LabelStyle">@GenreName( e.Genre )</div>
-						<div class="qstate">
+					<div class="plrow @( e.Current ? "now" : "" ) @( e.Cached ? "cached" : "" ) @( e.Progress >= 0 ? "gen" : "" )"
+						 style="@RowStyle( e )">
+						<div class="pllabel" onclick="@( () => Player?.SeekTo( ee.Position ) )">@( e.Current ? "▶ " : "" )#@e.N</div>
+						<div class="plgenre" style="@LabelStyle">@SkafinityBoard.GenreName( e.Genre )</div>
+						<div class="plstatus" style="@LabelStyle">
 							@if ( e.Progress >= 0 )
 							{
 								<div class="bar"><div class="bar-fill" style="@BarFillStyle( e.Progress )"></div></div>
 							}
 							else
 							{
-								@( e.Current ? "▶ now" : e.Cached ? "ready" : "—" )
+								@SkafinityBoard.RowStatus( e )
 							}
 						</div>
+						<div class="pldl" style="@LabelStyle" tooltip="@SkafinityBoard.Copy.ExportTitle( e.N )"
+							 onclick="@( () => Save( ee.Position ) )">⬇</div>
 					</div>
 				}
 			</div>
-		</div>
-
-		<div class="divider"></div>
-
-		<div class="row genre-row">
-			<div class="label" style="@LabelStyle">GENRE</div>
-			<div class="cells">
-				@for ( int g = 0; g < VibeCodec.GenreCount; g++ )
-				{
-					var gg = g;
-					<div class="cell choice @( g == genre ? "selected" : "" )"
-						 style="@( g == genre ? CellFilledStyle : CellStyle )"
-						 onclick="@( () => SetGenre( gg ) )">@VibeCodec.Genres[g]</div>
-				}
-				<div class="btn reroll" style="@BtnStyle" onclick="@Reroll">🎲 Reroll</div>
-				<div class="btn reroll toggle @( Player?.RandomEverySong == true ? "on" : "" )"
-					 style="@( Player?.RandomEverySong == true ? BtnOnStyle : BtnStyle )"
-					 onclick="@ToggleRandomEverySong">🎲 Random every song: @( Player?.RandomEverySong == true ? "ON" : "OFF" )</div>
-				<div class="btn" style="@BtnStyle" onclick="@Save">Save .wav</div>
+			<div class="row jump" style="@LabelStyle">
+				@SkafinityBoard.Copy.JumpTo
+				<TextEntry @ref="_jumpEntry" Numeric="@true" class="jump-input" />
+				<div class="btn" style="@BtnStyle" onclick="@JumpTo">@SkafinityBoard.Copy.JumpGo</div>
+				<div class="btn right" style="@BtnStyle"
+					 onclick="@( () => Save( Player?.Position ?? 0 ) )">@( _saving ? SkafinityBoard.Copy.ExportBusy : SkafinityBoard.Copy.Export )</div>
 			</div>
 		</div>
-
-		<div class="label" style="@LabelStyle">VIBE — per-instrument mixer (tweak, then share the seed)</div>
-		<div class="matrix">
-			<div class="mrow mhead">
-				<div class="mvoice"></div>
-				@foreach ( var h in ColHeaders )
-				{
-					<div class="mcell mlabel">@h</div>
-				}
-			</div>
-			@foreach ( var (voice, cells) in InstrumentRows( genre ) )
-			{
-				<div class="mrow">
-					<div class="mvoice">@voice</div>
-					@for ( int col = 0; col < ColHeaders.Length; col++ )
-					{
-						var f = cells[col];
-						<div class="mcell">
-							@if ( f != null )
-							{
-								@Knob( f, cfg, f.Name == ColHeaders[col] ? "" : f.Name )
-							}
-						</div>
-					}
-				</div>
-			}
-		</div>
-
-		@* Only when there IS a global knob. They have all been retired to reserved wire slots
-		   (tempo to GenreProfile, width and reverb to house config), and a divider plus a heading
-		   over an empty grid reads as a panel that failed to draw something. *@
-		@if ( GlobalRows( genre ).Any() )
-		{
-			<div class="divider"></div>
-			<div class="label" style="@LabelStyle">GLOBAL</div>
-			<div class="vibe-grid">
-				@foreach ( var f in GlobalRows( genre ) )
-				{
-					<div class="vibe">@Knob( f, cfg, f.Name )</div>
-				}
-			</div>
-		}
 
 		@if ( _msg != null )
 		{
-			<div class="hint" style="@AccentTextStyle">@_msg</div>
+			<div class="msg" style="@AccentTextStyle">@_msg</div>
 		}
 	</div>
 	}
@@ -211,16 +241,6 @@
 	/// <summary>The player this panel drives. Leave unset to auto-find a <see cref="SkafinityPlayer"/>
 	/// in the scene on start.</summary>
 	[Property] public SkafinityPlayer Player { get; set; }
-
-	// One tick cell per base-36 level the seed encodes (VibeCodec.Levels).
-	static int UiTicks => VibeCodec.Levels;
-	// One header per grid column. Column 0 (VOLUME) is a local mix preference and never travels;
-	// columns 1..4 are the wire. The grid is rectangular, so a voice with nothing in its last
-	// column simply leaves that cell empty.
-	static readonly string[] ColHeaders = { "VOLUME", "TONE", "CHARACTER", "EXTRA", "MORE" };
-
-	// Volume control steps over the player's 0..2 range.
-	static readonly float[] VolumeSteps = { 0f, 0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f };
 
 	/// <summary>Whether the settings board is showing. Host-driven — set it from your game (or
 	/// call <see cref="Toggle"/>) to wire the board to a hotkey / pause menu / your own button.
@@ -233,10 +253,24 @@
 	/// from code while starting <c>false</c> on every client.</remarks>
 	public bool IsOpen { get; set; }
 
-	TextEntry _tagEntry;
-	bool _tagInit;
-	string _copyLabel = "Copy";
+	TextEntry _seedEntry;
+	TextEntry _jumpEntry;
+	bool _seedInit;
+	// Both copy buttons keep their own label so pressing one doesn't report "copied!" on the other.
+	string _copySongLabel = SkafinityBoard.Copy.CopySong;
+	string _copyStationLabel = SkafinityBoard.Copy.CopyStation;
 	string _msg;
+	// The knob matrix is closed until asked for. Not a [Property] for the same reason IsOpen is not.
+	bool _tinkering;
+	bool _saving;
+
+	// A DRAG, held. SliderControl reports every mouse-move and has no "let go" event, so seeking on
+	// each report would restart the stream at every pixel. The thumb is therefore followed here and
+	// the transport is told once the drag has settled — which is the same one-seek-per-gesture the
+	// web gets from listening to `change` rather than `input`.
+	const float ScrubSettle = 0.2f;
+	float _scrubTo = -1f;
+	TimeSince _scrubSince;
 
 	protected override void OnStart()
 	{
@@ -247,118 +281,176 @@
 
 	protected override void OnUpdate()
 	{
-		// One-time seed of the text entry with the current tag once the board opens.
-		if ( !IsOpen ) { _tagInit = false; return; }
-		if ( !_tagInit && _tagEntry != null ) { _tagEntry.Text = Player?.Tag ?? ""; _tagInit = true; }
+		// One-time seed of the text entry with the station as it stands, once the board opens.
+		if ( !IsOpen ) { _seedInit = false; return; }
+		if ( !_seedInit && _seedEntry != null )
+		{
+			_seedEntry.Text = Player?.StationSeed ?? "";
+			_seedInit = true;
+		}
+
+		// The held scrub, applied once the drag settles. See _scrubTo.
+		if ( _scrubTo >= 0f && _scrubSince > ScrubSettle )
+		{
+			var d = Player?.Playhead().Duration ?? 0;
+			if ( d > 0 ) Player?.SeekWithin( _scrubTo * d );
+			_scrubTo = -1f;
+		}
 	}
 
 	// ── Theme bindings ──
-	// The palette is runtime (SkafinityTheme), so every fill and themed text colour is bound
-	// here as an inline style rather than named in the .scss. The stylesheet owns every border
-	// in return — see the header comment there for why the two must not overlap.
+	// The palette is runtime (SkafinityTheme), so every fill and themed text colour is bound here as
+	// an inline style rather than named in the .scss. The stylesheet owns every border in return —
+	// see the header comment there for why the two must not overlap.
+	//
+	// The one thing an inline style cannot reach is the INSIDE of a control this library did not
+	// write: SliderControl's track and thumb are its own panels. But `color` inherits and
+	// `currentColor` resolves against it, so a themed wrapper sets the colour and the scss spends it
+	// (`background-color: currentColor`) — which is why every slider here sits in a div carrying
+	// AccentTextStyle.
 	static string LabelStyle => $"color:{SkafinityTheme.TextDim};";
+	static string TextStyle => $"color:{SkafinityTheme.Text};";
 	static string AccentTextStyle => $"color:{SkafinityTheme.AccentCss};";
 	static string BtnStyle => $"background-color:{SkafinityTheme.Cell}; color:{SkafinityTheme.Text};";
 	static string BtnOnStyle => $"background-color:{SkafinityTheme.AccentBg}; color:{SkafinityTheme.Text};";
-	static string CellStyle => $"background-color:{SkafinityTheme.Cell};";
-	static string CellFilledStyle => $"background-color:{SkafinityTheme.CellFill};";
-	static string BarFillStyle( float p ) => $"width:{Pct( p )}; background-color:{SkafinityTheme.AccentCss};";
+	static string PanelStyle => $"background-color:{SkafinityTheme.Cell};";
+	static string BarFillStyle( float p ) => $"width:{SkafinityBoard.Percent( p )}; background-color:{SkafinityTheme.AccentCss};";
 
-	// A queue entry reads as one of three states, brightest first: the song playing now, a song
+	// A playlist row reads as one of three states, brightest first: the song playing now, a song
 	// already rendered and waiting, anything else.
-	static string QueueStyle( SkafinityPlayer.QueueEntry e ) =>
+	static string RowStyle( SkafinityPlayer.QueueEntry e ) =>
 		e.Current ? $"background-color:{SkafinityTheme.AccentBg};"
 		: e.Cached ? $"background-color:{SkafinityTheme.CellFillSoft};"
-		: CellStyle;
+		: "";
 
-	string Seed() => Player?.CurrentSeed ?? "—";
+	bool Playing => Player != null && !Player.IsPaused;
+	bool Shuffling => Player?.Shuffle ?? false;
+	bool VibePinned => Player?.VibePinned ?? false;
+	bool GenreRolling => Player == null || !Player.GenrePinned;
 
 	/// <summary>Open/close the settings board. Convenience for hosts that want to bind a single
 	/// action; you can also set <see cref="IsOpen"/> directly.</summary>
 	public void Toggle()
 	{
 		IsOpen = !IsOpen;
-		if ( !IsOpen ) _tagInit = false;
+		if ( !IsOpen ) _seedInit = false;
 	}
 
-	static string VolLabel( float v ) => v <= 0f ? "0" : $"{(int)Math.Round( v * 100 )}%";
+	// ── The playhead ──
+	// Mid-drag the thumb the user is holding wins over the clock; every other moment reads the
+	// transport. Both halves have to agree or the label counts up while the thumb sits still.
+	float ShownRatio( SkafinityPlayer.SongPosition p ) => _scrubTo >= 0f ? _scrubTo : p.Ratio;
+	double ShownTime( SkafinityPlayer.SongPosition p ) => _scrubTo >= 0f ? _scrubTo * p.Duration : p.Time;
 
-	// Instrument rows for the genre: each voice with its [vol, tone, character, extra] cells
-	// (null where a genre leaves a column empty). Order = the library's display/wire order.
-	static IEnumerable<(string Voice, VibeCodec.Field[] Cells)> InstrumentRows( int genre )
+	void Scrub( float ratio, double duration )
 	{
-		var order = new List<string>();
-		var byVoice = new Dictionary<string, VibeCodec.Field[]>();
-		foreach ( var f in VibeCodec.Fields( genre ) )
-		{
-			if ( f.Voice == null ) continue;
-			if ( !byVoice.TryGetValue( f.Voice, out var cells ) )
-			{
-				cells = new VibeCodec.Field[ColHeaders.Length];
-				byVoice[f.Voice] = cells;
-				order.Add( f.Voice );
-			}
-			if ( f.Column >= 0 && f.Column < cells.Length ) cells[f.Column] = f;
-		}
-		foreach ( var v in order ) yield return (v, byVoice[v]);
+		if ( duration <= 0 ) return;
+		_scrubTo = Math.Clamp( ratio, 0f, 1f );
+		_scrubSince = 0;
 	}
 
-	static IEnumerable<VibeCodec.Field> GlobalRows( int genre ) =>
-		VibeCodec.Fields( genre ).Where( f => f.Voice == null );
+	void TogglePlay() { Player?.TogglePlay(); _msg = null; }
+	void Step( int d ) { Player?.StepN( d ); _msg = null; }
+	void SetVolume( float v ) { if ( Player != null ) Player.Volume = v; }
 
-	// Index of a field within the current genre's field list (what Player.SetVibe expects).
-	static int FieldIndex( int genre, VibeCodec.Field field )
+	// ── The seed ──
+	void PlayTyped()
 	{
-		var fields = VibeCodec.Fields( genre );
-		for ( int i = 0; i < fields.Count; i++ )
-			if ( ReferenceEquals( fields[i], field ) ) return i;
-		return -1;
+		if ( Player == null ) { _msg = null; return; }
+		// A seed that will not parse leaves playback exactly where it was and says why, rather than
+		// starting something adjacent to what was typed.
+		_msg = Player.PlaySeed( _seedEntry?.Text, out var error )
+			? SkafinityBoard.Copy.Playing( Player.CurrentSeed ) : error;
 	}
 
-	// One knob: a name/value header over a strip of tick cells (or labeled choice cells).
+	// This song, with everything it left to chance written down — whoever is handed it hears THIS,
+	// not whatever their own station rolls at that index.
+	void CopySong()
+	{
+		try { Clipboard.SetText( Player?.CurrentSeed ?? "" ); _copySongLabel = SkafinityBoard.Copy.Copied; }
+		catch { _copySongLabel = "—"; }
+	}
+
+	// The seed as it stands: whatever this player left rolling keeps rolling for them too.
+	void CopyStation()
+	{
+		try { Clipboard.SetText( Player?.StationSeed ?? "" ); _copyStationLabel = SkafinityBoard.Copy.Copied; }
+		catch { _copyStationLabel = "—"; }
+	}
+
+	// ── What plays ──
+	// "" is the Random entry — the genre is not in the seed, so every song rolls its own.
+	static readonly List<Option> GenreOptions = BuildGenreOptions();
+	static List<Option> BuildGenreOptions()
+	{
+		var list = new List<Option> { new( SkafinityBoard.Copy.GenreRandom, "" ) };
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			list.Add( new Option( VibeCodec.Genres[g], g.ToString() ) );
+		return list;
+	}
+	string GenreValue => GenreRolling ? "" : ( Player?.EffectiveConfig()?.Genre ?? 0 ).ToString();
+
+	void PickGenre( string v )
+	{
+		if ( Player == null ) return;
+		if ( string.IsNullOrEmpty( v ) ) { Player.RollGenre(); _msg = SkafinityBoard.Copy.GenreUnpinned; return; }
+		if ( int.TryParse( v, out var g ) ) { Player.SetGenre( g ); _msg = null; }
+	}
+
+	// A different SONG, not a different taste: a fresh station at song 0, with anything pinned left
+	// pinned.
+	void RerollStation() { Player?.RerollStation(); _msg = SkafinityBoard.Copy.NewStation; }
+
+	void ToggleShuffle() { if ( Player != null ) Player.SetShuffle( !Player.Shuffle ); _msg = null; }
+
+	void ToggleTinker() { _tinkering = !_tinkering; }
+
+	// ── The knobs ──
+	// One knob: a name/value header over a real slider (or a dropdown, where the field is a choice).
+	// The whole layout comes from the library's field metadata for the current genre, so a new genre
+	// — or a new knob — is a pure engine change and there is no field table here.
 	RenderFragment Knob( VibeCodec.Field f, MusicGen.Config cfg, string label )
 	{
+		int genre = cfg?.Genre ?? 0;
+		int idx = SkafinityBoard.FieldIndex( genre, f );
+		float norm = cfg != null ? f.GetNorm( cfg ) : 0f;
 		return @<text>
-		<div class="vibe-head">
-			<div class="vibe-name">@label</div>
-			<div class="vibe-val">@( cfg != null ? f.Display( cfg ) : "" )</div>
-		</div>
-		<div class="cells">
-			@{
-				int genre = cfg?.Genre ?? 0;
-				int idx = FieldIndex( genre, f );
-			}
+		<div class="knob">
+			<div class="knob-head">
+				<div class="knob-name" style="@LabelStyle">@label</div>
+				<div class="knob-val" style="@AccentTextStyle">@( cfg != null ? f.Display( cfg ) : "" )</div>
+			</div>
 			@if ( f.Choices != null )
 			{
-				int sel = cfg != null ? (int)MathF.Round( f.GetNorm( cfg ) * (f.Choices.Length - 1) ) : 0;
-				@for ( int k = 0; k < f.Choices.Length; k++ )
-				{
-					var kk = k; var n = f.Choices.Length;
-					<div class="cell choice @( k == sel ? "selected" : "" )"
-						 style="@( k == sel ? CellFilledStyle : CellStyle )"
-						 onclick="@( () => SetVibe( idx, kk / (float)(n - 1) ) )">@f.Choices[k]</div>
-				}
+				<DropDown class="knob-select" style="@BtnStyle" Value="@SkafinityBoard.ChoiceIndex( f, norm ).ToString()"
+						  Options="@ChoiceOptions( f )"
+						  ValueChanged="@( (string v) => SetChoice( idx, f, v ) )" />
 			}
 			else
 			{
-				int sel = cfg != null ? (int)MathF.Round( f.GetNorm( cfg ) * (UiTicks - 1) ) : 0;
-				@for ( int k = 0; k < UiTicks; k++ )
-				{
-					var kk = k;
-					<div class="cell tick @( k == sel ? "selected" : "" )"
-						 style="@( k <= sel ? CellFilledStyle : CellStyle )"
-						 onclick="@( () => SetVibe( idx, kk / (float)(UiTicks - 1) ) )"></div>
-				}
+				@* Snapped to the same discrete grid the seed encodes (one level per base-36 char), so
+				   the slider can only land on values the vibe can actually represent. *@
+				<div class="slider" style="@AccentTextStyle">
+					<SliderControl Min="@(0f)" Max="@( (float)(VibeCodec.Levels - 1) )" Step="@(1f)"
+								   Value="@( MathF.Round( norm * (VibeCodec.Levels - 1) ) )"
+								   OnValueChanged="@( (float v) => SetVibe( idx, v / (VibeCodec.Levels - 1) ) )" />
+				</div>
 			}
 		</div>
 	</text>;
 	}
 
-	void Step( int d ) { Player?.StepN( d ); _msg = null; }
+	static List<Option> ChoiceOptions( VibeCodec.Field f )
+	{
+		var list = new List<Option>( f.Choices.Length );
+		for ( int k = 0; k < f.Choices.Length; k++ ) list.Add( new Option( f.Choices[k], k.ToString() ) );
+		return list;
+	}
 
-	void ToggleMute() { if ( Player != null ) Player.Enabled = !Player.Enabled; }
-
-	void SetVolume( float v ) { if ( Player != null ) Player.Volume = v; }
+	void SetChoice( int idx, VibeCodec.Field f, string v )
+	{
+		if ( int.TryParse( v, out var k ) ) SetVibe( idx, SkafinityBoard.ChoiceNorm( f, k ) );
+	}
 
 	void SetVibe( int index, float norm )
 	{
@@ -367,88 +459,71 @@
 		_msg = null;
 	}
 
-	void SetGenre( int genre ) { Player?.SetGenre( genre ); _msg = null; }
+	// RerollVibe()'s defaults: the genre and the per-instrument volumes stay — the die over the
+	// mixer re-voices the band, it does not swap the band or upend the mix you set.
+	void RerollVibe() { Player?.RerollVibe(); _msg = SkafinityBoard.Copy.VibeRolled; }
 
-	void Play()
+	void RollVibe()
 	{
-		if ( Player == null ) { _msg = null; return; }
-		// A seed that will not parse leaves playback exactly where it was and says why, rather than
-		// starting something adjacent to what was typed.
-		_msg = Player.PlaySeed( _tagEntry?.Text, out var error )
-			? $"Playing {Player.CurrentSeed}" : error;
+		if ( Player == null || !Player.VibePinned ) return;   // nothing pinned — nothing to hand back
+		Player.RollVibe();
+		_msg = SkafinityBoard.Copy.VibeUnpinned;
 	}
 
-	void UseDefault()
-	{
-		Player?.SetTag( "" );
-		if ( _tagEntry != null ) _tagEntry.Text = "";
-		_msg = "Back to the default tag and vibe";
-	}
-
-	void CopySeed()
-	{
-		try { Clipboard.SetText( Seed() ); _copyLabel = "Copied!"; }
-		catch { _copyLabel = "—"; }
-	}
-
-	void Save()
-	{
-		var name = Player?.SaveCurrentToFile();
-		_msg = string.IsNullOrEmpty( name ) ? "Couldn't save song" : $"Saved {name} to your s&box data folder";
-	}
-
-	// RerollVibe()'s defaults: the genre goes, the per-instrument volumes stay — a reroll should
-	// hand you a different song, not upend the mix you set.
-	void Reroll() { Player?.RerollVibe(); _msg = "Rerolled the genre and every knob but the volumes"; }
-
-	void ToggleRandomEverySong()
-	{
-		if ( Player == null ) return;
-		bool on = !Player.RandomEverySong;
-		Player.SetRandomEverySong( on );
-		_msg = on ? "Shuffle: every new song freezes a fresh vibe + genre (keeps your volumes)" : "Shuffle off";
-	}
-
-	// ── Queue view ──
+	// ── The playlist ──
 	// How many history / look-ahead entries to show either side of the current song.
 	static int QueueBack => 3;
 	static int QueueFwd => 5;
 	IEnumerable<SkafinityPlayer.QueueEntry> Queue() =>
 		Player?.Timeline( QueueBack, QueueFwd ) ?? Enumerable.Empty<SkafinityPlayer.QueueEntry>();
 
-	static string GenreName( int g ) =>
-		g >= 0 && g < VibeCodec.GenreCount ? VibeCodec.Genres[g] : "?";
-
-	static string Pct( float f ) => $"{(int)MathF.Round( Math.Clamp( f, 0f, 1f ) * 100 )}%";
-
-	// Progress of the song a foreground seek is buffering (the current index, mid-regenerate).
-	float BufferingProgress
+	void JumpTo()
 	{
-		get
+		if ( Player == null ) return;
+		if ( int.TryParse( _jumpEntry?.Text, out var p ) ) Player.SeekTo( p );
+	}
+
+	// Rendering a song outside the cache takes seconds, so the button says so — a save that looks
+	// like it did nothing is a save people press again.
+	async void Save( int position )
+	{
+		if ( Player == null || _saving ) return;
+		_saving = true;
+		try
 		{
-			var here = Player?.Timeline( 0, 0 );
-			return here != null && here.Count > 0 && here[0].Progress >= 0f ? here[0].Progress : 0f;
+			var name = await Player.SaveToFileAsync( position );
+			_msg = string.IsNullOrEmpty( name ) ? SkafinityBoard.Copy.SaveFailed : SkafinityBoard.Copy.Saved( name );
 		}
+		finally { _saving = false; }
 	}
 
 	protected override int BuildHash()
 	{
-		// Fold in the queue's cached/generating state so the view animates as songs render. The
-		// quantised progress keeps the bars moving without re-rendering on every sub-percent tick.
+		// Fold in the playhead and the queue's cached/generating state so the board animates as the
+		// song runs and as songs render. Both are QUANTISED: the seek bar wants to move, but a panel
+		// that rebuilds every frame to advance a bar by a pixel costs more than it shows. A fifth of
+		// a second is smooth to look at and cheap to draw.
 		var q = new HashCode();
 		q.Add( IsOpen ); q.Add( Player?.CurrentSeed ); q.Add( Player?.CurrentVibe );
 		q.Add( Player?.Enabled ?? true ); q.Add( Player?.Volume ?? 1f );
-		q.Add( Player?.RandomEverySong ?? false ); q.Add( Player?.IsBuffering ?? false );
-		q.Add( _msg ); q.Add( _copyLabel );
+		q.Add( Player?.GenrePinned ?? false ); q.Add( Player?.VibePinned ?? false );
+		q.Add( Player?.Shuffle ?? false ); q.Add( Player?.IsPaused ?? false );
+		q.Add( _tinkering ); q.Add( Player?.IsBuffering ?? false ); q.Add( _saving );
+		q.Add( _msg ); q.Add( _copySongLabel ); q.Add( _copyStationLabel );
+		q.Add( _scrubTo );
 		// The palette rides in inline style= values, so the board has to rebuild when the host
 		// retints it — nothing else in this hash moves when only SkafinityTheme.Accent changes.
 		q.Add( SkafinityTheme.Accent );
 		if ( IsOpen )
+		{
+			var here = Player?.Playhead() ?? default;
+			q.Add( (int)(here.Time * 5) ); q.Add( (int)(here.Duration * 5) );
 			foreach ( var e in Queue() )
 			{
-				q.Add( e.N ); q.Add( e.Cached ); q.Add( e.Current ); q.Add( e.Genre );
+				q.Add( e.N ); q.Add( e.Position ); q.Add( e.Cached ); q.Add( e.Current ); q.Add( e.Genre );
 				q.Add( e.Progress >= 0 ? (int)MathF.Round( e.Progress * 20 ) : -1 );
 			}
+		}
 		return q.ToHashCode();
 	}
 }
