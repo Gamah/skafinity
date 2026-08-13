@@ -387,7 +387,11 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		return list;
 	}
 
-	string SeedTag => string.IsNullOrEmpty( Tag ) ? "" : Tag;
+	// RESOLVED, not raw: an unset Tag is a station all the same (SeedCodec's fallback word), and it
+	// is the station every seed this player shows, copies or rolls a shuffle tag from must name. Left
+	// raw, a fresh player writes ":129" — a seed that plays correctly and reads as truncated, and
+	// which tells whoever is handed it nothing about which station it came from.
+	string SeedTag => SeedCodec.Station( Tag );
 	// Build the PRNG seed string from a resolved tag, so worker code never re-reads state. The
 	// spelling is the ENGINE's (SeedCodec.SongSeed) rather than this host's: it decides what song
 	// an untagged seed is, and the web resolves the same one.
