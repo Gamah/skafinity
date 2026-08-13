@@ -21,6 +21,7 @@ compact "badge" layout are deliberately not part of this; the element is the who
 | `web/skafinity-element.js` | The element: shadow root, UI, theming. Import this — it pulls the rest. |
 | `web/player.js` | The headless transport (scheduling, look-ahead, the timeline). Usable on its own. |
 | `web/palette.js` | The colour derivation. DOM-free; ported from `SkafinityTheme.cs`. |
+| `web/encode.js` | The export: the browser's `AudioEncoder` plus the FLAC/Ogg-Opus muxing. DOM-free. |
 | `web/engine.js`, `web/worker.js`, `web/queue.js`, `web/_framework/` | The engine and its plumbing. |
 
 All of them must be served from the same directory — `player.js` resolves the worker and `engine.js`

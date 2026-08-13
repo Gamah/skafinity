@@ -102,7 +102,7 @@ the same `make dist` you run locally, so the live tree can't drift from a dev bo
 > listened to. The consequence: a change to `Code/Engine/**`, `wasm/Exports.cs` or
 > `web/engine.js` reaches the site only once you've run `make` locally and committed the
 > re-staged `web/_framework`. Page-only edits (`index.html`, `app.js`, `player.js`,
-> `palette.js`, `skafinity-element.js`, `style.css`, `config.json`) just need a push.
+> `palette.js`, `encode.js`, `skafinity-element.js`, `style.css`, `config.json`) just need a push.
 
 ## What's here
 
@@ -113,6 +113,7 @@ the same `make dist` you run locally, so the live tree can't drift from a dev bo
 | `wasm/Exports.cs` | The `[JSExport]` boundary (generate, vibe codec, WAV, config) — the only web-specific code. |
 | `wasm/Skafinity.Wasm.csproj` | `browser-wasm` project that `<Compile Include>`s the shared `.cs` and builds the runtime. |
 | `web/engine.js` | Boots the .NET runtime and adapts the exports to the small `mod` API the app uses. |
+| `web/encode.js` | The export encoder: WebCodecs `AudioEncoder` plus the FLAC and Ogg-Opus muxing the browser does not do for you. Web-only — s&box still saves WAV through `Wav.cs`. |
 | `web/skafinity-element.js` · `player.js` · `palette.js` | The embeddable widget: `<skafinity-player>` (shadow root, UI, host-style sniffing), the headless transport it drives (crossfade scheduler, rolling playlist, look-ahead), and the palette derivation ported from the s&box panel's. See [`docs/embedding.md`](docs/embedding.md). |
 | `web/index.html` · `app.js` · `worker.js` · `style.css` | The toy page — a host for the element like any other page, plus URL-is-the-song hash sync and a light/dark switch. |
 | `sbox-library/Skafinity/skafinity.config.json` · `web/config.json` | The shared house-mix config (peak balances / kit presence / stereo-width knobs). Canonical in the library; `make` copies it to `web/`. Overlaid at runtime — retune the baseline mix or the width without a rebuild. |
@@ -131,8 +132,9 @@ the same `make dist` you run locally, so the live tree can't drift from a dev bo
 - **Rolling playlist** — `n` auto-advances on every crossfade and is persisted; a full
   playlist panel shows played / now-playing / up-next, with click-to-jump and per-song
   export.
-- **Export to disk** — generate the loop as an interleaved-stereo WAV in-browser and download
-  it (no server).
+- **Export to disk** — save any song in the playlist, encoded in the browser (FLAC where the
+  browser offers it, otherwise Opus at 256 kb/s; WAV if it can encode neither). No server, and
+  ~2 MB rather than the ~13 MB the same song is as raw PCM.
 - **Share via URL** — the seed lives in `location.hash`, so a reload or a shared link
   reproduces the exact same song.
 - **Random every song** — a 🎲 toggle that re-rolls the vibe *and the genre* for each new song

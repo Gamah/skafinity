@@ -13,6 +13,7 @@
 // web/app.js for how the toy does it), and every localStorage key is namespaced per instance.
 import { SkafinityPlayer } from './player.js';
 import { derivePalette, chooseMode, pickAccent, parseColor, NEUTRAL_ACCENT } from './palette.js';
+import { pickAudioFormat } from './encode.js';
 
 // One header per grid column. The wire carries columns 1..4 (column 0, VOLUME, is a local mix
 // preference and never travels), and the grid is rectangular — a voice with nothing in its last
@@ -732,10 +733,15 @@ export class SkafinityPlayerElement extends HTMLElement {
     go.setAttribute('part', 'button jump-go');
     go.onclick = () => { const v = parseInt(num.value, 10); if (Number.isFinite(v)) this.player.seekTo(v); };
     const dl = document.createElement('button');
-    dl.textContent = '⬇ .wav';
+    // The extension depends on what this browser can encode, and the probe is async — so the
+    // button starts as a plain "save" and names the format once the answer is in, rather than
+    // promising an extension it might not produce. See web/encode.js.
+    dl.textContent = '⬇ save';
     dl.className = 'right';
     dl.setAttribute('part', 'button export-button');
     dl.onclick = () => this.download(this.player.displayN);
+    this.els.exportBtn = dl;
+    pickAudioFormat().then((fmt) => { this.exportLabel = `⬇ .${fmt ? fmt.ext : 'wav'}`; dl.textContent = this.exportLabel; });
     jump.append('jump to ', num, go, dl);
     sec.append(list, jump);
     Object.assign(this.els, { playlistSec: sec, playlist: list });
@@ -878,8 +884,22 @@ export class SkafinityPlayerElement extends HTMLElement {
     this.els.msg.textContent = String(e && e.message ? e.message : e);
   }
 
-  download(songN) {
-    const { blob, filename } = this.player.exportWav(songN);
+  // Encoding is asynchronous and takes a moment, so the button says so — a save that looks like it
+  // did nothing is a save people press again.
+  async download(songN) {
+    const btn = this.els.exportBtn;
+    const was = this.exportLabel || (btn ? btn.textContent : '');
+    if (btn) { btn.disabled = true; btn.textContent = '⬇ …'; }
+    try {
+      this.offer(await this.player.exportSong(songN));
+    } catch (e) {
+      this.showMessage(`export failed: ${e && e.message ? e.message : e}`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = was; }
+    }
+  }
+
+  offer({ blob, filename }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -922,7 +942,10 @@ export class SkafinityPlayerElement extends HTMLElement {
       const label = document.createElement('button');
       label.className = 'pllabel';
       label.textContent = `${row.now ? '▶ ' : ''}#${row.n}`;
-      label.onclick = () => this.player.seekTo(row.n);
+      // `position` is the timeline slot and `n` is the song's index in ITS station — which under
+      // shuffle is 0 for every row. Everything that addresses a song by where it sits in the line
+      // (seek, export) takes the position.
+      label.onclick = () => this.player.seekTo(row.position);
 
       const genre = document.createElement('span');
       genre.className = 'plgenre';
@@ -943,8 +966,8 @@ export class SkafinityPlayerElement extends HTMLElement {
       const dl = document.createElement('button');
       dl.className = 'pldl';
       dl.textContent = '⬇';
-      dl.title = `Export #${row.n} to WAV`;
-      dl.onclick = (ev) => { ev.stopPropagation(); this.download(row.n); };
+      dl.title = `Export #${row.n}`;
+      dl.onclick = (ev) => { ev.stopPropagation(); this.download(row.position); };
 
       el.append(label, genre, status, dl);
       list.append(el);
