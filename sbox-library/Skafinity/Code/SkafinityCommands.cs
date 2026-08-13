@@ -97,6 +97,39 @@ public static class SkafinityCommands
 		Log.Info( $"[Skafinity] board {( panel.IsOpen ? "OPEN" : "closed" )}." );
 	}
 
+	/// <summary>Dump the board's panel tree — element name, runtime type, classes and screen rect,
+	/// one line per panel. TEMPORARY: it is here to answer one question that cannot be answered by
+	/// reading code, which is what the razor actually BUILT where a slider should be. Delete it once
+	/// that is settled.</summary>
+	/// <remarks>Two things it can say. If a slider's line reads <c>slidercontrol Panel</c> with no
+	/// children, the tag did not resolve to the component and razor fell back to a plain panel — a
+	/// box that can neither draw nor be dragged, and no error anywhere. If it reads
+	/// <c>SliderControl</c> with an <c>.inner &gt; .track</c> under it, the component is real and the
+	/// rects say which part is collapsed.</remarks>
+	[ConCmd( "skafinity_ui_dump" )]
+	public static void DumpUi()
+	{
+		var scene = Sandbox.Game.ActiveScene;
+		var board = scene?.GetAllComponents<SkafinityMusicPanel>().FirstOrDefault();
+		if ( board == null ) { Log.Warning( "[Skafinity] no board in the scene — run skafinity_panel first." ); return; }
+		if ( !board.IsOpen ) Log.Warning( "[Skafinity] the board is closed, so it has no tree to dump. Open it first." );
+		var root = board.Panel;
+		if ( root == null ) { Log.Warning( "[Skafinity] the board has no root panel yet." ); return; }
+		Log.Info( "── skafinity_ui_dump ──   element  type  .classes  [x y w h]" );
+		Dump( root, 0 );
+	}
+
+	static void Dump( Sandbox.UI.Panel p, int depth )
+	{
+		if ( p == null || depth > 12 ) return;
+		var r = p.Box.Rect;
+		var classes = string.Join( ".", p.Class );
+		Log.Info( $"{new string( ' ', depth * 2 )}{p.ElementName} <{p.GetType().Name}>"
+			+ $"{( string.IsNullOrEmpty( classes ) ? "" : " ." + classes )}"
+			+ $" [{r.Left:0} {r.Top:0} {r.Width:0}x{r.Height:0}]" );
+		foreach ( var c in p.Children ) Dump( c, depth + 1 );
+	}
+
 	// The rig itself. Returns the board to drive — an existing one wherever there is one — or null
 	// with a reason logged. `created` says whether anything was actually built.
 	static SkafinityMusicPanel BuildRig( out bool created )

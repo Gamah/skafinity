@@ -253,12 +253,19 @@ skafinitymusicpanel {
 		&.gen { border-left-color: $hover; }
 		&.now { border-left-color: $pick; }
 	}
+	// Three panels rather than one string, and the hash gets its own for a reason that is not
+	// layout: a label of more than one character beginning with `#` is read as a localisation token
+	// (SkafinityBoard.Copy.Hash). Alone in a panel it is one character, and survives.
 	.pllabel {
-		min-width: 52px; font-size: $fs-small; color: white; white-space: nowrap;
+		flex-direction: row; align-items: center;
+		min-width: 58px; font-size: $fs-small; color: white; white-space: nowrap;
 		cursor: pointer; pointer-events: all;
 
 		&:hover { color: #ffffff; text-decoration: underline; }
 	}
+	// A column, so every row's number starts at the same x whether or not it is the one playing.
+	.plcaret { width: 12px; flex-shrink: 0; }
+	.plhash { flex-shrink: 0; }
 	.plgenre { flex-grow: 1; font-size: $fs-tiny; letter-spacing: 1px; white-space: nowrap; }
 	.plstatus { min-width: 52px; font-size: $fs-tiny; white-space: nowrap; justify-content: flex-end; }
 	.pldl {

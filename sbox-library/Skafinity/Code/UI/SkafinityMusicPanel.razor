@@ -61,7 +61,7 @@
 				<div class="btn big" style="@BtnStyle" tooltip="@SkafinityBoard.Copy.NextTitle"
 					 onclick="@( () => Step( 1 ) )">@SkafinityBoard.Copy.Next</div>
 
-				<div class="now" style="@LabelStyle">@SkafinityBoard.Copy.NowPlaying <b style="@TextStyle">@SkafinityBoard.Copy.SongLabel( Player?.N ?? 0 )</b></div>
+				<div class="now" style="@LabelStyle">@SkafinityBoard.Copy.NowPlaying<b style="@TextStyle">@( Player?.N ?? 0 )</b></div>
 
 				@* Playback stalled on the song you skipped to — as opposed to the silent background
 				   look-ahead, which nobody needs telling about. *@
@@ -201,7 +201,11 @@
 					var ee = e;
 					<div class="plrow @( e.Current ? "now" : "" ) @( e.Cached ? "cached" : "" ) @( e.Progress >= 0 ? "gen" : "" )"
 						 style="@RowStyle( e )">
-						<div class="pllabel" onclick="@( () => Player?.SeekTo( ee.Position ) )">@SkafinityBoard.RowLabel( e )</div>
+						<div class="pllabel" onclick="@( () => Player?.SeekTo( ee.Position ) )">
+							<div class="plcaret">@SkafinityBoard.RowCaret( e )</div>
+							<div class="plhash">@SkafinityBoard.Copy.Hash</div>
+							<div class="plnum">@e.N</div>
+						</div>
 						<div class="plgenre" style="@LabelStyle">@SkafinityBoard.GenreName( e.Genre )</div>
 						<div class="plstatus" style="@LabelStyle">
 							@if ( e.Progress >= 0 )

@@ -121,10 +121,9 @@ public static class SkafinityBoard
 	public static string GenreName( int g ) =>
 		g >= 0 && g < VibeCodec.GenreCount ? VibeCodec.Genres[g] : "?";
 
-	/// <summary>What a playlist row is called: its song number, with a play caret on the one you are
-	/// hearing. <see cref="Copy.SongLabel"/> explains why this is not markup.</summary>
-	public static string RowLabel( SkafinityPlayer.QueueEntry e ) =>
-		e.Current ? $"▶ {Copy.SongLabel( e.N )}" : Copy.SongLabel( e.N );
+	/// <summary>The caret column of a playlist row: on the song you are hearing, nothing otherwise.
+	/// A column rather than a prefix so every row's number starts at the same x.</summary>
+	public static string RowCaret( SkafinityPlayer.QueueEntry e ) => e.Current ? "▶" : "";
 
 	/// <summary>What a playlist row says on its right-hand side. Generating rows draw a bar instead
 	/// and never reach this.</summary>
@@ -145,10 +144,15 @@ public static class SkafinityBoard
 		public const string PlayTitle = "Play / Pause";
 		public const string Next = "⏭";
 		public const string NextTitle = "Next song";
-		public const string NowPlaying = "now playing";
-		/// <summary>A song by its number. Built here rather than as a literal `#` next to a razor
-		/// expression, which is a construct the markup swallowed — "now playing 10", no hash.</summary>
-		public static string SongLabel( int n ) => $"#{n}";
+		/// <summary>Ends in the hash on purpose — see <see cref="Hash"/>.</summary>
+		public const string NowPlaying = "now playing #";
+		/// <summary>A number sign, ALONE, as its own label.</summary>
+		/// <remarks>A label whose text is LONGER than one character and begins with <c>#</c> is a
+		/// localisation token: the engine looks the rest up as a phrase and renders what comes back,
+		/// so <c>#24</c> silently becomes <c>24</c>. That is why no label here is built as "#" plus a
+		/// number — the hash either ends the text before it, or stands alone in a panel of its own,
+		/// where the length rule leaves it untouched.</remarks>
+		public const string Hash = "#";
 		public const string Volume = "vol";
 		public const string SeekTitle = "Seek within this song";
 		/// <summary>Playback is stalled on a song being rendered — as opposed to the silent
