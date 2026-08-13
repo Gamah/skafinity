@@ -261,20 +261,33 @@ export class SkafinityPlayer extends EventTarget {
     this.tailSeconds = 2.5;
 
     this.cfg = null;
-    this.genre = 0;
+    // ── The seed, taken apart ──
+    // `tag` is the station and `baseN` the index it was joined at. `pinnedGenre` / `pinnedVibe` are
+    // what the seed WROTE DOWN; null/'' means the seed left that part to roll, and it then changes
+    // with every song. `genre`/`vibe` are what the audible song actually resolved to, pinned or not.
     this.tag = opts.tag || randomTag();
-    this.n = 0;                 // next song index to schedule
-    this.displayN = 0;          // song currently audible
+    this.baseN = 0;
+    this.pinnedGenre = null;
+    this.pinnedVibe = '';
+    this.genre = 0;
     this.vibe = '';
+    // POSITIONS along the timeline, not song indices — the two are the same thing when shuffle is
+    // off, and are not when it is on (every position is then its own station at song 0). Everything
+    // keyed by n in this file — the queue, the ledger, the PCM cache, Prev/Next — is keyed by
+    // position; `songAt` is the one place that turns one into a station and an index.
+    this.n = 0;                 // next position to schedule
+    this.displayN = 0;          // position currently audible
     this.pendingSeed = opts.seed || '';
     // Per-instrument volumes, keyed by voice NAME (BASS, DRUMS, …) so a level follows the
     // instrument across genres. Pulled out of the (shareable) vibe seed; a local preference
     // overlaid onto cfg after every seed/genre change.
     this.vols = (() => { try { return JSON.parse(this.store.get('vol')) || {}; } catch (_) { return {}; } })();
-    // 🎲 Shuffle ("random every song"): each new song renders with a freshly re-rolled vibe. ON by
-    // default, matching SkafinityPlayer.RandomEverySong — endless variety out of the box, which is
-    // the point of an infinite station. An explicit OFF is remembered.
-    this.randomEverySong = opts.shuffle !== undefined ? !!opts.shuffle : this.store.get('shuffle') !== '0';
+    // 🎲 Shuffle. NOT "random every song" any more — that is what a seed with nothing pinned does
+    // by itself, and it needs no switch. Shuffle is about the LINE: on, every "next" is a whole new
+    // station at song 0 rather than the next song of this one. OFF by default, because walking one
+    // station is what makes `n` mean something and what a shared link describes. An explicit ON is
+    // remembered.
+    this.shuffle = opts.shuffle !== undefined ? !!opts.shuffle : this.store.get('shuffle') === '1';
 
     this.ledger = new Map();    // n -> frozen cfg (the shuffle line)
     this.rendered = new Map();  // n -> { buffer, info }
@@ -359,71 +372,130 @@ export class SkafinityPlayer extends EventTarget {
 
   applyInitialSeed() {
     const p = this.pendingSeed ? this.mod.parseSeed(this.pendingSeed) : null;
-    if (p && (p.tag || p.vibe || p.hasN)) {
-      if (p.tag) this.tag = p.tag;
-      if (p.vibe) this.cfg = this.mod.decodeVibe(p.vibe, this.cfg);
-      if (p.hasN) this.n = Math.max(0, p.n);
+    if (p && !p.error) {
+      this.tag = p.tag;
+      this.baseN = Math.max(0, p.n);
+      this.pinnedGenre = p.genre;
+      this.pinnedVibe = p.vibe;
+      this.n = this.shuffle ? 0 : this.baseN;
     } else {
-      // A fresh instance lands somewhere new: random tag, random genre, random knobs, n = 0.
-      this.cfg = this.mod.setGenre(this.cfg, Math.floor(Math.random() * this.mod.genreCount()));
-      this.genre = this.mod.getGenre(this.cfg);   // sync before the roll (it indexes the field list)
-      this.cfg = this.mod.rollVibe(this.cfg, true);
+      // A fresh instance lands somewhere new: a random station at song 0, with the genre and the
+      // knobs both left to roll — which is a shuffled station out of the box without any switch
+      // being set. A seed that would not parse lands here too, and the caller has been told why.
+      if (p && p.error) this.emit('error', { error: new Error(`skafinity: ${p.error}`) });
       const stored = parseInt(this.store.get('n') ?? '', 10);
-      if (Number.isFinite(stored) && stored >= 0) this.n = stored;
+      if (Number.isFinite(stored) && stored >= 0) this.baseN = stored;
+      this.n = this.shuffle ? 0 : this.baseN;
     }
-    this.genre = this.mod.getGenre(this.cfg);
-    this.applyStoredVolumes();
-    this.vibe = this.mod.encodeVibe(this.cfg);
     this.displayN = this.n;
+    this.adoptSong(this.displayN);
+  }
+
+  // ── The timeline, and what a position resolves to ────────────────────────────────────────
+  // Shuffle OFF: one station, walked by song index — position IS the index. Shuffle ON: every
+  // position is its own station at song 0, and those stations are DERIVED from the root
+  // (SeedCodec.RollTagFor) rather than drawn fresh. That is what keeps a shuffled line a line:
+  // Prev replays exactly what was heard without anything having been remembered, and the whole
+  // thing is still reproducible from one string. Position 0 is always the seed as given, so a
+  // pasted link plays the song it names before the shuffle takes over.
+  songAt(p) {
+    p = Math.max(0, p | 0);
+    // One station: the position IS the song index, which is what makes Prev/Next arithmetic and
+    // lets you walk back to a song fifty ago that nothing remembers. `baseN` is only where the
+    // seed joined the line.
+    if (!this.shuffle) return { tag: this.tag, n: p };
+    return p === 0 ? { tag: this.tag, n: this.baseN } : { tag: this.mod.rollTagFor(this.tag, p), n: 0 };
+  }
+
+  // What position `p` plays: the pinned genre/vibe where the seed wrote one down, else the ones
+  // rolled off that position's own station and index.
+  resolve(p) {
+    const { tag, n } = this.songAt(p);
+    return {
+      tag,
+      n,
+      genre: this.pinnedGenre !== null ? this.pinnedGenre : this.mod.rollGenreFor(tag, n),
+      vibe: this.pinnedVibe || this.mod.rollVibeFor(tag, n),
+    };
+  }
+
+  // Adopt position `p`'s song as the live one: what the editor shows, what the seed box says, and
+  // what a copied link reproduces.
+  adoptSong(p) {
+    const r = this.resolve(p);
+    this.genre = r.genre;
+    this.vibe = r.vibe;
+    this.cfg = this.mod.setGenre(this.mod.decodeVibe(r.vibe, this.cfg), r.genre);
+    this.applyStoredVolumes();
   }
 
   // ── Seeds ────────────────────────────────────────────────────────────────────
-  // The JS mirror of VibeCodec.SongSeed — trim + lower-case, with 'rotaliate' for an empty tag. The
-  // fallback word is load-bearing rather than cosmetic: it decides what song an untagged seed
-  // (`vibe::23`) resolves to, so a host that spells it differently plays a different song from the
-  // same seed. Keep this in step with the C#; the engine test asserts that side.
-  seedFor(nn) { return `${this.tag ? lower(this.tag) : 'rotaliate'}:${nn}`; }
-  // Before the runtime is up there is no vibe to encode and the tag is a placeholder that boot may
-  // replace, so the seed is the one we were HANDED — which is the seed a link carried, and the only
-  // string that reproduces anything. Answering `:sometag:0` there would be a seed that plays nothing
-  // and would show up in the box (and on the copy button) of a widget nobody has pressed play on yet.
-  get seed() { return this.mod ? `${this.vibe}:${this.tag}:${this.displayN}` : this.pendingSeed; }
+  // The PRNG stream a position is composed from — the engine's spelling (SeedCodec.SongSeed), not
+  // this host's. It decides what song an untagged seed resolves to, so a host that spells the
+  // fallback station differently plays a different song from the same seed.
+  seedFor(p) { const s = this.songAt(p); return this.mod.songSeed(s.tag, s.n); }
+
+  // THE SEED AS IT STANDS — what a rolling station is. Rolled parts are left out, so this string
+  // keeps rolling for whoever is handed it. Before the runtime is up it is the seed we were HANDED:
+  // the only string that reproduces anything, and the one a link carried, so a widget nobody has
+  // pressed play on yet still shows what it was sent rather than a placeholder it is about to
+  // throw away.
+  get seed() {
+    if (!this.mod) return this.pendingSeed;
+    const s = this.songAt(this.displayN);
+    return this.mod.formatSeed(s.tag, s.n, this.pinnedGenre, this.pinnedVibe);
+  }
   set seed(s) { this.applySeed(s); }
 
+  // THE SEED FULLY RESOLVED — this song, written down. Everything the station left to chance is
+  // spelled out, so the recipient hears exactly what is playing here rather than whatever their
+  // own roll produces at that index.
+  get resolvedSeed() {
+    if (!this.mod) return this.pendingSeed;
+    const s = this.songAt(this.displayN);
+    return this.mod.formatSeed(s.tag, s.n, this.genre, this.vibe);
+  }
+
+  /** Take a seed string. Returns '' on success, or the reason it was refused — in which case
+   *  NOTHING changed: a seed typed mid-session leaves playback alone, and one that arrived from a
+   *  link leaves the widget silent rather than playing something adjacent to what was sent. */
   applySeed(s) {
-    if (!this.mod) { this.pendingSeed = s; return; }
+    if (!this.mod) { this.pendingSeed = s; return ''; }
     const p = this.mod.parseSeed(s);
-    if (p.tag) this.tag = p.tag;
-    if (p.vibe) {
-      this.cfg = this.mod.decodeVibe(p.vibe, this.cfg);
-      this.genre = this.mod.getGenre(this.cfg);
-      this.applyStoredVolumes();
-      this.vibe = this.mod.encodeVibe(this.cfg);
-      this.emit('vibe', {});
-    }
-    if (p.hasN) this.n = Math.max(0, p.n);
+    if (p.error) return p.error;
+    this.tag = p.tag;
+    this.baseN = Math.max(0, p.n);
+    this.pinnedGenre = p.genre;
+    this.pinnedVibe = p.vibe;
+    this.n = this.shuffle ? 0 : this.baseN;
     this.displayN = this.n;
+    this.adoptSong(this.displayN);
     this.dirty = true;
     this.resumeOffset = 0;      // a different song: there is nothing to resume into
+    this.emit('vibe', {});
     this.emitSong();
     if (this.playing) this.startSequence();
+    return '';
   }
 
   emitSong() {
     if (!this.mod) return;
+    const s = this.songAt(this.displayN);
     this.emit('song', {
-      n: this.displayN, seed: this.seed, vibe: this.vibe, tag: this.tag,
-      genre: this.genre, genreName: this.mod.genreName(this.genre),
+      n: s.n, position: this.displayN, seed: this.seed, resolvedSeed: this.resolvedSeed,
+      vibe: this.vibe, tag: s.tag, genre: this.genre, genreName: this.mod.genreName(this.genre),
+      genrePinned: this.pinnedGenre !== null, vibePinned: !!this.pinnedVibe,
     });
   }
 
   // ── The vibe ─────────────────────────────────────────────────────────────────
   // One field's index + cached info for the current genre. The layout is driven entirely from the
   // wasm field metadata, so a new genre — or a new knob — is a pure-C# change.
-  fields() {
+  fields() { return this.fieldsFor(this.genre); }
+  fieldsFor(genre) {
     const out = [];
-    const count = this.mod.vibeFieldCount(this.genre);
-    for (let i = 0; i < count; i++) out.push({ i, ...this.mod.vibeFieldInfo(this.genre, i) });
+    const count = this.mod.vibeFieldCount(genre);
+    for (let i = 0; i < count; i++) out.push({ i, ...this.mod.vibeFieldInfo(genre, i) });
     return out;
   }
   fieldDisplay(i) { return this.mod.vibeDisplay(this.cfg, i); }
@@ -438,6 +510,10 @@ export class SkafinityPlayer extends EventTarget {
         this.cfg = this.mod.setVibeField(this.cfg, f.i, this.vols[f.voice]);
   }
 
+  // Moving a knob PINS the vibe: from here on the string carries these 36 values and every song
+  // plays them, instead of rolling its own. There is no half-way — a vibe is the whole grid — so
+  // the way back out is the explicit "roll the vibe again" below, not a knob returned to where it
+  // started.
   setField(f, norm) {
     this.cfg = this.mod.setVibeField(this.cfg, f.i, norm);
     if (f.column === 0 && f.voice) {
@@ -446,6 +522,7 @@ export class SkafinityPlayer extends EventTarget {
       this.store.set('vol', JSON.stringify(this.vols));
     } else {
       this.vibe = this.mod.encodeVibe(this.cfg);
+      this.pinnedVibe = this.vibe;
       this.emitSong();
     }
     this.dirty = true;
@@ -454,58 +531,102 @@ export class SkafinityPlayer extends EventTarget {
     this.restartTimer = setTimeout(() => { if (this.playing) this.startSequence(); }, 350);
   }
 
+  // Choosing a genre PINS it — and pins the vibe that is playing with it. The vibe is
+  // genre-independent, so this is deliberately the same 36 knobs heard through a different band
+  // rather than a new song: someone who reaches for the dropdown mid-song is asking what THIS
+  // would sound like as metal. Leaving the vibe unpinned would roll a fresh one on the restart and
+  // the change would land as a reroll instead.
   setGenre(g) {
+    this.pinnedGenre = g;
+    this.pinnedVibe = this.vibe;
     this.genre = g;
     this.cfg = this.mod.setGenre(this.cfg, g);
     this.applyStoredVolumes();
     this.dirty = true;
-    this.vibe = this.mod.encodeVibe(this.cfg);
     this.emit('vibe', {});
     this.emitSong();
     if (this.playing) this.startSequence();
   }
 
-  // A throwaway roll (the manual 🎲): fresh genre + every non-volume knob. Which knobs are rollable
-  // lives in the engine (VibeCodec.Roll), so this side never restates it.
+  /** Hand the genre back to the station: every song rolls its own again. The way out of a chosen
+   *  genre, which a dropdown with no "Random" entry does not have. */
+  rollGenre() {
+    this.pinnedGenre = null;
+    this.restartFromSeed();
+  }
+
+  /** Throw the knobs somewhere new and PIN them there — the 🎲 over the sliders. Distinct from
+   *  `rollVibe` below, and the difference is the whole reason both exist: this one always moves
+   *  every slider, because it draws a fresh vibe and writes it into the seed. */
+  rerollVibe() {
+    this.pinnedVibe = this.mod.rollVibe();
+    this.restartFromSeed();
+  }
+
+  /** Hand the vibe back to the station: every song rolls its own again. The way out of a dragged
+   *  knob — and it may well move nothing on screen, because the song already playing keeps the
+   *  vibe it resolved to; what changes is what comes NEXT. */
+  rollVibe() {
+    this.pinnedVibe = '';
+    this.restartFromSeed();
+  }
+
+  /** Reroll the SEED: a fresh random station at song 0. Anything pinned stays pinned, because a
+   *  pin is a choice and this is a request for a different song, not a different taste. */
   reroll() {
-    this.cfg = this.mod.rollVibe(this.cfg, true);
-    this.genre = this.mod.getGenre(this.cfg);
+    this.tag = randomTag();
+    this.baseN = 0;
+    this.n = 0;
+    this.restartFromSeed();
+  }
+
+  // Re-resolve the audible song from the seed and rebuild the timeline under it. The shared tail of
+  // every control that changes what the seed MEANS.
+  restartFromSeed() {
+    this.displayN = this.n;
+    this.adoptSong(this.displayN);
     this.dirty = true;
-    this.vibe = this.mod.encodeVibe(this.cfg);
     this.emit('vibe', {});
     this.emitSong();
-    if (this.playing) this.startSequence();
+    if (this.playing) this.startSequence(); else this.emit('timeline', {});
   }
 
-  // Flip shuffle and re-resolve the timeline from the current song forward under the new mode — ON
-  // freezes a fresh rolled vibe+genre per upcoming n, OFF reverts upcoming songs to the live vibe.
-  // History (n < current) keeps its frozen line so Prev still replays what you heard.
+  // Flip shuffle: on, every "next" is a new station rather than the next song of this one. The
+  // timeline behind every position changes, so this rebuilds from the current position rather than
+  // trying to keep a cache that now describes different songs.
   setShuffle(on) {
-    this.randomEverySong = !!on;
+    if (this.shuffle === !!on) return;
+    // Read the audible song BEFORE the flag moves — songAt answers under whichever mode is set,
+    // and the point of this whole block is to carry that song across the change.
+    const here = this.songAt(this.displayN);
+    this.shuffle = !!on;
     this.store.set('shuffle', on ? '1' : '0');
-    for (const k of [...this.ledger.keys()]) if (k >= this.displayN) this.ledger.delete(k);
-    for (const k of [...this.rendered.keys()]) if (k >= this.displayN) this.rendered.delete(k);
-    this.renderSeq++;      // the upcoming vibes just changed — discard whatever is mid-render
-    if (this.playing) this.seekTo(this.displayN); else this.emit('timeline', {});
+    // Stay on the song that is playing, so the switch is heard as a change of what comes NEXT
+    // rather than as a jump. Shuffled, that song becomes position 0 of the new line (the root, in
+    // both modes); unshuffled, the position is its song index again.
+    this.tag = here.tag;
+    this.baseN = here.n;
+    this.n = this.shuffle ? 0 : here.n;
+    this.restartFromSeed();
   }
 
-  // The cfg to render song `nn` with: the shared live cfg normally; a per-index frozen roll under
-  // shuffle. Under shuffle that cfg is DERIVED from the seed, so the ledger is a cache and nothing
-  // more — dropping an entry re-derives the identical vibe, which is what makes the shuffled line
-  // walkable in both directions, shareable, and stable across a reload.
-  cfgForN(nn) {
-    if (this.ledger.has(nn)) return this.ledger.get(nn);
-    if (!this.randomEverySong) return this.cfg;
-    const c = this.mod.rollVibeFor(this.cfg, this.tag, nn);
-    this.ledger.set(nn, c);
+  // The cfg to render position `p` with. Everything it needs is DERIVED from the seed, so the
+  // ledger is a cache and nothing more — dropping an entry re-derives the identical song, which is
+  // what makes the line walkable in both directions, shareable, and stable across a reload.
+  cfgForN(p) {
+    if (this.ledger.has(p)) return this.ledger.get(p);
+    const r = this.resolve(p);
+    let c = this.mod.setGenre(this.mod.decodeVibe(r.vibe, this.cfg), r.genre);
+    // Volumes are a local mix preference and never ride in the seed, so they are overlaid per song.
+    for (const f of this.fieldsFor(r.genre))
+      if (f.column === 0 && f.voice && this.vols[f.voice] !== undefined)
+        c = this.mod.setVibeField(c, f.i, this.vols[f.voice]);
+    this.ledger.set(p, c);
     return c;
   }
-  // The genre song nn resolves to, for the queue view. Under shuffle every upcoming genre is
-  // knowable up front, so the queue shows what is actually coming rather than a placeholder.
-  genreForN(nn) {
-    const c = this.ledger.get(nn) || (this.mod && this.randomEverySong ? this.cfgForN(nn) : null);
-    return c ? this.mod.getGenre(c) : this.genre;
-  }
+  // The genre position p resolves to, for the queue view. Every upcoming genre is knowable up
+  // front, so the queue shows what is actually coming rather than a placeholder.
+  genreForN(p) { return this.resolve(p).genre; }
 
   // ── Generation ───────────────────────────────────────────────────────────────
   requestSong(nn) {
@@ -719,17 +840,12 @@ export class SkafinityPlayer extends EventTarget {
       this.displayN = songN;
       this.current = desc;
       if (this.bufferingN === songN) this.bufferingN = -1;
-      // Adopt the (frozen) vibe this song was rendered with, so the editor and the seed reflect
-      // what is audible and the link reproduces it.
-      const c = this.ledger.get(songN);
-      if (c) {
-        this.cfg = c;
-        this.genre = this.mod.getGenre(this.cfg);
-        this.vibe = this.mod.encodeVibe(this.cfg);
-        this.emit('vibe', {});
-      }
+      // Adopt the song this position resolved to, so the editor and the seed box reflect what is
+      // audible and a copied link reproduces it.
+      this.adoptSong(songN);
+      this.emit('vibe', {});
       this.pruneCache();
-      this.store.set('n', String(songN));
+      this.store.set('n', String(this.songAt(songN).n));
       this.emitSong();
       this.emit('timeline', {});
       this.emit('position', this.position());
@@ -842,8 +958,13 @@ export class SkafinityPlayer extends EventTarget {
     const from = Math.max(0, this.displayN - PCM_RADIUS);
     for (let k = from; k <= this.displayN + AHEAD_COUNT; k++) {
       const cached = this.rendered.has(k);
+      const s = this.mod ? this.songAt(k) : { tag: this.tag, n: k };
       out.push({
-        n: k,
+        // `n` is the song's index in ITS station — which under shuffle is 0 for every row, so the
+        // row also carries the station it belongs to. `position` is the timeline slot.
+        n: s.n,
+        position: k,
+        tag: s.tag,
         now: k === this.displayN,
         cached,
         generating: this.gen.has(k) || (this.bufferingN === k && !cached),
@@ -859,8 +980,9 @@ export class SkafinityPlayer extends EventTarget {
   // the timeline plays — not just whatever the live editor currently shows.
   exportWav(songN) {
     const bytes = this.mod.songToWav(this.seedFor(songN), this.cfgForN(songN).slice());
-    const safeTag = (this.tag ? lower(this.tag) : 'unknown').replace(/[^a-z0-9_-]/g, '') || 'unknown';
-    return { blob: new Blob([bytes], { type: 'audio/wav' }), filename: `${safeTag}_${songN}.wav` };
+    const s = this.songAt(songN);
+    const safeTag = (s.tag ? lower(s.tag) : 'unknown').replace(/[^a-z0-9_-]/g, '') || 'unknown';
+    return { blob: new Blob([bytes], { type: 'audio/wav' }), filename: `${safeTag}_${s.n}.wav` };
   }
 
   // ── Teardown ─────────────────────────────────────────────────────────────────

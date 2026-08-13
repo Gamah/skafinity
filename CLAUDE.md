@@ -28,7 +28,8 @@ the single source of truth for both the game and this web toy**. The web build c
 |---|---|
 | `sbox-library/Skafinity/Code/Engine/` | **The engine — the spec.** The composer + subtractive synthesiser, split one file per concern (see the tree below). `MusicGen` is a `partial class` across the folder. **This folder is the unit both targets compile**: `wasm/Skafinity.Wasm.csproj` globs `Engine/**/*.cs` and s&box globs it implicitly, so the folder boundary is the thing that keeps the s&box-only driver and UI out of the web build. |
 | `sbox-library/Skafinity/Code/Engine/MusicGen.cs` | Engine core — per-song state, constructor, public entry points (whole-song + chunked). Start here. |
-| `sbox-library/Skafinity/Code/Engine/VibeCodec.cs` | Base-36 encoding of the "vibe" knobs → the shareable seed fragment. Also holds the `AdvancedFields` registry — the baseline-mix knobs that are config-only (NOT in the seed or the sliders). |
+| `sbox-library/Skafinity/Code/Engine/VibeCodec.cs` | The knob grid and its hex encoding — ONE global, genre-independent grid, so a pinned vibe means the same thing under every genre. Also holds the `AdvancedFields` registry — the baseline-mix knobs that are config-only (NOT in the seed or the sliders). |
+| `sbox-library/Skafinity/Code/Engine/SeedCodec.cs` | The seed STRING (`tag:n[:genre][:vibe]`): parsing, formatting, the station fallback, and the three PRNG streams a song is rolled from. The ONLY parser on either target — the web asks the wasm rather than keeping a second one. |
 | `test/engine/` | Engine-only test harness (`make test-engine`) — compiles `Engine/**` alone into the same assembly as the tests, so it runs on a plain dev host where s&box cannot. The safety net for engine work. |
 | `sbox-library/Skafinity/skafinity.config.json` | The single shared **house-mix config** (peak balances / kit presence). Canonical here; the s&box plugin reads it at runtime and `make` copies it to `web/config.json`. Edit it to retune the baseline mix without a rebuild. |
 | `sbox-library/Skafinity/Code/SkafinityPlayer.cs` | The s&box playback driver (`SoundStream`, infinite `tag:n`, look-ahead, crossfade). Web equivalent is `web/app.js`; the s&box-only bits are not used on the web. |
@@ -52,10 +53,12 @@ doubt the C# is right.
 
 - The synthesis is pure integer/float math with a portable PRNG, AOT-compiled to native
   wasm — runs far faster than real time, so we pre-render whole ~75 s loops on demand.
-- A whole song is its seed (`vibe:tag:n`), so **the entire experience is a URL**. Share
-  `…/web/#vibe:bd44ac2a:23` and the other person hears the exact same song. Such a link is
-  honoured on arrival and then taken back OUT of the address bar; the widget's copy button
-  rebuilds it on demand instead (see the embeddable-element section).
+- A whole song is its seed (`tag:n[:genre][:vibe]`), so **the entire experience is a URL**. Share
+  `…/web/#bd44ac2a:23:3:8a4c…` and the other person hears the exact same song — while
+  `…/web/#bd44ac2a:23` hands them the same STATION, still rolling a genre and a vibe per song.
+  What the string leaves out rolls; what it writes down is pinned. Such a link is honoured on
+  arrival and then taken back OUT of the address bar; the widget's two copy buttons rebuild it on
+  demand instead — one for this song, one for the station (see the embeddable-element section).
 - The web has real `<input type=range>` sliders (s&box did not), so the vibe editor is
   nicer here than in the game.
 
@@ -421,7 +424,7 @@ GitHub only serves a branch's root or `/docs`, never `web/`, and it would run Je
   scripts and `data:`/`blob:` imports off a `file://` origin). `web/` is self-contained (it
   includes `web/_framework`), so any static server can serve it with the docroot pointed
   straight at `web/`. `web/_framework` is committed so a clone is testable without the SDK.
-- Keep `MusicGen.cs` / `VibeCodec.cs` framework-free; web-specific code goes in `Exports.cs`.
+- Keep `MusicGen.cs` / `VibeCodec.cs` / `SeedCodec.cs` framework-free; web-specific code goes in `Exports.cs`.
 - The house-mix config has ONE canonical copy (`sbox-library/Skafinity/skafinity.config.json`);
   `make`'s `stage` step copies it to `web/config.json`. Edit the canonical and re-`make`, or edit
   `web/config.json` directly for quick web-only iteration (the next `make` overwrites it).

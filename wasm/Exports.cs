@@ -97,7 +97,42 @@ public partial class Engine
 	}
 
 	[JSExport]
-	internal static bool LooksLikeVibe( string s ) => VibeCodec.LooksLikeVibe( s );
+	internal static bool IsVibe( string s ) => VibeCodec.IsVibe( s );
+
+	[JSExport]
+	internal static int VibeLength() => VibeCodec.VibeLength;
+
+	// ── The seed string ───────────────────────────────────────────────────────────────────
+	// Parsing lives in the ENGINE (SeedCodec), not in JS, because a seed is what two people have
+	// to agree about and two parsers would eventually disagree. JS gets the result, including the
+	// sentence to show when the answer is "that is not a seed".
+
+	/// <summary>Parse a seed. Returns <c>[error, tag, n, genre, vibe]</c> as strings — error is ""
+	/// on success and the only field to check; genre is "-1" when the seed leaves it to roll, and
+	/// vibe is "" for the same reason. Strings rather than a struct because that is what crosses
+	/// this boundary without a marshaller.</summary>
+	[JSExport]
+	internal static string[] ParseSeed( string seed )
+	{
+		if ( !SeedCodec.TryParse( seed, out var s, out var error ) )
+			return new[] { error, "", "0", "-1", "" };
+		return new[] { "", s.Tag ?? "", s.N.ToString(), s.Genre.ToString(), s.Vibe ?? "" };
+	}
+
+	/// <summary>The canonical string for a seed. <paramref name="genre"/> &lt; 0 and an empty
+	/// <paramref name="vibe"/> mean "left to roll" and are simply not written down.</summary>
+	[JSExport]
+	internal static string FormatSeed( string tag, int n, int genre, string vibe )
+		=> SeedCodec.Format( new SeedCodec.Seed
+		{
+			Tag = tag ?? "", N = n,
+			Genre = genre < 0 ? SeedCodec.RolledGenre : genre,
+			Vibe = string.IsNullOrEmpty( vibe ) ? null : vibe,
+		} );
+
+	/// <summary>The PRNG stream song <paramref name="n"/> is composed from.</summary>
+	[JSExport]
+	internal static string SongSeed( string tag, int n ) => SeedCodec.SongSeed( tag, n );
 
 	// ── Genre ───────────────────────────────────────────────────────────────────────────
 	[JSExport]
@@ -119,20 +154,17 @@ public partial class Engine
 	}
 
 	// ── Reroll ────────────────────────────────────────────────────────────────────────────
-	// What "reroll" means lives in VibeCodec.Roll, so the web and the s&box player cannot
-	// answer it differently. JS supplies neither the field walk nor the volume/tempo rules.
+	// What "reroll" means lives in the engine (VibeCodec.RollVibe / SeedCodec.RollVibeFor), so the
+	// web and the s&box player cannot answer it differently. A roll produces a STRING: a rolled
+	// vibe is an ordinary vibe, so the UI can pin it into a seed without a second code path.
 
-	/// <summary>Roll a throwaway vibe (the 🎲 button): fresh genre + every non-volume knob,
-	/// off the runtime's own RNG. Not reproducible, and not meant to be.</summary>
+	/// <summary>Roll a throwaway vibe (the 🎲 button) off the runtime's own RNG. Not reproducible,
+	/// and not meant to be.</summary>
 	[JSExport]
-	[return: JSMarshalAs<JSType.Array<JSType.Number>>]
-	internal static double[] RollVibe( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg,
-		bool includeGenre )
+	internal static string RollVibe()
 	{
-		var c = Cfg.From( cfg );
 		var rng = new Random();
-		VibeCodec.Roll( c, () => (float)rng.NextDouble(), includeGenre );
-		return Cfg.To( c );
+		return VibeCodec.RollVibe( () => (float)rng.NextDouble() );
 	}
 
 	/// <summary>Roll song <paramref name="n"/>'s vibe from <paramref name="tag"/> — the shuffle
@@ -140,14 +172,18 @@ public partial class Engine
 	/// survives a reload, matches on every machine, and stepping back replays exactly what was
 	/// heard without the page having to remember it.</summary>
 	[JSExport]
-	[return: JSMarshalAs<JSType.Array<JSType.Number>>]
-	internal static double[] RollVibeFor( [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg,
-		string tag, int n )
-	{
-		var c = Cfg.From( cfg );
-		VibeCodec.RollFrom( c, VibeCodec.VibeSeed( tag, n ) );
-		return Cfg.To( c );
-	}
+	internal static string RollVibeFor( string tag, int n ) => SeedCodec.RollVibeFor( tag, n );
+
+	/// <summary>Song <paramref name="n"/>'s rolled genre — its own stream, so pinning the vibe
+	/// does not change which genres a station plays.</summary>
+	[JSExport]
+	internal static int RollGenreFor( string tag, int n ) => SeedCodec.RollGenreFor( tag, n );
+
+	/// <summary>The station at position <paramref name="p"/> of a shuffled line (see
+	/// <see cref="SeedCodec.RollTagFor"/>) — derived, so Prev still works and a reload does not
+	/// lose where it had got to.</summary>
+	[JSExport]
+	internal static string RollTagFor( string root, int p ) => SeedCodec.RollTagFor( root, p );
 
 	// ── Vibe fields (per genre) ───────────────────────────────────────────────────────────
 	[JSExport]

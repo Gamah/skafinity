@@ -40,17 +40,22 @@ function makeMod(E) {
 
     encodeVibe: (cfg) => E.EncodeVibe(asArray(cfg)),
     decodeVibe: (vibe, cfg) => E.DecodeVibe(vibe || '', asArray(cfg)),
-    looksLikeVibe: (s) => E.LooksLikeVibe(s || ''),
+    isVibe: (s) => E.IsVibe(s || ''),
+    vibeLength: () => E.VibeLength(),
 
-    // Genre lives inside the vibe (first char); the field list depends on it.
+    // Genre is its own part of the seed now, not the vibe's first char; the field list depends
+    // on it, but the vibe does not.
     genreCount: () => E.GenreCount(),
     genreName: (i) => E.GenreName(i),
     getGenre: (cfg) => E.GetGenre(asArray(cfg)),
     setGenre: (cfg, i) => E.SetGenre(asArray(cfg), i),
-    // Reroll lives in the engine (VibeCodec.Roll) so the web and s&box can't drift on what
-    // it means. rollVibe = throwaway 🎲; rollVibeFor = the deterministic shuffle line.
-    rollVibe: (cfg, includeGenre = true) => E.RollVibe(asArray(cfg), includeGenre),
-    rollVibeFor: (cfg, tag, n) => E.RollVibeFor(asArray(cfg), tag, n),
+    // Reroll lives in the engine so the web and s&box can't drift on what it means, and it
+    // returns a STRING — a rolled vibe is an ordinary vibe the UI can pin into a seed.
+    // rollVibe = throwaway 🎲; rollVibeFor/rollGenreFor/rollTagFor = the deterministic lines.
+    rollVibe: () => E.RollVibe(),
+    rollVibeFor: (tag, n) => E.RollVibeFor(tag, n),
+    rollGenreFor: (tag, n) => E.RollGenreFor(tag, n),
+    rollTagFor: (root, p) => E.RollTagFor(root, p),
 
     vibeFieldCount: (genre) => E.VibeFieldCount(genre),
     vibeLevels: () => E.VibeLevels(),
@@ -89,27 +94,23 @@ function makeMod(E) {
       return out;
     },
 
-    // Mirrors MusicController.PlaySeed parsing: vibe:tag:n | tag:n | tag.
+    // The seed string, parsed by the ENGINE (SeedCodec) rather than here — a seed is the thing two
+    // people have to agree about, and a second parser in JS would eventually disagree with the one
+    // s&box uses. Returns { error, tag, n, genre, vibe }: `error` is a sentence to show the
+    // listener and is the only field worth checking; `genre` is null and `vibe` is '' where the
+    // seed left them to roll.
     parseSeed(seedIn) {
-      const seed = (seedIn || '').trim();
-      const p = seed.length ? seed.split(':') : [''];
-      const tryInt = (s) => (/^-?\d+$/.test(s) ? parseInt(s, 10) : null);
-      let vibe = '', tag = '', n = 0, hasN = false;
-      if (seed.length) {
-        if (p.length >= 3) {
-          vibe = p[0]; tag = p[1];
-          const v = tryInt(p[2]); if (v !== null) { n = v; hasN = true; }
-        } else if (p.length === 2) {
-          const v = tryInt(p[1]);
-          if (v !== null) { tag = p[0]; n = v; hasN = true; }
-          else if (E.LooksLikeVibe(p[0])) { vibe = p[0]; tag = p[1]; }
-          else tag = p[0];
-        } else {
-          tag = p[0];
-        }
-      }
-      return { vibe, tag, n, hasN };
+      const [error, tag, n, genre, vibe] = E.ParseSeed(seedIn || '');
+      if (error) return { error, tag: '', n: 0, genre: null, vibe: '' };
+      const g = parseInt(genre, 10);
+      return { error: '', tag, n: parseInt(n, 10) || 0, genre: g < 0 ? null : g, vibe };
     },
+
+    // The canonical spelling. A null genre / empty vibe is "left to roll" and is not written down,
+    // which is exactly what makes a seed a station rather than a song.
+    formatSeed: (tag, n, genre, vibe) =>
+      E.FormatSeed(tag || '', n | 0, genre === null || genre === undefined ? -1 : genre, vibe || ''),
+    songSeed: (tag, n) => E.SongSeed(tag || '', n | 0),
   };
 }
 

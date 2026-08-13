@@ -192,13 +192,18 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 
 	short[] _curRaw;            // current song PCM (== _pcm[_curN]); kept for the crossfade + export
 	// Navigable timeline (see issue #14). Two stores keyed by song index n:
-	//  • _ledger  — n → frozen vibe seed. Under RandomEverySong a song's vibe is rolled ONCE here and
-	//    then reused forever, so the "random" line is a fixed, reproducible path you can walk both ways.
-	//    Kept for the whole session (just short strings). Non-random songs aren't stored (they track
-	//    the live knobs). Cleared only on a full StartSequence (seed/genre/base-vibe change).
+	//  • _ledger  — n → frozen vibe seed, and _genreLedger — n → frozen genre. A song's rolled vibe
+	//    and genre are DERIVED from (tag, n), so these are caches rather than state: dropping an
+	//    entry re-derives the identical value, which is what makes the line walkable both ways,
+	//    shareable, and stable across a reload. Genre and vibe are separate stores because a seed
+	//    may pin either one alone. Cleared only on a full StartSequence.
 	//  • _pcm     — n → interleaved stereo PCM, pruned to |n − _curN| ≤ PcmCacheRadius so Prev/Next is
 	//    instant within the window; outside it we regenerate from the ledger seed.
 	readonly System.Collections.Generic.Dictionary<int, string> _ledger = new();
+	readonly System.Collections.Generic.Dictionary<int, int> _genreLedger = new();
+	// Has someone CHOSEN this genre (the dropdown, a seed that wrote one down), as opposed to the
+	// station rolling it? Pinning is what a seed carries, so it has to outlive a StartSequence.
+	bool _genrePinned;
 	readonly System.Collections.Generic.Dictionary<int, short[]> _pcm = new();
 	// Per-song synthesis progress (0..1) for songs currently being generated; absent ⇒ not generating.
 	readonly System.Collections.Generic.Dictionary<int, float> _genProgress = new();
@@ -230,11 +235,14 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	public int N => _curN;
 	/// <summary>The effective vibe of the *playing* song: its frozen ledger seed when one exists
 	/// (so a shuffled song reports the vibe you actually hear), else the live knobs/override.</summary>
-	public string CurrentVibe => _ledger.TryGetValue( _curN, out var v ) && !string.IsNullOrEmpty( v )
-		? v : VibeCodec.Encode( BuildConfig() );
-	/// <summary>Shareable seed for the playing song: <c>vibe:tag:n</c>. Accurate even under shuffle —
-	/// it reproduces the exact song playing, because the vibe is the one frozen for this n.</summary>
-	public string CurrentSeed => $"{CurrentVibe}:{SeedTag}:{_curN}";
+	public string CurrentVibe => VibeForN( _curN );
+	/// <summary>Shareable seed for the playing song: <c>tag:n:genre:vibe</c>, FULLY RESOLVED — the
+	/// genre and vibe are written down even when this player rolled them, so whoever is handed it
+	/// hears this song rather than whatever their own station rolls at that index.</summary>
+	public string CurrentSeed => SeedCodec.Format( new SeedCodec.Seed
+	{
+		Tag = SeedTag, N = _curN, Genre = GenreForN( _curN ), Vibe = VibeForN( _curN ),
+	} );
 	/// <summary>True once a stream handle is live and audible.</summary>
 	public bool IsPlaying => _handle != null;
 	/// <summary>True while any synthesis is in flight (foreground seek or background look-ahead fill).</summary>
@@ -285,12 +293,11 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		int hi = _curN + Math.Max( 0, fwd );
 		for ( int n = lo; n <= hi; n++ )
 		{
-			_ledger.TryGetValue( n, out var vibe );
 			list.Add( new QueueEntry
 			{
 				N = n,
-				Vibe = vibe ?? "",
-				Genre = GenreOf( vibe ),
+				Vibe = VibeForN( n ),
+				Genre = GenreForN( n ),
 				Cached = _pcm.ContainsKey( n ),
 				Current = n == _curN,
 				Progress = _genProgress.TryGetValue( n, out var p ) ? p : -1f,
@@ -299,20 +306,11 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		return list;
 	}
 
-	// Decode the genre a vibe seed resolves to (first base-36 char ⇒ genre). Null/empty ⇒ live genre.
-	int GenreOf( string vibe )
-	{
-		if ( string.IsNullOrEmpty( vibe ) ) return BuildConfig().Genre;
-		var c = BuildKnobConfig();
-		VibeCodec.Apply( vibe, c );
-		return c.Genre;
-	}
-
 	string SeedTag => string.IsNullOrEmpty( Tag ) ? "" : Tag;
 	// Build the PRNG seed string from a resolved tag, so worker code never re-reads state. The
-	// spelling is the ENGINE's (VibeCodec.SongSeed) rather than this host's: it decides what song
+	// spelling is the ENGINE's (SeedCodec.SongSeed) rather than this host's: it decides what song
 	// an untagged seed is, and the web resolves the same one.
-	static string SeedFor( string tag, int n ) => VibeCodec.SongSeed( tag, n );
+	static string SeedFor( string tag, int n ) => SeedCodec.SongSeed( tag, n );
 	string Seed( int n ) => SeedFor( SeedTag, n );
 
 	protected override void OnStart()
@@ -434,24 +432,37 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		// Shared house-mix baseline (peak balances / kit presence) from skafinity.config.json —
 		// the same file the web toy reads. Independent of the vibe/volume knobs below.
 		VibeCodec.ApplyAdvanced( _houseConfig, cfg );
-		// A vibe override sets the important knobs (so a shared vibe:tag:n reproduces the same
-		// voicing regardless of this client's inspector knobs).
-		if ( !string.IsNullOrEmpty( Vibe ) )
-			VibeCodec.Apply( Vibe, cfg );
+		// A vibe override sets the important knobs (so a shared seed reproduces the same voicing
+		// regardless of this client's inspector knobs). Anything that is not a whole grid is not a
+		// vibe, and Apply refuses it rather than half-applying it.
+		VibeCodec.Apply( Vibe, cfg );
 		// Per-instrument volumes are NOT in the seed — overlay the persisted per-voice mix on top.
 		VibeCodec.ApplyVolumes( cfg.Genre, _vols, cfg );
 		return cfg;
 	}
 
-	// The frozen vibe seed for song n. Under RandomEverySong a song is rolled ONCE and pinned in the
-	// ledger, so the random line is reproducible both directions; outside shuffle the song just tracks
-	// the live knobs/override (not stored, so a knob edit + restart is always picked up).
+	// The vibe song n plays. Pinned (a pasted seed, a knob drag) it is whatever was pinned; rolled,
+	// it is DERIVED from (tag, n) — so the "random" line is a fixed path you can walk both ways, and
+	// the ledger below is a cache of that derivation rather than the only copy of it.
 	string VibeForN( int n )
 	{
 		if ( _ledger.TryGetValue( n, out var v ) ) return v;
+		// Outside shuffle a song TRACKS the live knobs and is deliberately not cached, so a knob
+		// edit followed by a restart is always picked up.
 		if ( !RandomEverySong ) return VibeCodec.Encode( BuildKnobOnlyVibe() );
-		var rolled = RollVibe( n );
+		var rolled = SeedCodec.RollVibeFor( Tag, n );
 		_ledger[n] = rolled;
+		return rolled;
+	}
+
+	// The genre song n plays — the same story as the vibe, off its own stream so that pinning one
+	// never moves the other.
+	int GenreForN( int n )
+	{
+		if ( _genreLedger.TryGetValue( n, out var g ) ) return g;
+		if ( _genrePinned || !RandomEverySong ) return Math.Clamp( Genre, 0, VibeCodec.GenreCount - 1 );
+		int rolled = SeedCodec.RollGenreFor( Tag, n );
+		_genreLedger[n] = rolled;
 		return rolled;
 	}
 
@@ -460,29 +471,19 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	MusicGen.Config BuildKnobOnlyVibe()
 	{
 		var cfg = BuildKnobConfig();
-		if ( !string.IsNullOrEmpty( Vibe ) ) VibeCodec.Apply( Vibe, cfg );
+		VibeCodec.Apply( Vibe, cfg );      // ignored unless Vibe is a whole grid
 		return cfg;
 	}
 
-	// Song n's vibe under shuffle, derived from the seed rather than session randomness, so the
-	// whole shuffled line IS the seed: it survives a reload, it is the same on every machine, and
-	// stepping back replays exactly what was heard without needing to have remembered it.
-	string RollVibe( int n )
-	{
-		var cfg = BuildKnobOnlyVibe();
-		VibeCodec.RollFrom( cfg, VibeCodec.VibeSeed( Tag, n ) );
-		return VibeCodec.Encode( cfg );
-	}
-
 	// The full Config to synthesise song n with: the live knobs + house mix + volumes, but with THIS
-	// song's frozen vibe applied (not the player's single live Vibe). This is what makes each queued
-	// song its own composition and keeps CurrentSeed honest.
+	// song's genre and vibe applied (not the player's single live pair). This is what makes each
+	// queued song its own composition and keeps CurrentSeed honest.
 	MusicGen.Config ConfigForN( int n )
 	{
 		var cfg = BuildKnobConfig();
 		VibeCodec.ApplyAdvanced( _houseConfig, cfg );
-		var vibe = VibeForN( n );
-		if ( !string.IsNullOrEmpty( vibe ) ) VibeCodec.Apply( vibe, cfg );
+		cfg.Genre = GenreForN( n );
+		VibeCodec.Apply( VibeForN( n ), cfg );
 		VibeCodec.ApplyVolumes( cfg.Genre, _vols, cfg );
 		return cfg;
 	}
@@ -582,7 +583,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		h.Add( KeysVol ); h.Add( KeysCutoff ); h.Add( KeysDrive ); h.Add( KeysChug );
 		h.Add( RhythmGtrVol ); h.Add( RhythmGtrCutoff ); h.Add( RhythmGtrDrive ); h.Add( RhythmGtrChug );
 		h.Add( LeadGtrVol ); h.Add( LeadGtrCutoff ); h.Add( LeadGtrDrive ); h.Add( LeadGtrBend );
-		h.Add( Tag ); h.Add( Vibe );
+		h.Add( Tag ); h.Add( Vibe ); h.Add( _genrePinned );
 		return h.ToHashCode();
 	}
 
@@ -729,13 +730,16 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	{
 		int seq = ++_seq;
 		_ledger.Clear();
+		_genreLedger.Clear();
 		_pcm.Clear();
 		_genProgress.Clear();
 		_bufferingN = -1;
-		// Pin the current song to the explicit base vibe (a pasted seed, a chosen genre, a reroll) so
-		// it's honoured even under shuffle — shuffle still rolls fresh from n+1 onward. Empty vibe ⇒
-		// unpinned (shuffle rolls the current song too; non-shuffle tracks the live knobs).
-		if ( !string.IsNullOrEmpty( Vibe ) ) _ledger[Math.Max( 0, _curN )] = Vibe;
+		// Pin the current song to the explicit base vibe/genre (a pasted seed, a chosen genre, a
+		// reroll) so it is honoured even under shuffle — shuffle still rolls fresh from n+1 onward.
+		// No vibe ⇒ unpinned (shuffle rolls the current song too; non-shuffle tracks the live knobs).
+		if ( VibeCodec.IsVibe( Vibe ) ) _ledger[Math.Max( 0, _curN )] = Vibe;
+		if ( _genrePinned || !RandomEverySong )
+			_genreLedger[Math.Max( 0, _curN )] = Math.Clamp( Genre, 0, VibeCodec.GenreCount - 1 );
 		_handle?.Stop();
 		_handle = null;
 		_stream = null;
@@ -906,35 +910,29 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 
 	// ── Public control surface ──
 
-	// Parse a shareable seed in any of vibe:tag:n / tag:n / tag. Missing parts stay null.
-	static void ParseSeed( string seed, out string vibe, out string tag, out int? n )
+	/// <summary>Play a shareable seed — <c>tag:n[:genre][:vibe]</c>, parsed by the engine
+	/// (<see cref="SeedCodec.TryParse"/>) so this player and the web toy cannot disagree about what
+	/// a string means. What the seed leaves out keeps rolling; what it pins is pinned. Returns false
+	/// and changes NOTHING if the string is not a seed — half a seed is a song nobody asked for, so
+	/// a caller with a UI should show <paramref name="error"/> rather than start playing.</summary>
+	public bool PlaySeed( string seed, out string error )
 	{
-		vibe = null; tag = null; n = null;
-		seed = seed?.Trim();
-		if ( string.IsNullOrEmpty( seed ) ) return;
-		var p = seed.Split( ':' );
-		if ( p.Length >= 3 ) { vibe = p[0]; tag = p[1]; if ( int.TryParse( p[2], out var v ) ) n = v; }
-		else if ( p.Length == 2 )
-		{
-			if ( int.TryParse( p[1], out var v ) ) { tag = p[0]; n = v; }
-			else if ( VibeCodec.LooksLikeVibe( p[0] ) ) { vibe = p[0]; tag = p[1]; }
-			else tag = p[0];
-		}
-		else tag = p[0];
-	}
-
-	/// <summary>Play a shareable seed in any of the forms <c>vibe:tag:n</c>, <c>tag:n</c>, or
-	/// <c>tag</c>. Missing components are left unchanged; a vibe is only applied when present.
-	/// Restarts the sequence.</summary>
-	public void PlaySeed( string seed )
-	{
-		ParseSeed( seed, out string vibe, out string tag, out int? n );
-		if ( tag != null ) Tag = tag.Trim().ToLowerInvariant();
-		if ( vibe != null ) Vibe = VibeCodec.LooksLikeVibe( vibe ) ? vibe.ToLowerInvariant() : "";
-		if ( n.HasValue ) _curN = Math.Max( 0, n.Value );
+		if ( !SeedCodec.TryParse( seed, out var s, out error ) ) return false;
+		Tag = (s.Tag ?? "").Trim().ToLowerInvariant();
+		_curN = Math.Max( 0, s.N );
+		// A pinned part becomes the live value AND rides through StartSequence's pin below; an
+		// absent one goes back to rolling from this index on.
+		Vibe = s.VibePinned ? s.Vibe : "";
+		_genrePinned = s.GenrePinned;
+		if ( s.GenrePinned ) Genre = s.Genre;
+		RandomEverySong = !s.GenrePinned || !s.VibePinned;
 		if ( PersistProgress ) SaveN( _curN );
 		StartSequence();
+		return true;
 	}
+
+	/// <inheritdoc cref="PlaySeed(string, out string)"/>
+	public bool PlaySeed( string seed ) => PlaySeed( seed, out _ );
 
 	/// <summary>Set just the seed tag (empty = the default "skafinity" seed). Restarts.</summary>
 	public void SetTag( string tag )
@@ -978,15 +976,25 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		_restartPendingSince = 0;
 	}
 
-	/// <summary>Switch genre (rides in the vibe's first char): re-encode the effective config
-	/// with the new genre into <see cref="Vibe"/> so it sticks over the inspector knobs, then
-	/// restart. Use this rather than setting <see cref="Genre"/> directly — an existing
-	/// <see cref="Vibe"/> override otherwise wins and the change wouldn't take.</summary>
+	/// <summary>Switch genre and restart, KEEPING the vibe that is playing. The vibe is
+	/// genre-independent, so this is the same 36 knobs heard through a different band rather than a
+	/// new song — which is what someone reaching for the genre dropdown mid-song is asking for. The
+	/// live vibe is pinned on the way through, or the restart would roll a fresh one and the change
+	/// would sound like a reroll.</summary>
 	public void SetGenre( int genre )
 	{
-		var cfg = BuildConfig();
-		cfg.Genre = Math.Clamp( genre, 0, VibeCodec.GenreCount - 1 );
-		Vibe = VibeCodec.Encode( cfg );
+		Vibe = CurrentVibe;
+		Genre = Math.Clamp( genre, 0, VibeCodec.GenreCount - 1 );
+		_genrePinned = true;
+		StartSequence();
+	}
+
+	/// <summary>Hand the genre back to the station: from the current song on, each one rolls its own
+	/// again. The counterpart to <see cref="SetGenre"/>, and the reason the dropdown needs a "Random"
+	/// entry — without one there is no way back out of a genre once one has been chosen.</summary>
+	public void RollGenre()
+	{
+		_genrePinned = false;
 		StartSequence();
 	}
 
@@ -998,13 +1006,14 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	/// clearing the look-ahead so upcoming songs regenerate with the new vibe).</summary>
 	public void RerollVibe( bool includeVolumes = false, bool includeGenre = true, bool restart = true )
 	{
-		var cfg = BuildConfig();
-		VibeCodec.Roll( cfg, System.Random.Shared.NextSingle, includeGenre, includeVolumes );
-		Vibe = VibeCodec.Encode( cfg );
+		Vibe = VibeCodec.RollVibe( System.Random.Shared.NextSingle );
+		if ( includeGenre ) Genre = VibeCodec.RollGenre( System.Random.Shared.NextSingle );
 		if ( includeVolumes )
 		{
-			// Capture the freshly-randomized volumes into the persisted per-voice store (they
-			// don't ride in the encoded vibe).
+			// Volumes are not in the wire at all, so they are rolled separately and captured into
+			// the persisted per-voice store.
+			var cfg = BuildConfig();
+			VibeCodec.RollVolumes( cfg.Genre, cfg, System.Random.Shared.NextSingle );
 			foreach ( var kv in VibeCodec.ReadVolumes( cfg.Genre, cfg ) ) _vols[kv.Key] = kv.Value;
 			SaveVols();
 		}
@@ -1027,6 +1036,9 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		var fwd = new System.Collections.Generic.List<int>();
 		foreach ( var n in _ledger.Keys ) if ( n >= _curN ) fwd.Add( n );
 		foreach ( var n in fwd ) _ledger.Remove( n );
+		fwd.Clear();
+		foreach ( var n in _genreLedger.Keys ) if ( n >= _curN ) fwd.Add( n );
+		foreach ( var n in fwd ) _genreLedger.Remove( n );
 		fwd.Clear();
 		foreach ( var n in _pcm.Keys ) if ( n >= _curN ) fwd.Add( n );
 		foreach ( var n in fwd ) _pcm.Remove( n );
@@ -1066,6 +1078,8 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 		public string Tag { get; set; } = "";
 		public int N { get; set; }
 		public string Vibe { get; set; } = "";
+		public int Genre { get; set; }
+		public bool GenrePinned { get; set; }
 		public bool RandomEverySong { get; set; } = true;
 		public bool Enabled { get; set; } = true;
 		public float Volume { get; set; } = 0.7f;
@@ -1078,7 +1092,7 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 	int StateHash()
 	{
 		var h = new HashCode();
-		h.Add( Tag ); h.Add( _curN ); h.Add( Vibe );
+		h.Add( Tag ); h.Add( _curN ); h.Add( Vibe ); h.Add( Genre ); h.Add( _genrePinned );
 		h.Add( RandomEverySong ); h.Add( Enabled ); h.Add( Volume );
 		return h.ToHashCode();
 	}
@@ -1092,6 +1106,8 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 				Tag = Tag ?? "",
 				N = _curN,
 				Vibe = Vibe ?? "",
+				Genre = Genre,
+				GenrePinned = _genrePinned,
 				RandomEverySong = RandomEverySong,
 				Enabled = Enabled,
 				Volume = Volume,
@@ -1112,6 +1128,8 @@ public sealed class SkafinityPlayer : Component, Component.DontExecuteOnServer
 			Tag = s.Tag ?? "";
 			_curN = Math.Max( 0, s.N );
 			Vibe = s.Vibe ?? "";
+			Genre = Math.Clamp( s.Genre, 0, VibeCodec.GenreCount - 1 );
+			_genrePinned = s.GenrePinned;
 			RandomEverySong = s.RandomEverySong;
 			Enabled = s.Enabled;
 			Volume = Math.Clamp( s.Volume, 0f, 2f );

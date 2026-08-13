@@ -35,34 +35,40 @@ check('every engine call the page makes resolves', missing.length === 0,
   missing.length ? `MISSING: ${missing.join(', ')} — engine.js and the bundle are out of step` : `${used.length} checked`);
 
 // ── seed parsing (the URL hash is the whole product) ──
-for (const [seed, wantTag, wantN] of [['vibe:gamah:7', 'gamah', 7], ['gamah:3', 'gamah', 3], ['gamah', 'gamah', 0]]) {
+// The adapter's job is to hand the page the engine's answer unchanged — including the refusal,
+// which is the half a page has to be able to show.
+let cfg = mod.defaultConfig();
+const aVibe = mod.rollVibeFor('gamah', 5);
+for (const [seed, wantTag, wantN] of [[`gamah:7:3:${aVibe}`, 'gamah', 7], ['gamah:3', 'gamah', 3], ['gamah', 'gamah', 0]]) {
   const p = mod.parseSeed(seed);
-  check(`parseSeed("${seed}") reads tag/n`, p.tag === wantTag && p.n === wantN, JSON.stringify(p));
+  check(`parseSeed("${seed}") reads tag/n`, !p.error && p.tag === wantTag && p.n === wantN, JSON.stringify(p));
 }
+check('parseSeed pins what the seed wrote down',
+  mod.parseSeed(`gamah:7:3:${aVibe}`).genre === 3 && mod.parseSeed(`gamah:7:3:${aVibe}`).vibe === aVibe);
+check('…and leaves out what it did not',
+  mod.parseSeed('gamah:7').genre === null && mod.parseSeed('gamah:7').vibe === '');
+check('a malformed seed comes back as a sentence, not a song',
+  !!mod.parseSeed('gamah:nope').error, mod.parseSeed('gamah:nope').error);
+check('formatSeed is parseSeed backwards',
+  mod.formatSeed('gamah', 7, 3, aVibe) === `gamah:7:3:${aVibe}`, mod.formatSeed('gamah', 7, 3, aVibe));
+check('a null genre is left to roll rather than written as -1',
+  mod.formatSeed('gamah', 7, null, '') === 'gamah:7', mod.formatSeed('gamah', 7, null, ''));
 
 // ── reroll: the 🎲 button ──
-let cfg = mod.defaultConfig();
-const base = mod.encodeVibe(cfg);
-const rolled = mod.rollVibe(cfg, true);
-check('rollVibe changes the vibe', mod.encodeVibe(rolled) !== base);
-const genresSeen = new Set();
-for (let i = 0; i < 60; i++) genresSeen.add(mod.getGenre(mod.rollVibe(cfg, true)));
-check('rollVibe reaches more than one genre', genresSeen.size > 1, `${genresSeen.size} genres`);
-check('rollVibe(false) keeps the genre',
-  mod.getGenre(mod.rollVibe(mod.setGenre(cfg, 3), false)) === 3);
+check('rollVibe hands back a vibe', mod.isVibe(mod.rollVibe()) === true, mod.rollVibe());
+check('rollVibe actually rolls', mod.rollVibe() !== mod.rollVibe());
 
-// ── shuffle: the line every listener walks ──
-const a = mod.encodeVibe(mod.rollVibeFor(cfg, 'gamah', 5));
-const b = mod.encodeVibe(mod.rollVibeFor(cfg, 'gamah', 5));
-check('rollVibeFor is reproducible for the same tag+n', a === b, a);
-check('rollVibeFor moves with n', a !== mod.encodeVibe(mod.rollVibeFor(cfg, 'gamah', 6)));
-check('rollVibeFor moves with the tag', a !== mod.encodeVibe(mod.rollVibeFor(cfg, 'skafinity', 5)));
-check('rollVibeFor ignores tag case',
-  a === mod.encodeVibe(mod.rollVibeFor(cfg, 'GAMAH', 5)));
+// ── the lines every listener walks ──
+check('rollVibeFor is reproducible for the same tag+n', mod.rollVibeFor('gamah', 5) === aVibe, aVibe);
+check('rollVibeFor moves with n', aVibe !== mod.rollVibeFor('gamah', 6));
+check('rollVibeFor moves with the tag', aVibe !== mod.rollVibeFor('skafinity', 5));
+check('rollVibeFor ignores tag case', aVibe === mod.rollVibeFor('GAMAH', 5));
 const lineGenres = new Set();
-for (let i = 0; i < 60; i++) lineGenres.add(mod.getGenre(mod.rollVibeFor(cfg, 'gamah', i)));
-check('the shuffle line covers every genre', lineGenres.size === mod.genreCount(),
+for (let i = 0; i < 60; i++) lineGenres.add(mod.rollGenreFor('gamah', i));
+check('the genre line covers every genre', lineGenres.size === mod.genreCount(),
   `${lineGenres.size} of ${mod.genreCount()}`);
+check('the station line starts on its root and derives the rest',
+  mod.rollTagFor('gamah', 0) === 'gamah' && mod.rollTagFor('gamah', 1) !== 'gamah');
 
 // ── retired knobs are gone from what the UI renders ──
 // A retired global leaves a RESERVED (null) slot on the wire so every later position holds; what
@@ -90,7 +96,7 @@ check('WidthDetune round-trips through cfg',
 
 // ── a rolled song actually renders ──
 // The end of the whole chain: shuffle picks a vibe, the worker renders it, the page plays it.
-const song = mod.generateSong('gamah:5', mod.rollVibeFor(cfg, 'gamah', 5));
+const song = mod.generateSong(mod.songSeed('gamah', 5), mod.decodeVibe(aVibe, cfg));
 check('a shuffled song renders stereo audio',
   song && song.left?.length > 0 && song.left.length === song.right?.length, `${song?.left?.length} frames`);
 let loud = 0;

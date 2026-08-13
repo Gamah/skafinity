@@ -14,7 +14,10 @@
 import { SkafinityPlayer } from './player.js';
 import { derivePalette, chooseMode, pickAccent, parseColor, NEUTRAL_ACCENT } from './palette.js';
 
-const COL_HEADERS = ['VOLUME', 'TONE', 'CHARACTER', 'EXTRA'];
+// One header per grid column. The wire carries columns 1..4 (column 0, VOLUME, is a local mix
+// preference and never travels), and the grid is rectangular — a voice with nothing in its last
+// column simply leaves that cell empty.
+const COL_HEADERS = ['VOLUME', 'TONE', 'CHARACTER', 'EXTRA', 'MORE'];
 // Shown where a length would be if there were one — nothing is rendered yet, so there is no
 // duration to state. An honest dash beats 0:00, which reads as a song of no length.
 const NO_TIME = '–:––';
@@ -24,6 +27,9 @@ const fmtTime = (s) => {
 };
 // Every section the widget can show. `controls` names the ones it does.
 const SECTIONS = ['transport', 'seed', 'vibe', 'playlist'];
+// What the message line says when it has nothing else to say and the engine is not up yet. Nothing
+// is fetched until the first play, so this is the one moment the widget owes an explanation.
+const IDLE_MSG = 'press play — the ~7.5 MB engine downloads on first play, not on page view';
 
 // The shadow stylesheet. Every colour is `var(--ska-x, var(--_ska-x))`: the inner name carries what
 // the derivation worked out, the outer is the public override, and the cascade settles which wins —
@@ -138,6 +144,8 @@ h2 {
   margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
 h2 select, h2 button { text-transform: none; letter-spacing: 0; font-size: 11px; padding: 3px 8px; }
+/* The buttons that act on the sliders sit under them, after the thing they change. */
+.vibe-actions { margin-top: 10px; }
 
 /* ── Playlist ── */
 .playlist { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
@@ -159,7 +167,7 @@ h2 select, h2 button { text-transform: none; letter-spacing: 0; font-size: 11px;
 
 /* ── Vibe editor ── */
 .matrix { display: flex; flex-direction: column; gap: 8px; }
-.mrow { display: grid; grid-template-columns: 54px repeat(4, 1fr); align-items: start; gap: 8px; }
+.mrow { display: grid; grid-template-columns: 54px repeat(5, 1fr); align-items: start; gap: 8px; }
 .mvoice { font-weight: 700; font-size: 11px; letter-spacing: 1px; padding-top: 2px; }
 .mhead { align-items: center; }
 .mhlabel { font-size: 9px; letter-spacing: 1.5px; color: var(--ska-text-dim, var(--_ska-text-dim)); }
@@ -176,7 +184,7 @@ h2 select, h2 button { text-transform: none; letter-spacing: 0; font-size: 11px;
 .msg.err { color: var(--ska-accent, var(--_ska-accent)); }
 
 @media (max-width: 520px) {
-  .mrow { grid-template-columns: 40px repeat(4, 1fr); gap: 5px; }
+  .mrow { grid-template-columns: 40px repeat(5, 1fr); gap: 5px; }
   .global-grid { grid-template-columns: repeat(2, 1fr); }
 }
 `;
@@ -297,7 +305,12 @@ export class SkafinityPlayerElement extends HTMLElement {
     if (name === 'theme' || name === 'accent') { this.refreshTheme(); return; }
     if (name === 'share-base') { this.syncShare(); return; }
     if (!this.player) return;
-    if (name === 'seed' && newV && newV !== this.player.seed) { this.player.applySeed(newV); this.syncSeedInput(); }
+    if (name === 'seed' && newV && newV !== this.player.seed) {
+      // A seed set from outside gets the same refusal as one typed in: it says why, inline, and
+      // leaves the widget playing whatever it was.
+      this.showMessage(this.player.applySeed(newV));
+      this.syncSeedInput();
+    }
     if (name === 'controls') this.applyControls();
     if (name === 'volume') { const v = parseFloat(newV); if (Number.isFinite(v)) this.setVolume(v); }
   }
@@ -306,7 +319,7 @@ export class SkafinityPlayerElement extends HTMLElement {
   get seed() { return this.player ? this.player.seed : this.getAttribute('seed') || ''; }
   set seed(v) {
     if (!this.player) { this.setAttribute('seed', v); return; }
-    this.player.applySeed(v);
+    this.showMessage(this.player.applySeed(v));
     this.syncSeedInput();
   }
   get playing() { return !!(this.player && this.player.playing); }
@@ -366,6 +379,9 @@ export class SkafinityPlayerElement extends HTMLElement {
     board.setAttribute('part', 'board');
     this.root.append(style, board);
     this.els.board = board;
+    // A section is not always one node: `vibe` is a strip of buttons AND the panel of sliders they
+    // act on, and `controls="…"` has to hide or show the pair together.
+    this.sectionNodes = new Map(SECTIONS.map((n) => [n, []]));
 
     this.player = new SkafinityPlayer({
       ...SkafinityPlayerElement.playerDefaults,
@@ -379,12 +395,13 @@ export class SkafinityPlayerElement extends HTMLElement {
     this.buildTransport(board);
     this.buildBoot(board);
     this.buildSeedBar(board);
+    this.buildVibeControls(board);
     this.buildVibe(board);
     this.buildPlaylist(board);
     const msg = document.createElement('p');
     msg.className = 'msg';
     msg.setAttribute('part', 'message');
-    msg.textContent = 'press play — the ~7.5 MB engine downloads on first play, not on page view';
+    msg.textContent = IDLE_MSG;
     board.append(msg);
     this.els.msg = msg;
 
@@ -392,11 +409,18 @@ export class SkafinityPlayerElement extends HTMLElement {
     this.wirePlayer();
   }
 
+  /** Register `el` as part of the named section, so `controls` can hide it with its siblings. */
+  markSection(el, name) {
+    el.dataset.section = name;
+    if (this.sectionNodes.has(name)) this.sectionNodes.get(name).push(el);
+    return el;
+  }
+
   section(parent, name, title) {
     const sec = document.createElement('section');
     sec.className = 'panel';
     sec.setAttribute('part', `panel ${name}`);
-    sec.dataset.section = name;
+    this.markSection(sec, name);
     if (title) {
       const h = document.createElement('h2');
       h.append(document.createTextNode(title));
@@ -412,7 +436,7 @@ export class SkafinityPlayerElement extends HTMLElement {
     // buttons and the bar that says where in the song they are acting.
     const wrap = document.createElement('div');
     wrap.className = 'transport';
-    wrap.dataset.section = 'transport';
+    this.markSection(wrap, 'transport');
     wrap.setAttribute('part', 'transport');
     const bar = document.createElement('div');
     bar.className = 'row';
@@ -511,13 +535,13 @@ export class SkafinityPlayerElement extends HTMLElement {
   buildSeedBar(board) {
     const bar = document.createElement('div');
     bar.className = 'row';
-    bar.dataset.section = 'seed';
+    this.markSection(bar, 'seed');
     bar.setAttribute('part', 'seed-bar');
     const input = document.createElement('input');
     input.type = 'text';
     input.spellcheck = false;
     input.className = 'grow';
-    input.placeholder = 'vibe:tag:n  /  tag:n  /  tag';
+    input.placeholder = 'tag:n[:genre][:vibe]';
     input.setAttribute('part', 'seed-input');
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.playSeed(input.value); });
     const go = document.createElement('button');
@@ -527,21 +551,34 @@ export class SkafinityPlayerElement extends HTMLElement {
     go.className = 'primary';
     go.setAttribute('part', 'button seed-go');
     go.onclick = () => this.playSeed(input.value);
-    const copy = document.createElement('button');
-    copy.setAttribute('part', 'button seed-copy');
-    copy.onclick = async () => {
-      const text = this.shareText();
+
+    // TWO copy buttons, because there are two things somebody might mean by "share this".
+    // The default hands over THIS SONG, fully resolved — the recipient hears what is playing here.
+    // The second hands over the string as it stands, so a station that is still rolling keeps
+    // rolling for them too.
+    const copy = this.copyButton('seed-copy', () => this.shareText(false));
+    const copyStation = this.copyButton('seed-copy-station', () => this.shareText(true));
+    copyStation.title = 'Copy the seed as it stands — whatever it leaves rolling keeps rolling';
+
+    bar.append(input, go, copy, copyStation);
+    board.append(bar);
+    Object.assign(this.els, { seedBar: bar, seedInput: input, copyBtn: copy, copyStationBtn: copyStation });
+    this.syncSeedInput();
+    this.syncShare();
+  }
+
+  /** A button that copies whatever `text()` returns and says so for a moment. */
+  copyButton(part, text) {
+    const b = document.createElement('button');
+    b.setAttribute('part', `button ${part}`);
+    b.onclick = async () => {
       try {
-        await navigator.clipboard.writeText(text);
-        copy.textContent = 'copied!';
+        await navigator.clipboard.writeText(text());
+        b.textContent = 'copied!';
         setTimeout(() => this.syncShare(), 1200);
       } catch (_) { /* clipboard denied in this context — the text is in the box either way */ }
     };
-    bar.append(input, go, copy);
-    board.append(bar);
-    Object.assign(this.els, { seedBar: bar, seedInput: input, copyBtn: copy });
-    this.syncSeedInput();
-    this.syncShare();
+    return b;
   }
 
   /** Show the seed the transport is holding. The `song` event does this once the engine is up; this
@@ -552,9 +589,14 @@ export class SkafinityPlayerElement extends HTMLElement {
     if (this.els.seedInput && !this.player.ready) this.els.seedInput.value = this.player.seed;
   }
 
-  /** Take the seed in the box and START — what the seed bar's button means. */
+  /** Take the seed in the box and START — what the seed bar's button means. A seed that will not
+   *  parse says so INLINE, under the box, and changes nothing: typed mid-session it leaves the
+   *  music playing, and arriving from a link it leaves the widget silent rather than playing
+   *  something adjacent to what was sent. */
   playSeed(v) {
-    this.player.applySeed(v);
+    const error = this.player.applySeed(v);
+    if (error) { this.showMessage(error); return; }
+    this.showMessage('');
     // Already playing? applySeed restarted the sequence itself; a second start would only churn.
     if (!this.player.playing) this.play();
   }
@@ -564,43 +606,114 @@ export class SkafinityPlayerElement extends HTMLElement {
   // yields the host page's address, which reproduces nothing unless that page wired the seed up.
   // Without one it copies the seed, which does reproduce the song anywhere, and says so on the button.
   shareBase() { return (this.getAttribute('share-base') || '').trim(); }
-  shareText() {
+  /** `station` false = this song, fully written down; true = the seed as it stands, still rolling. */
+  shareText(station) {
     const base = this.shareBase();
     // No seed yet (nothing has been played and no link brought one) — a bare `page#` reproduces
     // nothing and looks like a broken link, so hand over the page.
-    const seed = this.seed;
+    const seed = station ? this.seed : (this.player ? this.player.resolvedSeed : this.seed);
     if (!base) return seed;
     return seed ? `${base.split('#')[0]}#${seed}` : base.split('#')[0];
   }
   syncShare() {
-    if (this.els.copyBtn) this.els.copyBtn.textContent = this.shareBase() ? 'copy link' : 'copy seed';
+    const link = !!this.shareBase();
+    if (this.els.copyBtn) this.els.copyBtn.textContent = link ? 'copy link' : 'copy seed';
+    if (this.els.copyStationBtn) this.els.copyStationBtn.textContent = link ? 'copy station link' : 'copy station';
   }
 
-  buildVibe(board) {
-    const sec = this.section(board, 'vibe', 'vibe');
+  // The controls that decide WHAT PLAYS live on the board itself, in a row of their own. They are
+  // not knob controls: genre, reroll and shuffle change the seed, and tinker only opens the box.
+  // Putting them in the panel's header made them look like part of the mixer, and left them on
+  // screen for the many visitors who never open it.
+  buildVibeControls(board) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.setAttribute('part', 'vibe-controls');
+    this.markSection(row, 'vibe');
+
+    // The genre dropdown IS the seed's genre part: "Random" takes it out of the string (every song
+    // rolls its own again), any other option writes it in.
     const genreLabel = document.createElement('label');
     genreLabel.className = 'dim';
     const genre = document.createElement('select');
     genre.setAttribute('part', 'genre-select');
-    genre.onchange = () => this.player.setGenre(parseInt(genre.value, 10));
+    genre.onchange = () => {
+      if (genre.value === '') this.player.rollGenre();
+      else this.player.setGenre(parseInt(genre.value, 10));
+    };
     genreLabel.append('genre ', genre);
 
     const reroll = document.createElement('button');
     reroll.textContent = '🎲 reroll';
-    reroll.title = 'Randomize the genre and every knob but the volumes';
+    reroll.title = 'A fresh station at song 0 — anything you have pinned stays pinned';
     reroll.setAttribute('part', 'button reroll-button');
     reroll.onclick = () => this.player.reroll();
 
     const shuffle = document.createElement('button');
-    shuffle.title = 'Re-roll genre + every knob for each new song (keeps your volumes)';
+    shuffle.title = 'Every next song is a whole new station rather than the next song of this one';
     shuffle.setAttribute('part', 'button shuffle-button');
-    shuffle.onclick = () => { this.player.setShuffle(!this.player.randomEverySong); this.syncShuffle(); };
+    shuffle.onclick = () => { this.player.setShuffle(!this.player.shuffle); this.syncShuffle(); };
 
-    sec._head.append(genreLabel, reroll, shuffle);
-    const body = document.createElement('div');
-    body.setAttribute('part', 'vibe-body');
-    sec.append(body);
-    Object.assign(this.els, { vibeSec: sec, vibeBody: body, genre, shuffle });
+    // The knobs live behind this. They are the deep end of the toy, and a wall of sliders is
+    // otherwise the first thing a visitor meets.
+    const tinker = document.createElement('button');
+    tinker.className = 'right';
+    tinker.setAttribute('part', 'button tinker-button');
+    tinker.onclick = () => { this.setTinkering(!this._tinkering); };
+
+    row.append(genreLabel, reroll, shuffle, tinker);
+    board.append(row);
+    Object.assign(this.els, { vibeControls: row, genre, shuffle, tinker });
+  }
+
+  // The box the sliders live in, and only what acts on the sliders.
+  buildVibe(board) {
+    const sec = this.section(board, 'vibe', 'vibe');
+    sec.hidden = true;                 // opened by the tinker button, not by default
+
+    // The matrix is rebuilt on every vibe change, so it gets its own host — the buttons under it
+    // must survive that.
+    const matrixHost = document.createElement('div');
+
+    // 🎲 THROW THE KNOBS SOMEWHERE NEW. Always moves every slider, because it draws a fresh vibe
+    // and pins it — which is what a die on a mixer is expected to do.
+    const roll = document.createElement('button');
+    roll.textContent = '🎲 randomize';
+    roll.title = 'Throw every knob somewhere new and keep it — the seed carries these values';
+    roll.setAttribute('part', 'button vibe-roll');
+    roll.onclick = () => this.player.rerollVibe();
+
+    // …and the way back OUT. Dragging a knob (or pressing the die) pins the whole vibe into the
+    // seed, so without this one accidental drag turns an endless station into one song forever.
+    // It is not a second randomize: it hands the vibe back to the station, so what it changes is
+    // the songs AFTER this one — hence the wording, and hence it being disabled when nothing is
+    // pinned rather than looking like a die that did nothing.
+    const clear = document.createElement('button');
+    clear.textContent = '↺ random each song';
+    clear.title = 'Stop pinning these knobs — let every song roll its own again';
+    clear.setAttribute('part', 'button vibe-random');
+    clear.onclick = () => this.player.rollVibe();
+
+    const actions = document.createElement('div');
+    actions.className = 'row vibe-actions';
+    actions.setAttribute('part', 'vibe-actions');
+    actions.append(roll, clear);
+
+    sec.append(matrixHost, actions);
+    this._tinkering = false;
+    Object.assign(this.els, { vibeSec: sec, vibeBody: sec, vibeMatrix: matrixHost, vibeRoll: roll, vibeRandom: clear });
+    this.syncTinker();
+  }
+
+  setTinkering(on) {
+    this._tinkering = !!on;
+    this.syncTinker();
+    if (this._tinkering) this.buildVibeEditor();
+  }
+  syncTinker() {
+    const open = !!this._tinkering && this._wantVibe !== false;
+    if (this.els.vibeSec) this.els.vibeSec.hidden = !open;
+    if (this.els.tinker) this.els.tinker.textContent = this._tinkering ? 'hide knobs' : '🎛 tinker';
   }
 
   buildPlaylist(board) {
@@ -634,10 +747,12 @@ export class SkafinityPlayerElement extends HTMLElement {
   applyControls() {
     const raw = (this.getAttribute('controls') || '').trim().toLowerCase();
     const wanted = !raw || raw === 'all' ? SECTIONS : raw.split(/[\s,]+/).filter(Boolean);
-    for (const name of SECTIONS) {
-      const el = this.root.querySelector(`[data-section="${name}"]`);
-      if (el) el.hidden = !wanted.includes(name);
-    }
+    this._wantVibe = wanted.includes('vibe');
+    for (const name of SECTIONS)
+      for (const el of this.sectionNodes.get(name) || []) el.hidden = !wanted.includes(name);
+    // The slider box answers to BOTH: `controls` says whether the vibe exists at all, tinker says
+    // whether it is open. One `hidden` flag, two reasons to set it, so it is settled in one place.
+    this.syncTinker();
   }
 
   // ── Player events → UI ─────────────────────────────────────────────────────
@@ -666,8 +781,12 @@ export class SkafinityPlayerElement extends HTMLElement {
     });
     p.addEventListener('song', (e) => {
       this.els.now.textContent = `#${e.detail.n}`;
+      // The box shows the seed AS IT STANDS — a station that is still rolling reads as one.
       this.els.seedInput.value = e.detail.seed;
-      if (this.els.genre.options.length) this.els.genre.value = String(e.detail.genre);
+      // '' is the Random entry: the genre is not in the string, so every song rolls its own.
+      if (this.els.genre.options.length)
+        this.els.genre.value = e.detail.genrePinned ? String(e.detail.genre) : '';
+      this.syncVibePin(e.detail);
       relay('song', e.detail);
     });
     p.addEventListener('vibe', () => { this.buildVibeEditor(); this.syncShuffle(); });
@@ -733,9 +852,24 @@ export class SkafinityPlayerElement extends HTMLElement {
 
   syncShuffle() {
     if (!this.els.shuffle) return;
-    const on = this.player.randomEverySong;
-    this.els.shuffle.textContent = on ? '🎲 every song: ON' : '🎲 every song: OFF';
+    const on = this.player.shuffle;
+    this.els.shuffle.textContent = on ? '🔀 shuffle: ON' : '🔀 shuffle: OFF';
     this.els.shuffle.classList.toggle('on', on);
+  }
+
+  /** The "random vibe" button only means anything while a vibe is pinned. */
+  syncVibePin(detail) {
+    if (this.els.vibeRandom) this.els.vibeRandom.disabled = !detail.vibePinned;
+  }
+
+  /** Show a sentence under the seed box (a refused seed), or clear it. Inline, deliberately: a
+   *  toast that has faded is no help to somebody looking at a widget that did nothing. */
+  showMessage(text) {
+    if (!this.els.msg) return;
+    this.els.msg.className = text ? 'msg err' : 'msg';
+    // Clearing an error does not mean clearing the LINE: an unbooted widget still owes the visitor
+    // the reason it is sitting there doing nothing.
+    this.els.msg.textContent = text || (this.player && this.player.ready ? '' : IDLE_MSG);
   }
 
   showError(e) {
@@ -761,13 +895,19 @@ export class SkafinityPlayerElement extends HTMLElement {
   populateGenres() {
     const sel = this.els.genre;
     sel.innerHTML = '';
+    // "Random" FIRST, and it is what a seed with no genre in it reads as — the way back out of a
+    // chosen genre, which a dropdown without it does not have.
+    const any = document.createElement('option');
+    any.value = '';
+    any.textContent = 'Random';
+    sel.append(any);
     for (let i = 0; i < this.player.mod.genreCount(); i++) {
       const o = document.createElement('option');
       o.value = String(i);
       o.textContent = this.player.mod.genreName(i);
       sel.append(o);
     }
-    sel.value = String(this.player.genre);
+    sel.value = this.player.pinnedGenre === null ? '' : String(this.player.genre);
   }
 
   renderPlaylist() {
@@ -817,8 +957,8 @@ export class SkafinityPlayerElement extends HTMLElement {
   // 2 character / 3 extra). A new genre — or a new knob — is a pure-C# change; there is no JS-side
   // field table to keep in sync.
   buildVibeEditor() {
-    if (!this.player.ready) return;
-    const host = this.els.vibeBody;
+    if (!this.player.ready || !this._tinkering) return;
+    const host = this.els.vibeMatrix;
     host.innerHTML = '';
     const fields = this.player.fields();
     const globals = fields.filter((f) => !f.voice);
@@ -826,7 +966,7 @@ export class SkafinityPlayerElement extends HTMLElement {
     const byVoice = new Map();
     for (const f of fields) {
       if (!f.voice) continue;
-      if (!byVoice.has(f.voice)) { byVoice.set(f.voice, [null, null, null, null]); voices.push(f.voice); }
+      if (!byVoice.has(f.voice)) { byVoice.set(f.voice, COL_HEADERS.map(() => null)); voices.push(f.voice); }
       byVoice.get(f.voice)[f.column] = f;
     }
 

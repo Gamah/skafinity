@@ -136,20 +136,39 @@ const stubEngine = () => ({
   genreName: (i) => `genre${i}`,
   getGenre: (c) => c[0] | 0,
   setGenre: (c, i) => { const n = c.slice(); n[0] = i; return n; },
-  encodeVibe: (c) => `v${c[0] | 0}`,
-  decodeVibe: (v, c) => c.slice(),
-  looksLikeVibe: () => true,
-  rollVibe: (c) => c.slice(),
-  rollVibeFor: (c, t, n) => { const x = c.slice(); x[0] = n % 3; return x; },
+  // A two-char stand-in for the real 36-char vibe: same rules, small enough to read.
+  encodeVibe: (c) => (c[1] | 0).toString(16).padStart(2, '0').slice(-2),
+  decodeVibe: (v, c) => { const n = c.slice(); n[1] = parseInt(v, 16) || 0; return n; },
+  isVibe: (s) => /^[0-9a-f]{2}$/.test(s || ''),
+  vibeLength: () => 2,
+  rollVibe: () => 'ab',
+  rollVibeFor: (t, n) => (n + 1).toString(16).padStart(2, '0').slice(-2),
+  rollGenreFor: (t, n) => n % 3,
+  rollTagFor: (root, p) => (p === 0 ? root : `${root}-${p}`),
   vibeFieldCount: () => 3,
   vibeFieldInfo: (g, i) => ({ name: ['VOLUME', 'TONE', 'DRIVE'][i], min: 0, max: 1, isInt: false,
-    voice: i < 2 ? 'BASS' : null, column: i % 4, choices: [] }),
-  vibeLevels: () => 36,
+    voice: 'BASS', column: i, choices: [] }),
+  vibeLevels: () => 16,
   setVibeField: (c) => c.slice(),
   getVibeNorm: () => 0.5,
   vibeDisplay: () => '0.50',
   songToWav: () => new Uint8Array([1]),
-  parseSeed: (s) => { const p = String(s).split(':'); return { vibe: p[0] || '', tag: p[1] || '', n: parseInt(p[2], 10) || 0, hasN: p.length > 2 }; },
+  songSeed: (tag, n) => `${tag || 'rotaliate'}:${n}`,
+  formatSeed: (tag, n, genre, vibe) =>
+    `${tag}:${n}${genre >= 0 && genre !== null ? ':' + genre.toString(16) : ''}${vibe ? ':' + vibe : ''}`,
+  parseSeed: (s) => {
+    const parts = String(s || '').trim().split(':');
+    if (!s || !String(s).trim()) return { error: 'a seed looks like tag:n', tag: '', n: 0, genre: null, vibe: '' };
+    if (parts.length >= 2 && !/^\d+$/.test(parts[1]))
+      return { error: `'${parts[1]}' is not a song number`, tag: '', n: 0, genre: null, vibe: '' };
+    let genre = null, vibe = '';
+    for (const p of parts.slice(2)) {
+      if (p.length === 1) genre = parseInt(p, 16);
+      else if (p.length === 2) vibe = p;
+      else return { error: 'a vibe is 2 characters', tag: '', n: 0, genre: null, vibe: '' };
+    }
+    return { error: '', tag: parts[0], n: parts.length >= 2 ? parseInt(parts[1], 10) : 0, genre, vibe };
+  },
 });
 class FakeCtx {
   constructor() { this.currentTime = 0; this.state = 'running'; this.destination = {}; }
@@ -174,7 +193,7 @@ check('the element registered itself as <skafinity-player>', defined.get('skafin
 
 // ── It builds ──────────────────────────────────────────────────────────────────
 const el = new SkafinityPlayerElement();
-el.setAttribute('seed', 'v0:demo:7');
+el.setAttribute('seed', 'demo:7');
 host.append(el);
 el.isConnected = true;
 el.connectedCallback();
@@ -192,17 +211,17 @@ check('the probe left nothing behind in the page', globalThis.document.body.all(
 // — and the seed still has to be on screen, or the link looks like it did nothing.
 {
   check('the seed box shows the linked seed before boot',
-    !el.player.ready && el.els.seedInput.value === 'v0:demo:7', el.els.seedInput.value);
-  el.seed = 'v0:later:2';
+    !el.player.ready && el.els.seedInput.value === 'demo:7', el.els.seedInput.value);
+  el.seed = 'later:2';
   check('…and follows a seed handed to a widget that has still not booted',
-    el.els.seedInput.value === 'v0:later:2', el.els.seedInput.value);
+    el.els.seedInput.value === 'later:2', el.els.seedInput.value);
   el.setAttribute('share-base', 'https://example.com/skafinity/');
   el.attributeChangedCallback('share-base', null, 'https://example.com/skafinity/');
   check('copy hands over a link that reproduces it, unbooted',
-    el.shareText() === 'https://example.com/skafinity/#v0:later:2', el.shareText());
+    el.shareText(true) === 'https://example.com/skafinity/#later:2', el.shareText(true));
   el.removeAttribute('share-base');
   el.attributeChangedCallback('share-base', 'x', null);
-  el.seed = 'v0:demo:7';
+  el.seed = 'demo:7';
 }
 
 // ── It themed itself off the page ──────────────────────────────────────────────
@@ -257,11 +276,19 @@ await el.play();
 await wait(10);
 check('play boots the engine', el.player.ready);
 check('the progress bar is gone once ready', !el.els.boot.classList.contains('show'));
-check('the genre select was populated from the engine', el.els.genre.options.length === 3);
-check('the vibe matrix was built from the field metadata', el.els.vibeBody.children.length >= 1);
+// Three genres plus the "Random" entry that takes the genre back out of the seed.
+check('the genre select was populated from the engine', el.els.genre.options.length === 4);
+check('…with Random first, and selected while no genre is pinned',
+  el.els.genre.options[0].value === '' && el.els.genre.value === '', el.els.genre.value);
+// The knobs start COLLAPSED — a wall of sliders is not what a visitor should meet first — and the
+// matrix is built when they are asked for.
+check('the knobs are behind the tinker button', el.els.vibeBody.hidden === true);
+el.setTinkering(true);
+check('the vibe matrix was built from the field metadata', el.els.vibeMatrix.children.length >= 1);
+check('…and there is a way back out of a pinned vibe', !!el.els.vibeRandom);
 check('the playlist rendered a window of songs', el.els.playlist.children.length > 1, `${el.els.playlist.children.length} rows`);
 check('the seed box shows the seed', el.els.seedInput.value === el.player.seed, el.els.seedInput.value);
-check('the seed the attribute asked for is the one playing', el.player.seed.endsWith(':demo:7'), el.player.seed);
+check('the seed the attribute asked for is the one playing', el.player.seed === 'demo:7', el.player.seed);
 check('the play button flipped to pause', el.els.playBtn.textContent === '⏸');
 el.pause();
 check('…and back', el.els.playBtn.textContent === '▶');
@@ -299,20 +326,39 @@ check('…and back', el.els.playBtn.textContent === '▶');
   const go = bar.children.find((c) => (c.getAttribute('part') || '').includes('seed-go'));
   check('the seed bar starts the song rather than just loading it', go.textContent === 'play', go.textContent);
   el.pause();
-  el.els.seedInput.value = 'v0:typed:3';
+  el.els.seedInput.value = 'typed:3';
   go.onclick();
   await wait(10);
-  check('typing a seed and pressing it plays', el.player.playing && el.player.seed.endsWith(':typed:3'),
+  check('typing a seed and pressing it plays', el.player.playing && el.player.seed === 'typed:3',
     `${el.player.playing} ${el.player.seed}`);
+
+  // A seed that will not parse says so INLINE and changes nothing — playback carries on.
+  const playingSeed = el.player.seed;
+  el.els.seedInput.value = 'typed:not-a-number';
+  go.onclick();
+  await wait(10);
+  check('a malformed seed is refused, in the message line',
+    /song number/.test(el.els.msg.textContent), el.els.msg.textContent);
+  check('…and the music was left alone', el.player.playing && el.player.seed === playingSeed, el.player.seed);
+  el.els.seedInput.value = playingSeed;
+  go.onclick();
+  await wait(10);
 
   // Copy: a seed alone unless the HOST says what URL reproduces it, because reading `location` from
   // inside an embed yields the host page's address, which reproduces nothing.
-  check('with no share-base it copies the seed', el.shareText() === el.player.seed, el.shareText());
-  check('…and the button says so', el.els.copyBtn.textContent === 'copy seed', el.els.copyBtn.textContent);
+  // Two buttons: the default hands over THIS SONG fully written down, the second hands over the
+  // seed as it stands so a rolling station keeps rolling.
+  check('the default copy resolves the song', el.shareText(false) === el.player.resolvedSeed, el.shareText(false));
+  check('…and it really does write down what was rolling',
+    el.player.resolvedSeed !== el.player.seed && el.player.resolvedSeed.startsWith(el.player.seed),
+    `${el.player.seed} -> ${el.player.resolvedSeed}`);
+  check('the second copy keeps the station rolling', el.shareText(true) === el.player.seed, el.shareText(true));
+  check('…and the buttons say so', el.els.copyBtn.textContent === 'copy seed'
+    && el.els.copyStationBtn.textContent === 'copy station', el.els.copyBtn.textContent);
   el.setAttribute('share-base', 'https://example.com/skafinity/#stale');
   el.attributeChangedCallback('share-base', null, 'https://example.com/skafinity/#stale');
-  check('a share-base makes it a link', el.shareText() === `https://example.com/skafinity/#${el.player.seed}`,
-    el.shareText());
+  check('a share-base makes it a link',
+    el.shareText(true) === `https://example.com/skafinity/#${el.player.seed}`, el.shareText(true));
   check('…the button follows', el.els.copyBtn.textContent === 'copy link', el.els.copyBtn.textContent);
   el.removeAttribute('share-base');
   el.attributeChangedCallback('share-base', 'x', null);

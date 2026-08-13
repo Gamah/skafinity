@@ -178,7 +178,7 @@ public static class SkafinityCommands
 		Log.Info( $"[Skafinity] accent = {accent}. In your game: SkafinityTheme.Accent = Color.Parse( \"{accent}\" );" );
 	}
 
-	/// <summary>Play a seed: <c>vibe:tag:n</c>, <c>tag:n</c> or a bare <c>tag</c>. Pass
+	/// <summary>Play a seed: <c>tag:n[:genre][:vibe]</c> (a bare <c>tag</c> is song 0). Pass
 	/// <c>default</c> to go back to the default tag and vibe.</summary>
 	[ConCmd( "skafinity_seed" )]
 	public static void PlaySeed( string seed )

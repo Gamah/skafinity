@@ -22,7 +22,8 @@ skafinity/
         Expression.cs     #   per-note pitch shaping (vibrato/bend/glide/scoop)
         Master.cs         #   reverb, soft-clip, normalize
         Wav.cs            #   float mix → PCM, WAV container
-        VibeCodec.cs      #   seed encoding + the AdvancedFields registry
+        VibeCodec.cs      #   the global knob grid + its hex wire + the AdvancedFields registry
+        SeedCodec.cs      #   the seed STRING: parse/format, the station, the roll streams
         Voices/           #   Comp (dispatch), Bass, Skank, Lead, Keys, Guitar, Horns
         Drums/            #   Groove (DrumGroove tables + the kit/fill pass) + Kit (voices)
         Synth/            #   Patch, Notes (queue), Render, Osc
@@ -67,7 +68,7 @@ skafinity/
 ## Parity — one build, two targets
 
 **The scope of "same seed ⇒ same song" is a single build.** Within one build the web and the
-game must agree, because they compile the *same* `MusicGen.cs`/`VibeCodec.cs` — there is no
+game must agree, because they compile the *same* `MusicGen.cs`/`VibeCodec.cs`/`SeedCodec.cs` — there is no
 second implementation to drift. That is the whole parity guarantee, and it is structural: the
 old "mirror the PRNG / draw order / Config defaults in C++" rules are obsolete; don't
 reintroduce a hand-port.

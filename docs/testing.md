@@ -42,7 +42,7 @@ table says where, and it has been wrong to guess before.
 
 **Three diagnostics answer "why does this song sound wrong", and all of them beat arguing by ear:**
 
-- `-- --seed vibe:tag:n` prints what the composer decided for that seed: the decoded knobs, the
+- `-- --seed tag:n[:genre][:vibe]` prints what the composer decided for that seed: the decoded knobs, the
   tempo and swing (flagging a shuffle), key, changes, voicing, groove, figure lengths, tune
   lengths, ending style, and the form with each section's energy/feel/key **and which cymbal its
   hand is on**. That last column exists because a listening note about a cymbal is ambiguous three
@@ -57,7 +57,7 @@ table says where, and it has been wrong to guess before.
   5 ms at metal tempo and 75 ms at country's, i.e. a guitar audibly out of time. Anything physical
   rather than musical (a strum spread, the kit's push/lay-back) belongs in milliseconds/samples;
   the suite asserts every voice stays on the grid.
-- `-- --score vibe:tag:n [fromBar] [toBar]` prints the SCORE: every voice's onsets over a range of
+- `-- --score tag:n[:genre][:vibe] [fromBar] [toBar]` prints the SCORE: every voice's onsets over a range of
   bars, at `bar.beat`, with their MIDI pitches and the section + chord each bar is on. **A
   listening note is always about a moment** ("it goes wrong on the 48th beat"), and the other two
   answer whole-song questions — this is the one that reads that moment. It found the pre-chorus
@@ -199,7 +199,8 @@ so the targets work on a box with no system-wide .NET or node. Override with
 **The s&box side cannot.** There is no engine install here, so `Code/SkafinityPlayer.cs` and
 `Code/UI/` are verified by review and grep only. When changing engine internals, check what
 they actually reference — today that is just `MusicGen.{Config, Channels, GenerateSamples,
-BeginPlan, Explain, WavFromSamples}` plus all of `VibeCodec`. Keep that surface stable and the
+BeginPlan, Explain, WavFromSamples}` plus all of `VibeCodec` and `SeedCodec`. Keep that surface
+stable and the
 uncompilable target stays safe.
 
 **`Code/SkafinityCommands.cs` is how the s&box side gets tried at all.** It cannot be built here,

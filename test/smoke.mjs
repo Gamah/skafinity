@@ -52,73 +52,91 @@ for (let g = 0; g < E.GenreCount(); g++) {
 }
 check('DefaultConfig genre is 0', E.GetGenre(cfg) === 0, `${E.GetGenre(cfg)}`);
 
-// Field counts follow the genre grids: globals shared by every genre, plus that genre's
-// instruments × 4 columns. Asserted as a SHAPE rather than a magic number — adding a knob or an
-// instrument should not mean editing a literal here, but the relationships must hold.
-// NOTE the anchor: GLOBALS is derived from SKA's count, so ska's instrument total is the one
-// number here that must be edited when a grid changes — and getting it wrong fails every OTHER
-// genre's check while ska's own passes tautologically. Ska has 7 since the third-wave retune gave
-// it a chorus guitar (it plays a driven comp in its loud sections, so it needs the same handles
-// the other genres have).
-const GLOBALS = E.VibeFieldCount(0) - 7 * 4;   // ska has 7 instruments
-const skaCount = E.VibeFieldCount(0);
-const rockCount = E.VibeFieldCount(1);
-check('ska is globals + 7 instruments × 4', skaCount === GLOBALS + 7 * 4, `${skaCount}`);
-check('rock is globals + 5 instruments × 4', rockCount === GLOBALS + 5 * 4, `${rockCount}`);
-check('country is globals + 5 instruments × 4', E.VibeFieldCount(2) === GLOBALS + 5 * 4, `${E.VibeFieldCount(2)}`);
-check('metal is globals + 4 instruments × 4', E.VibeFieldCount(3) === GLOBALS + 4 * 4, `${E.VibeFieldCount(3)}`);
-// The global block may legitimately be EMPTY — every global knob has now been retired to a
-// reserved slot (tempo to GenreProfile, width and reverb to house config), so what has to hold
-// is that every genre agrees on its size, which is what the four checks above assert. A `> 0`
-// here was asserting that the block still had something in it, which was never the contract.
-check('the global block is a consistent size across genres', GLOBALS >= 0, `${GLOBALS}`);
-
-// The wire is genre char + global block + instrument grid, and the block is empty, so the length is
-// the genre char plus one char per WIRE column of each instrument row. Derived from the field
-// metadata rather than written down: the number of columns that travel is whatever every genre
-// agrees on, and it must be FEWER than the 4 the UI lays out, because column 0 (VOLUME) is a local
-// preference that never rides in a shared seed.
+// Field counts follow the genre grids: each genre shows a volume plus its exposed cells, per
+// instrument row. Asserted as a SHAPE — adding a knob should not mean editing a literal here.
 const rowsOf = (g) => {
   let rows = 0;
   for (let i = 0; i < E.VibeFieldCount(g); i++) if (E.VibeFieldVoice(g, i) && E.VibeFieldColumn(g, i) === 0) rows++;
   return rows;
 };
-const vibe = E.EncodeVibe(cfg);
-const wireColumns = (vibe.length - 1) / rowsOf(0);
-check('ska vibe is the genre char plus whole columns of its grid', Number.isInteger(wireColumns), `${vibe.length}`);
-check('fewer columns travel than the UI lays out', wireColumns < 4, `${wireColumns}`);
-for (let g = 1; g < E.GenreCount(); g++)
-  check(`genre ${g} uses the same wire columns`,
-    E.EncodeVibe(E.SetGenre(cfg, g)).length === 1 + rowsOf(g) * wireColumns, `${E.EncodeVibe(E.SetGenre(cfg, g)).length}`);
-check('Encode(Decode(vibe)) is stable', E.EncodeVibe(E.DecodeVibe(vibe, cfg)) === vibe);
-check('LooksLikeVibe accepts the encoding', E.LooksLikeVibe(vibe) === true);
-check('LooksLikeVibe rejects a short tag', E.LooksLikeVibe('gamah') === false);
-check('vibe starts with genre 0 char', vibe[0] === '0', vibe);
+check('every genre shows at least a kit and a bass', (() => {
+  for (let g = 0; g < E.GenreCount(); g++) if (rowsOf(g) < 2) return false;
+  return true;
+})());
+check('every knob belongs to an instrument row', (() => {
+  for (let g = 0; g < E.GenreCount(); g++)
+    for (let i = 0; i < E.VibeFieldCount(g); i++) if (!E.VibeFieldVoice(g, i)) return false;
+  return true;
+})());
 
-// rock vibe is genre-tagged + shorter, and round-trips its own genre
-const rockCfg = E.SetGenre(cfg, 1);
-const rockVibe = E.EncodeVibe(rockCfg);
-check('rock vibe is shorter than ska', rockVibe.length < vibe.length);
+// ── The wire is ONE GLOBAL GRID ──
+// The whole seed refactor rests on this: a vibe is the same width in every genre, and means the
+// same thing in every genre. Without it, pinning a vibe and letting the genre roll is nonsense.
+const vibe = E.EncodeVibe(cfg);
+check('a vibe is the length the engine says it is', vibe.length === E.VibeLength(), `${vibe.length}`);
+check('a vibe is hex', /^[0-9a-f]+$/.test(vibe), vibe);
+for (let g = 1; g < E.GenreCount(); g++)
+  check(`genre ${g} encodes the same width`,
+    E.EncodeVibe(E.SetGenre(cfg, g)).length === vibe.length, `${E.EncodeVibe(E.SetGenre(cfg, g)).length}`);
+check('Encode(Decode(vibe)) is stable', E.EncodeVibe(E.DecodeVibe(vibe, cfg)) === vibe);
+check('IsVibe accepts the encoding', E.IsVibe(vibe) === true);
+check('IsVibe rejects a station name', E.IsVibe('gamah') === false);
+check('IsVibe rejects a near-miss width', E.IsVibe(vibe.slice(1)) === false);
+// A rolled vibe is an ordinary vibe — that is what lets the UI pin one into a seed.
+const rolled = E.RollVibeFor('gamah', 3);
+check('a rolled vibe is a vibe', E.IsVibe(rolled) === true, rolled);
+check('a rolled vibe survives every genre', (() => {
+  for (let g = 0; g < E.GenreCount(); g++)
+    if (E.EncodeVibe(E.DecodeVibe(rolled, E.SetGenre(cfg, g))) !== rolled) return false;
+  return true;
+})(), rolled);
+check('a vibe carries no genre of its own',
+  E.GetGenre(E.DecodeVibe(rolled, E.SetGenre(cfg, 4))) === 4);
+
 // A listener's levels are a local mix preference: moving one must leave the shared string alone.
 {
   let loud = cfg;
-  for (let i = 0; i < skaCount; i++)
+  for (let i = 0; i < E.VibeFieldCount(0); i++)
     if (E.VibeFieldVoice(0, i) && E.VibeFieldColumn(0, i) === 0) loud = E.SetVibeField(loud, i, 0.1);
   check('volumes never travel in the seed', E.EncodeVibe(loud) === vibe, E.EncodeVibe(loud));
 }
-check('rock vibe starts with genre 1 char', rockVibe[0] === '1', rockVibe);
-check('decoding a rock vibe restores genre 1', E.GetGenre(E.DecodeVibe(rockVibe, cfg)) === 1);
-check('rock Encode(Decode) is stable', E.EncodeVibe(E.DecodeVibe(rockVibe, cfg)) === rockVibe);
+
+// ── The seed string ──
+// Parsed by the engine and nowhere else, so this is the contract the whole web layer sits on.
+{
+  const [err, tag, n, genre, v] = E.ParseSeed(`gamah:23:3:${rolled}`);
+  check('a full seed parses', !err && tag === 'gamah' && n === '23' && genre === '3' && v === rolled,
+    `${err} ${tag} ${n} ${genre} ${v}`);
+  const [e2, , , g2, v2] = E.ParseSeed('gamah:23');
+  check('a bare station leaves both parts rolling', !e2 && g2 === '-1' && v2 === '', `${g2} ${v2}`);
+  const [e3] = E.ParseSeed('gamah:oops');
+  check('a malformed seed comes back as a sentence', !!e3, e3);
+  check('…and says something about the number', /number/.test(e3), e3);
+  check('a formatted seed round-trips', E.FormatSeed('gamah', 23, 3, rolled) === `gamah:23:3:${rolled}`,
+    E.FormatSeed('gamah', 23, 3, rolled));
+  check('rolled parts are simply not written down', E.FormatSeed('gamah', 23, -1, '') === 'gamah:23',
+    E.FormatSeed('gamah', 23, -1, ''));
+  check('the composer stream is the station and the index',
+    E.SongSeed('Gamah', 7) === 'gamah:7', E.SongSeed('Gamah', 7));
+  check('genre and vibe roll off separate streams', (() => {
+    // Pinning cannot move the other line, because neither is derived from the other.
+    for (let k = 0; k < 8; k++) if (E.RollVibeFor('x', k) === E.RollVibeFor('y', k)) return false;
+    return true;
+  })());
+  check('a shuffled line starts on its root', E.RollTagFor('gamah', 0) === 'gamah');
+  check('…and derives every station after it',
+    E.RollTagFor('gamah', 1) !== 'gamah' && E.RollTagFor('gamah', 1) === E.RollTagFor('gamah', 1));
+}
 
 // fields carry voice/column metadata for the UI matrix
-check('a field reports a voice', (() => { for (let i = 0; i < skaCount; i++) if (E.VibeFieldVoice(0, i) === 'DRUMS') return true; })() === true);
+check('a field reports a voice', (() => { for (let i = 0; i < E.VibeFieldCount(0); i++) if (E.VibeFieldVoice(0, i) === 'DRUMS') return true; })() === true);
 
 // Move a knob and confirm it round-trips through the vibe string. Picked BY SHAPE rather than by
 // name — the first continuous knob, global or not — because naming one couples this test to that
 // knob surviving. It was `TEMPO`, which is now a reserved slot; and it was then "the first
 // continuous GLOBAL", which stopped existing when the last global was retired.
 const knob = (() => {
-  for (let i = 0; i < skaCount; i++)
+  for (let i = 0; i < E.VibeFieldCount(0); i++)
     if (!E.VibeFieldIsInt(0, i) && E.VibeFieldChoices(0, i).length === 0) return i;
 })();
 check('there is a continuous knob to test', knob !== undefined);
@@ -158,7 +176,7 @@ for (let i = 0; i < 200000; i++) if (Math.abs(L3[i] - L[i]) > 1e-6) { diff = tru
 check('different seed differs', diff);
 
 // rock genre renders non-silent audio that differs from ska (same seed, different genre)
-E.GenerateSong('gamah:0', rockCfg);
+E.GenerateSong('gamah:0', E.SetGenre(cfg, 1));
 const Rk = floatChannel(0);
 let rockNonzero = 0, rockDiff = false;
 for (let i = 0; i < Rk.length; i++) { if (Math.abs(Rk[i]) > 1e-4) rockNonzero++; }
