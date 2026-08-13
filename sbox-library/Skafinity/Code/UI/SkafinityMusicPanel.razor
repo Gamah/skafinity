@@ -72,9 +72,10 @@
 
 				<div class="vol right" style="@LabelStyle">
 					@SkafinityBoard.Copy.Volume
-					<SkafinitySlider Min="@(0f)" Max="@(1.5f)" Step="@(0.01f)" FixedWidth="@(120f)"
-									 Value="@( Player?.Volume ?? 1f )"
-									 OnValueChanged="@( (float v) => SetVolume( v ) )"></SkafinitySlider>
+					<SliderControl class="ska-slider vol-slider"
+								   Min="@(0f)" Max="@(1.5f)" Step="@(0.01f)" ShowValueTooltip="@(false)"
+								   Value="@( Player?.Volume ?? 1f )"
+								   OnValueChanged="@( (float v) => SetVolume( v ) )"></SliderControl>
 				</div>
 			</div>
 
@@ -84,10 +85,11 @@
 			   has been rendered and has a length worth stating. *@
 			<div class="seek">
 				<div class="time" style="@LabelStyle">@SkafinityBoard.Time( ShownTime( here ), known )</div>
-				<SkafinitySlider tooltip="@SkafinityBoard.Copy.SeekTitle" Disabled="@( !known )"
-								 Min="@(0f)" Max="@(1000f)" Step="@(1f)"
-								 Value="@( known ? ShownRatio( here ) * 1000f : 0f )"
-								 OnValueChanged="@( (float v) => Scrub( v / 1000f, here.Duration ) )"></SkafinitySlider>
+				<SliderControl class="ska-slider seek-slider @( known ? "" : "off" )"
+							   tooltip="@SkafinityBoard.Copy.SeekTitle"
+							   Min="@(0f)" Max="@(1000f)" Step="@(1f)" ShowValueTooltip="@(false)"
+							   Value="@( known ? ShownRatio( here ) * 1000f : 0f )"
+							   OnValueChanged="@( (float v) => Scrub( v / 1000f, here.Duration ) )"></SliderControl>
 				<div class="time total" style="@LabelStyle">@SkafinityBoard.Time( here.Duration, known )</div>
 			</div>
 		</div>
@@ -265,10 +267,10 @@
 	bool _tinkering;
 	bool _saving;
 
-	// A DRAG, held. A slider reports every mouse-move and there is no "let go" event to wait for, so
-	// seeking on each report would restart the stream at every pixel. The thumb is therefore followed
-	// here and the transport is told once the drag has settled — which is the same one-seek-per-gesture
-	// the web gets from listening to `change` rather than `input`.
+	// A DRAG, held. SliderControl reports every mouse-move and has no "let go" event, so seeking on
+	// each report would restart the stream at every pixel. The thumb is therefore followed here and
+	// the transport is told once the drag has settled — which is the same one-seek-per-gesture the
+	// web gets from listening to `change` rather than `input`.
 	const float ScrubSettle = 0.2f;
 	float _scrubTo = -1f;
 	TimeSince _scrubSince;
@@ -304,9 +306,10 @@
 	// an inline style rather than named in the .scss. The stylesheet owns every border in return —
 	// see the header comment there for why the two must not overlap.
 	//
-	// Neither a rule nor an inline style reaches inside a control this library did not write, which
-	// is why the board's slider is one it does (SkafinitySlider) — and why the accent reaches the
-	// sliders at all.
+	// The one thing an inline style cannot reach is the INSIDE of a control this library did not
+	// write: SliderControl's track and thumb are its own panels, so the stylesheet paints those in
+	// the same neutral white alphas it uses for every border. The accent stops at the controls this
+	// file actually builds.
 	static string LabelStyle => $"color:{SkafinityTheme.TextDim};";
 	static string TextStyle => $"color:{SkafinityTheme.Text};";
 	static string AccentTextStyle => $"color:{SkafinityTheme.AccentCss};";
@@ -429,9 +432,11 @@
 			{
 				@* Snapped to the same discrete grid the seed encodes (one level per base-36 char), so
 				   the slider can only land on values the vibe can actually represent. *@
-				<SkafinitySlider Min="@(0f)" Max="@( (float)(VibeCodec.Levels - 1) )" Step="@(1f)"
-								 Value="@( MathF.Round( norm * (VibeCodec.Levels - 1) ) )"
-								 OnValueChanged="@( (float v) => SetVibe( idx, v / (VibeCodec.Levels - 1) ) )"></SkafinitySlider>
+				<SliderControl class="ska-slider"
+							   Min="@(0f)" Max="@( (float)(VibeCodec.Levels - 1) )" Step="@(1f)"
+							   ShowValueTooltip="@(false)"
+							   Value="@( MathF.Round( norm * (VibeCodec.Levels - 1) ) )"
+							   OnValueChanged="@( (float v) => SetVibe( idx, v / (VibeCodec.Levels - 1) ) )"></SliderControl>
 			}
 		</div>
 	</text>;
