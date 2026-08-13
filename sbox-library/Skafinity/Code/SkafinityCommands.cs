@@ -119,6 +119,47 @@ public static class SkafinityCommands
 		Dump( root, 0 );
 	}
 
+	/// <summary>Show/hide the slider test card — three stock <c>SliderControl</c>s with nothing of
+	/// this library's styling on them, on a plain panel of their own. TEMPORARY, and paired with
+	/// <see cref="SkafinitySliderTest"/>: it asks whether the stock control draws in this project at
+	/// all, which the music board cannot ask because it has a stylesheet and a palette in the way.
+	/// Follow it with <c>skafinity_ui_dump_test</c> for the rects.</summary>
+	[ConCmd( "skafinity_slider_test" )]
+	public static void ToggleSliderTest()
+	{
+		var scene = Sandbox.Game.ActiveScene;
+		if ( scene == null ) { Log.Warning( "[Skafinity] no active scene." ); return; }
+		if ( scene.IsEditor ) { Log.Warning( "[Skafinity] press play first." ); return; }
+
+		var existing = scene.GetAllComponents<SkafinitySliderTest>().FirstOrDefault();
+		if ( existing != null )
+		{
+			existing.GameObject?.Destroy();
+			Log.Info( "[Skafinity] slider test card removed." );
+			return;
+		}
+
+		// Its own GameObject and its own ScreenPanel, so nothing of the board's is in the way.
+		var go = new GameObject( true, SliderTestName ) { Flags = GameObjectFlags.NotSaved };
+		go.NetworkMode = NetworkMode.Never;
+		go.Components.Create<ScreenPanel>();
+		go.Components.Create<SkafinitySliderTest>();
+		Log.Info( "[Skafinity] slider test card up. Drag each of the three; the number at the top "
+			+ "follows whichever one works. skafinity_ui_dump_test prints their rects." );
+	}
+
+	const string SliderTestName = "Skafinity Slider Test";
+
+	/// <summary>The panel tree of the test card, same format as <see cref="DumpUi"/>. TEMPORARY.</summary>
+	[ConCmd( "skafinity_ui_dump_test" )]
+	public static void DumpSliderTest()
+	{
+		var card = Sandbox.Game.ActiveScene?.GetAllComponents<SkafinitySliderTest>().FirstOrDefault();
+		if ( card?.Panel == null ) { Log.Warning( "[Skafinity] no test card — run skafinity_slider_test first." ); return; }
+		Log.Info( "── skafinity_ui_dump_test ──   element  type  .classes  [x y w h]" );
+		Dump( card.Panel, 0 );
+	}
+
 	static void Dump( Sandbox.UI.Panel p, int depth )
 	{
 		if ( p == null || depth > 12 ) return;
