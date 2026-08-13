@@ -217,7 +217,8 @@ public static class SkafinityCommands
 		Log.Info( $"[Skafinity] genre {genre} = {VibeCodec.Genres[genre]} — {p.CurrentSeed}" );
 	}
 
-	/// <summary>Reroll the vibe: a new genre and every knob, keeping your per-instrument volumes.</summary>
+	/// <summary>Throw every knob somewhere new and pin it there, keeping your per-instrument
+	/// volumes and the genre. The way back out is <c>skafinity_random vibe</c>.</summary>
 	[ConCmd( "skafinity_reroll" )]
 	public static void Reroll()
 	{
@@ -225,7 +226,38 @@ public static class SkafinityCommands
 		if ( p == null ) return;
 
 		p.RerollVibe();
-		Log.Info( $"[Skafinity] rerolled — {p.CurrentSeed}" );
+		Log.Info( $"[Skafinity] rerolled the vibe — {p.CurrentSeed}" );
+	}
+
+	/// <summary>A fresh random station at song 0. Anything pinned stays pinned.</summary>
+	[ConCmd( "skafinity_station" )]
+	public static void Station()
+	{
+		var p = Player();
+		if ( p == null ) return;
+
+		p.RerollStation();
+		Log.Info( $"[Skafinity] new station — {p.StationSeed}" );
+	}
+
+	/// <summary>Hand a pinned seed part back to the station so every song rolls its own again:
+	/// <c>skafinity_random genre</c>, <c>vibe</c>, or <c>both</c>.</summary>
+	[ConCmd( "skafinity_random" )]
+	public static void Random( string part = "both" )
+	{
+		var p = Player();
+		if ( p == null ) return;
+
+		switch ( (part ?? "").Trim().ToLowerInvariant() )
+		{
+			case "genre": p.RollGenre(); break;
+			case "vibe": p.RollVibe(); break;
+			case "both" or "": p.RollGenre(); p.RollVibe(); break;
+			default:
+				Log.Warning( $"[Skafinity] '{part}' is not a seed part — genre, vibe or both." );
+				return;
+		}
+		Log.Info( $"[Skafinity] rolling — {p.StationSeed}" );
 	}
 
 	/// <summary>Write the playing song to a .wav under the s&amp;box data folder.</summary>
@@ -255,7 +287,8 @@ public static class SkafinityCommands
 		Log.Info( $"   transport {( p.Enabled ? "on" : "MUTED" )}, vol {p.Volume:0.00}, "
 			+ $"{( p.IsPlaying ? "playing" : "not playing" )}"
 			+ $"{( p.IsBuffering ? ", BUFFERING" : p.IsGenerating ? ", generating ahead" : "" )}" );
-		Log.Info( $"   shuffle   {( p.RandomEverySong ? "on — every song freezes a fresh vibe + genre" : "off" )}" );
+		Log.Info( $"   station   {p.StationSeed}   (genre {( p.GenrePinned ? "pinned" : "rolling" )}, "
+			+ $"vibe {( p.VibePinned ? "pinned" : "rolling" )})" );
 		Log.Info( $"   output    {p.SampleRate} Hz, {p.RenderThreads} render thread(s)" );
 		// Zero here is the interesting case: the baseline mix is then the engine's compiled
 		// defaults, not the file the web toy reads, and nothing else would ever say so.

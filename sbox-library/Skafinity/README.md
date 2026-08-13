@@ -61,16 +61,23 @@ music.PrevSong();          // n-1
 music.SetN( 100 );         // jump
 
 // Vibe knobs (the shareable subset of the config)
-music.RerollVibe();                    // randomise the vibe knobs, keep per-instrument volumes
+music.RerollVibe();                    // throw every knob somewhere new and PIN it (keeps volumes + genre)
 music.RerollVibe( includeVolumes: true, includeGenre: true ); // opt-in full shuffle (also rolls volumes + genre)
 music.SetVibe( 0, 0.5f );              // set field 0 of VibeCodec.Fields(genre) from a 0..1 fraction
-music.SetGenre( 1 );                   // switch genre (re-encodes the vibe so it sticks)
-music.RandomEverySong = true;          // re-roll the vibe each new song (keeps your volumes + genre)
+music.SetGenre( 1 );                   // pin a genre (re-encodes the vibe so it sticks)
+music.RerollStation();                 // a fresh random station at song 0; pins stay pinned
+
+// A pin is per SEED PART, the way the seed is: pin either alone, or neither.
+music.RollGenre();                     // hand the genre back to the station — every song rolls its own
+music.RollVibe();                      // ditto the vibe
+music.RandomGenreEverySong = true;     // the same two switches, as inspector properties
+music.RandomVibeEverySong = true;
 
 string seed = music.CurrentSeed;       // fully resolved — share this and they hear THIS song
-var cfg     = music.EffectiveConfig(); // the MusicGen.Config currently in effect
+string stn  = music.StationSeed;       // as it stands — what it leaves rolling keeps rolling
+var cfg     = music.EffectiveConfig(); // the MusicGen.Config the playing song was built with
 
-// Write the current loop to a WAV under FileSystem.Data
+// Write the current loop to a stereo WAV under FileSystem.Data
 string file = music.SaveCurrentToFile();
 ```
 
@@ -143,7 +150,7 @@ They're client-side, like the player itself. Delete the file if you don't want t
 
 | Group | What it does |
 |---|---|
-| **Music** | Master `Enabled` / `Volume`, `LiveReload` (regenerate on knob change), `MixerName`, `AutoPlay`, `RandomEverySong` (shuffle) |
+| **Music** | Master `Enabled` / `Volume`, `LiveReload` (regenerate on knob change), `MixerName`, `AutoPlay`, `RandomGenreEverySong` / `RandomVibeEverySong` (which seed parts keep rolling) |
 | **Seed** | `Tag`, `StartN`, `Vibe` override, `PersistProgress` + `SaveSlot` (resume across sessions) |
 | **Output** | `SampleRate` (32 kHz — below the engine's own default, since a game renders while it draws), `RenderThreads` (synthesis is split across worker threads) |
 | **Crossfade** | `Crossfade` window, `CrossfadeOverlap`, `AheadCount` (look-ahead depth), `PcmCacheRadius` |

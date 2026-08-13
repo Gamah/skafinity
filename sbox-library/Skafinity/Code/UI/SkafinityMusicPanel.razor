@@ -29,7 +29,8 @@
 	column (0 volume, then the four travelling columns). A new genre — or a new knob — is a pure
 	engine change; there is no field table here. s&box has no slider widget, so each knob is a
 	strip of tick cells (one per level the seed encodes); each change re-encodes the vibe and
-	restarts the player on a short debounce.
+	restarts the player on a short debounce. It sits behind the TINKER button, so the board opens
+	on the controls that decide what plays rather than on a wall of tick strips.
 
 	Re-theming: the board derives its whole palette from one colour. Set SkafinityTheme.Accent
 	from your game (e.g. to your own UI accent) and the board follows; leave it unset and it is
@@ -49,10 +50,14 @@
 
 		<div class="top">
 			<div class="row">
-				<div class="label" style="@LabelStyle">NOW PLAYING</div>
+				<div class="label" style="@LabelStyle">SEED — and what it leaves rolling</div>
+				@* TWO copy buttons, because "share this" means one of two things and neither can be
+				   recovered from the other: the song, with everything it left to chance written
+				   down, or the station as it stands, which keeps rolling for whoever is handed it. *@
 				<div class="play-row">
 					<div class="seed-box">@Seed()</div>
-					<div class="btn" style="@BtnStyle" onclick="@CopySeed">@_copyLabel</div>
+					<div class="btn" style="@BtnStyle" onclick="@CopySong">@_copySongLabel</div>
+					<div class="btn" style="@BtnStyle" onclick="@CopyStation">@_copyStationLabel</div>
 				</div>
 			</div>
 
@@ -138,24 +143,44 @@
 
 		<div class="divider"></div>
 
+		@* The genre strip IS the seed's genre part, "Random" included: that entry takes the genre
+		   out of the string so every song rolls its own again, and without it there is no way back
+		   out of a genre once one has been chosen. It reads as selected when nothing is pinned. *@
 		<div class="row genre-row">
 			<div class="label" style="@LabelStyle">GENRE</div>
 			<div class="cells">
+				<div class="cell choice @( GenreRolling ? "selected" : "" )"
+					 style="@( GenreRolling ? CellFilledStyle : CellStyle )"
+					 onclick="@RollGenre">Random</div>
 				@for ( int g = 0; g < VibeCodec.GenreCount; g++ )
 				{
 					var gg = g;
-					<div class="cell choice @( g == genre ? "selected" : "" )"
-						 style="@( g == genre ? CellFilledStyle : CellStyle )"
+					var on = !GenreRolling && g == genre;
+					<div class="cell choice @( on ? "selected" : "" )"
+						 style="@( on ? CellFilledStyle : CellStyle )"
 						 onclick="@( () => SetGenre( gg ) )">@VibeCodec.Genres[g]</div>
 				}
-				<div class="btn reroll" style="@BtnStyle" onclick="@Reroll">🎲 Reroll</div>
-				<div class="btn reroll toggle @( Player?.RandomEverySong == true ? "on" : "" )"
-					 style="@( Player?.RandomEverySong == true ? BtnOnStyle : BtnStyle )"
-					 onclick="@ToggleRandomEverySong">🎲 Random every song: @( Player?.RandomEverySong == true ? "ON" : "OFF" )</div>
-				<div class="btn" style="@BtnStyle" onclick="@Save">Save .wav</div>
 			</div>
 		</div>
 
+		@* The controls that decide WHAT PLAYS, in a row of their own — they are not knob controls,
+		   and living among the sliders made them look like part of the mixer AND hid them from
+		   everyone who never opened it. *@
+		<div class="row">
+			<div class="cells">
+				<div class="btn" style="@BtnStyle" onclick="@RerollStation">🎲 New station</div>
+				<div class="btn" style="@BtnStyle" onclick="@Save">Save .wav</div>
+				<div class="btn toggle @( _tinkering ? "on" : "" )"
+					 style="@( _tinkering ? BtnOnStyle : BtnStyle )"
+					 onclick="@ToggleTinker">@( _tinkering ? "Hide knobs" : "🎛 Tinker" )</div>
+			</div>
+		</div>
+
+		@* The knobs live behind the tinker button. They are the deep end of the toy, and a wall of
+		   tick strips is otherwise the first thing anybody meets. *@
+		@if ( _tinkering )
+		{
+		<div class="divider"></div>
 		<div class="label" style="@LabelStyle">VIBE — per-instrument mixer (tweak, then share the seed)</div>
 		<div class="matrix">
 			<div class="mrow mhead">
@@ -198,6 +223,20 @@
 			</div>
 		}
 
+		@* The only two buttons that act on the sliders, and they are not two dice. 🎲 always moves
+		   every knob, because it draws a fresh vibe and PINS it. ↺ is the way back out — dragging a
+		   knob pins the whole vibe, so without it one accidental drag turns an endless station into
+		   one song forever — and it is off when there is nothing pinned rather than looking like a
+		   die that did nothing. *@
+		<div class="row vibe-actions">
+			<div class="cells">
+				<div class="btn" style="@BtnStyle" onclick="@RerollVibe">🎲 Randomize</div>
+				<div class="btn @( VibeRolling ? "off" : "" )"
+					 style="@BtnStyle" onclick="@RollVibe">↺ Random each song</div>
+			</div>
+		</div>
+		}
+
 		@if ( _msg != null )
 		{
 			<div class="hint" style="@AccentTextStyle">@_msg</div>
@@ -235,8 +274,12 @@
 
 	TextEntry _tagEntry;
 	bool _tagInit;
-	string _copyLabel = "Copy";
+	// Both copy buttons keep their own label so pressing one doesn't report "Copied!" on the other.
+	string _copySongLabel = "Copy song";
+	string _copyStationLabel = "Copy station";
 	string _msg;
+	// The knob matrix is closed until asked for. Not a [Property] for the same reason IsOpen is not.
+	bool _tinkering;
 
 	protected override void OnStart()
 	{
@@ -271,7 +314,12 @@
 		: e.Cached ? $"background-color:{SkafinityTheme.CellFillSoft};"
 		: CellStyle;
 
-	string Seed() => Player?.CurrentSeed ?? "—";
+	// The box shows the seed AS IT STANDS, so a station that is still rolling reads as one. The
+	// fully-resolved song seed is what the "copy song" button hands over.
+	string Seed() => Player?.StationSeed ?? "—";
+
+	bool GenreRolling => Player == null || !Player.GenrePinned;
+	bool VibeRolling => Player == null || !Player.VibePinned;
 
 	/// <summary>Open/close the settings board. Convenience for hosts that want to bind a single
 	/// action; you can also set <see cref="IsOpen"/> directly.</summary>
@@ -385,10 +433,19 @@
 		_msg = "Back to the default tag and vibe";
 	}
 
-	void CopySeed()
+	// This song, with everything it left to chance written down — whoever is handed it hears THIS,
+	// not whatever their own station rolls at that index.
+	void CopySong()
 	{
-		try { Clipboard.SetText( Seed() ); _copyLabel = "Copied!"; }
-		catch { _copyLabel = "—"; }
+		try { Clipboard.SetText( Player?.CurrentSeed ?? "" ); _copySongLabel = "Copied!"; }
+		catch { _copySongLabel = "—"; }
+	}
+
+	// The seed as it stands: whatever this player left rolling keeps rolling for them too.
+	void CopyStation()
+	{
+		try { Clipboard.SetText( Player?.StationSeed ?? "" ); _copyStationLabel = "Copied!"; }
+		catch { _copyStationLabel = "—"; }
 	}
 
 	void Save()
@@ -397,17 +454,24 @@
 		_msg = string.IsNullOrEmpty( name ) ? "Couldn't save song" : $"Saved {name} to your s&box data folder";
 	}
 
-	// RerollVibe()'s defaults: the genre goes, the per-instrument volumes stay — a reroll should
-	// hand you a different song, not upend the mix you set.
-	void Reroll() { Player?.RerollVibe(); _msg = "Rerolled the genre and every knob but the volumes"; }
+	void ToggleTinker() { _tinkering = !_tinkering; }
 
-	void ToggleRandomEverySong()
+	// A different SONG, not a different taste: a fresh station at song 0, with anything pinned left
+	// pinned.
+	void RerollStation() { Player?.RerollStation(); _msg = "New station"; }
+
+	// RerollVibe()'s defaults: the genre and the per-instrument volumes stay — the die over the
+	// mixer re-voices the band, it does not swap the band or upend the mix you set.
+	void RerollVibe() { Player?.RerollVibe(); _msg = "Threw every knob but the volumes, and pinned them"; }
+
+	void RollVibe()
 	{
-		if ( Player == null ) return;
-		bool on = !Player.RandomEverySong;
-		Player.SetRandomEverySong( on );
-		_msg = on ? "Shuffle: every new song freezes a fresh vibe + genre (keeps your volumes)" : "Shuffle off";
+		if ( Player == null || VibeRolling ) return;   // nothing pinned — nothing to hand back
+		Player.RollVibe();
+		_msg = "Every song rolls its own vibe again — what changes is the songs after this one";
 	}
+
+	void RollGenre() { Player?.RollGenre(); _msg = "Every song rolls its own genre again"; }
 
 	// ── Queue view ──
 	// How many history / look-ahead entries to show either side of the current song.
@@ -438,8 +502,9 @@
 		var q = new HashCode();
 		q.Add( IsOpen ); q.Add( Player?.CurrentSeed ); q.Add( Player?.CurrentVibe );
 		q.Add( Player?.Enabled ?? true ); q.Add( Player?.Volume ?? 1f );
-		q.Add( Player?.RandomEverySong ?? false ); q.Add( Player?.IsBuffering ?? false );
-		q.Add( _msg ); q.Add( _copyLabel );
+		q.Add( Player?.GenrePinned ?? false ); q.Add( Player?.VibePinned ?? false );
+		q.Add( _tinkering ); q.Add( Player?.IsBuffering ?? false );
+		q.Add( _msg ); q.Add( _copySongLabel ); q.Add( _copyStationLabel );
 		// The palette rides in inline style= values, so the board has to rebuild when the host
 		// retints it — nothing else in this hash moves when only SkafinityTheme.Accent changes.
 		q.Add( SkafinityTheme.Accent );

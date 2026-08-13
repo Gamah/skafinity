@@ -175,7 +175,7 @@ static class Audition
 				pcm[i * 2 + 1] = (short)Math.Clamp( (int)MathF.Round( r[i] / peak * 32000f ), -32768, 32767 );
 			}
 			string path = Path.Combine( dir, name + ".wav" );
-			File.WriteAllBytes( path, MusicGen.WavFromSamples( pcm, 2, Rate ) );
+			File.WriteAllBytes( path, MusicGen.WavFromSamples( pcm, Rate ) );
 			Console.WriteLine( $"  {path}" );
 		}
 		Console.WriteLine( "one hit per cymbal, dry and centred, peak-normalised per file:" );
@@ -206,7 +206,7 @@ static class Audition
 			pcm[i * 2] = (short)Math.Clamp( (int)MathF.Round( L[i] * k * 32767f ), -32768, 32767 );
 			pcm[i * 2 + 1] = (short)Math.Clamp( (int)MathF.Round( R[i] * k * 32767f ), -32768, 32767 );
 		}
-		File.WriteAllBytes( wavPath, MusicGen.WavFromSamples( pcm, 2, Rate ) );
+		File.WriteAllBytes( wavPath, MusicGen.WavFromSamples( pcm, Rate ) );
 		File.WriteAllText( txtPath, script );
 
 		Console.Write( script );

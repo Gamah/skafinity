@@ -12,10 +12,15 @@ static class Wav
 	/// <summary>Clamp a −1..1 mix sample to signed 16-bit.</summary>
 	public static short ToS16( float v ) => (short)(Math.Clamp( v, -1f, 1f ) * 32767f);
 
-	/// <summary>Wrap already-rendered 16-bit samples in a WAV. Mono or interleaved stereo per
-	/// <paramref name="channels"/>.</summary>
-	public static byte[] FromSamples( short[] samples, int channels, int sampleRate )
+	/// <summary>Wrap already-rendered 16-bit interleaved-stereo samples in a WAV.</summary>
+	/// <remarks>The channel count is <see cref="MusicGen.Channels"/> and is deliberately NOT a
+	/// parameter. Everything the engine renders and every buffer a host carries is interleaved
+	/// stereo, so a caller's channel count could only ever agree with that or be wrong — and wrong
+	/// is silent: stereo PCM under a mono header plays at half speed with the channels interleaved
+	/// into each other, which is a plausible-sounding artefact rather than an obvious failure.</remarks>
+	public static byte[] FromSamples( short[] samples, int sampleRate )
 	{
+		const int channels = MusicGen.Channels;
 		int dataSize = samples.Length * 2;
 		int blockAlign = channels * 2;
 		var bytes = new List<byte>( 44 + dataSize );
@@ -46,10 +51,9 @@ public sealed partial class MusicGen
 		return s;
 	}
 
-	/// <summary>Wrap already-rendered 16-bit samples in a WAV (for export). Mono or
-	/// interleaved stereo per <paramref name="channels"/>.</summary>
-	public static byte[] WavFromSamples( short[] samples, int channels, int sampleRate )
-		=> Wav.FromSamples( samples, channels, sampleRate );
+	/// <summary>Wrap already-rendered 16-bit interleaved-stereo samples in a WAV (for export).</summary>
+	public static byte[] WavFromSamples( short[] samples, int sampleRate )
+		=> Wav.FromSamples( samples, sampleRate );
 
-	byte[] EncodeWav( float gain ) => Wav.FromSamples( ToShorts( gain ), Channels, _sr );
+	byte[] EncodeWav( float gain ) => Wav.FromSamples( ToShorts( gain ), _sr );
 }

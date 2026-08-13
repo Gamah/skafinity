@@ -62,7 +62,7 @@ public partial class Engine
 	internal static int GenerateWav( string seed, [JSMarshalAs<JSType.Array<JSType.Number>>] double[] cfg )
 	{
 		short[] s = MusicGen.GenerateSamples( seed, Cfg.From( cfg ), out int sr );
-		_wav = MusicGen.WavFromSamples( s, MusicGen.Channels, sr );
+		_wav = MusicGen.WavFromSamples( s, sr );
 		return _wav.Length;
 	}
 
