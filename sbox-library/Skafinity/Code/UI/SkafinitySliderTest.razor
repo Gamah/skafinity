@@ -25,7 +25,13 @@
 	                   slider can still be told apart from a slider that is not there.
 
 	Whichever of these draws is the shape the board should use. If none does, the stock control
-	cannot be drawn in this project at all and the board needs its own.
+	cannot be drawn in this project at all and the board needs its own — and the two probes at the
+	foot of the card say whether that is the slider's problem or the whole base stylesheet's.
+
+	The variable being chased is not markup. Test 2 is already gambit's usage verbatim, and both
+	siblings are `@inherits PanelComponent` with no package references, exactly like this. What
+	differs is that they are `"Type": "game"` and this library is `"Type": "library"` — so the
+	question is whether a library's UI gets the base addon's stylesheets at all.
 *@
 
 <root>
@@ -47,6 +53,26 @@
 		</div>
 
 		<div class="line">drag any of them — the number above follows whichever one works</div>
+
+		@* ── The other half of the question ──────────────────────────────────────────────
+		   Not sliders: probes for whether a BASE-ADDON stylesheet reaches this project at all.
+		   Both are stock and neither is touched by anything here.
+
+		   4 is a SwitchControl — another razor component in the base addon with a stylesheet of
+		   its own, and one that draws something unmistakable: a 48x16 pill with a round grey
+		   knob in it. If that pill is there, base stylesheets DO apply and the slider's trouble
+		   is its own. If it is as invisible as the sliders, then no base stylesheet is reaching
+		   this project, and no amount of markup will draw a control whose every part is sized by
+		   one — which is the difference between here and the games this shape was copied from.
+
+		   5 is a stock <button>, whose chrome is a plain class rule (.button in Button.cs.scss)
+		   rather than a component's own sheet. It separates "no base stylesheets at all" from
+		   "no base COMPONENT stylesheets". *@
+		<div class="line">4. stock SwitchControl — a base component with its own stylesheet</div>
+		<SwitchControl></SwitchControl>
+
+		<div class="line">5. stock button — base chrome from a plain class rule</div>
+		<button class="button">stock button</button>
 	</div>
 </root>
 
