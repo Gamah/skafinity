@@ -11,15 +11,21 @@
 // Both are neutral white alphas, which read against any accent the host passes in.
 //
 // The exception, and the reason it is an exception: the INSIDE of a control this library did not
-// write. SliderControl and DropDown build their own panels, so no inline style can reach a track or
-// a thumb. `color` inherits and `currentColor` resolves against it, so the razor puts the accent on
-// a wrapper's `color` and the rules below spend it — see `.slider` at the foot of this file.
+// write. SliderControl builds its own track and thumb, so no inline style can reach them. `color`
+// inherits and `currentColor` resolves against it, so the razor puts the accent on the control's own
+// `color` and the rules below spend it — see `.ska-slider`, which also carries the sizing that
+// control needs to exist at all.
 //
 // web/palette.js reads the six alphas below out of THIS FILE (test/palette.mjs asserts it), so the
 // widget and the board cannot drift into two schemes. Keep the `$name: rgba(255,255,255,a)` shape.
 
 $radius:     2px;
 $font:       Consolas, 'Roboto Mono', monospace;
+// Type scale in one place, because "a bit smaller" is a tuning pass and should be one edit.
+$fs-title:   20px;
+$fs-body:    12px;   // buttons, labels, the seed box
+$fs-small:   11px;   // times, playlist rows, the jump line
+$fs-tiny:    10px;   // column headers, knob names, section headings
 $edge:       rgba(255,255,255,0.12);   // the board's own outline
 $rule:       rgba(255,255,255,0.10);   // dividers, panel outlines
 $hover:      rgba(255,255,255,0.35);   // hover border
@@ -35,13 +41,13 @@ skafinitymusicpanel {
 	justify-content: center; align-items: center;
 	pointer-events: none;
 	font-family: $font;
-	font-size: 14px;
+	font-size: $fs-body;
 
 	// The board — sized to its content (no scroll range to drag-pan). Narrower than the old
 	// wall-of-cells layout, because the sliders stack rather than spreading.
 	.board {
 		flex-shrink: 0;
-		width: 92%; max-width: 900px;
+		width: 94%; max-width: 1180px;
 		flex-direction: column;
 		align-items: stretch;
 		padding: 14px;
@@ -57,12 +63,12 @@ skafinitymusicpanel {
 
 	.title {
 		justify-content: center; white-space: nowrap;
-		font-size: 22px; font-weight: bold; letter-spacing: 6px; color: white;
+		font-size: $fs-title; font-weight: bold; letter-spacing: 6px; color: white;
 	}
 
 	.close {
 		width: 30px; height: 30px; justify-content: center; align-items: center;
-		font-size: 18px; font-weight: bold; color: rgba(255,255,255,0.6);
+		font-size: 16px; font-weight: bold; color: rgba(255,255,255,0.6);
 		background-color: rgba(255,255,255,0.08); border-radius: $radius;
 		cursor: pointer; pointer-events: all;
 
@@ -74,17 +80,17 @@ skafinitymusicpanel {
 	.grow { flex-grow: 1; }
 	// Pushes a control to the far end of its row (volume, tinker, save).
 	.right { margin-left: auto; }
-	.label { font-size: 13px; letter-spacing: 2px; white-space: nowrap; }
+	.label { font-size: $fs-body; letter-spacing: 2px; white-space: nowrap; }
 
 	// ── Buttons ──
 	.btn {
 		flex-direction: row;
 		justify-content: center; align-items: center; height: 30px; padding: 0 14px;
-		font-size: 13px; white-space: nowrap;
+		font-size: $fs-body; white-space: nowrap;
 		border: 2px solid transparent; border-radius: $radius; cursor: pointer; pointer-events: all;
 
 		// A square button for a glyph — the three transport keys.
-		&.big { width: 44px; height: 34px; padding: 0; font-size: 18px; }
+		&.big { width: 40px; height: 32px; padding: 0; font-size: 16px; }
 		&.primary { font-weight: bold; }
 		&:hover { border-color: $hover; }
 		&.toggle.on { border-color: $pick; }
@@ -96,38 +102,53 @@ skafinitymusicpanel {
 
 	// ── Transport ──
 	.transport { flex-direction: column; gap: 8px; }
-	.now { flex-direction: row; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }
+	.now { flex-direction: row; align-items: center; gap: 5px; font-size: $fs-body; white-space: nowrap; }
 	.now b { font-weight: bold; }
-	.bufstate { font-size: 13px; white-space: nowrap; }
-	.vol { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; }
-	.vol .slider { width: 120px; }
+	.bufstate { font-size: $fs-body; white-space: nowrap; }
+	.vol { flex-direction: row; align-items: center; gap: 6px; font-size: $fs-body; }
 
 	.seek { flex-direction: row; align-items: center; gap: 10px; }
 	.time {
-		font-size: 12px; min-width: 42px; white-space: nowrap;
+		font-size: $fs-small; min-width: 40px; white-space: nowrap;
 		justify-content: flex-start;
 	}
 	.time.total { justify-content: flex-end; }
 
 	// ── Sliders ──
-	// SliderControl paints its own track and thumb, so the accent arrives as `color` on this
-	// wrapper (set inline by the razor) and is spent with currentColor below. The track stays a
-	// neutral white alpha, like every other border in this file.
-	.slider {
-		flex-direction: row; align-items: center; pointer-events: all;
+	// SliderControl brings its own chrome from the base stylesheet, so all it needs from us is a
+	// SIZE and pointer input — and it needs them ON THE CONTROL, not on a wrapper around it. A
+	// wrapper that is sized while the control is not leaves the control at zero height, which draws
+	// as nothing at all. Same shape as gambit's and terryball's `.wslider`.
+	.ska-slider {
+		width: 100%; height: 24px;
+		pointer-events: all;
 
-		.slidercontrol { flex-grow: 1; min-width: 40px; }
-		.slidercontrol .track { background-color: $surface; }
-		.slidercontrol .track-active { background-color: currentColor; }
-		.slidercontrol .thumb { background-color: currentColor; }
+		// The built-in value bubble is a bare black box (hardcoded in the base scss) and the knob
+		// header already prints the value. ShowValueTooltip="false" turns it off; this is the belt
+		// to that pair of braces.
+		.value-tooltip { display: none; }
+
+		// The accent arrives as `color` on the control (inline, from the razor) and is spent here:
+		// no inline style can reach another component's inner panels, but currentColor resolves
+		// against the colour they inherit. The child combinators are not decoration — the base
+		// sheet styles `.slidercontrol > .inner > .track`, so a flatter selector would lose to it.
+		> .inner > .track { background-color: $surface; }
+		> .inner > .track > .track-active { background-color: currentColor; }
+		> .inner > .track > .thumb { background-color: currentColor; }
 
 		// Unknown length — the bar is inert rather than drawn against a guess.
 		&.off { opacity: 0.4; pointer-events: none; }
 	}
+	// A fixed strip on the transport row…
+	.vol-slider { width: 120px; flex-grow: 0; flex-shrink: 0; }
+	// …and the one that takes whatever the two time labels leave. `width: auto` matters: the base
+	// sheet marks the control flex-shrink: 0, so a 100%-wide one in a row would push the row wider
+	// than the board.
+	.seek-slider { width: auto; flex-grow: 1; }
 
 	// ── Text entries ──
 	.seed-input, .jump-input {
-		height: 30px; padding: 0 10px; font-size: 13px; color: white;
+		height: 28px; padding: 0 10px; font-size: $fs-body; color: white;
 		background-color: $surface;
 		border: 2px solid rgba(255,255,255,0.15); border-radius: $radius; pointer-events: all;
 
@@ -137,13 +158,13 @@ skafinitymusicpanel {
 
 	// ── Dropdowns ──
 	.genre, .knob-select {
-		height: 30px; padding: 0 10px; font-size: 13px;
+		height: 28px; padding: 0 10px; font-size: $fs-body;
 		border: 2px solid transparent; border-radius: $radius; cursor: pointer; pointer-events: all;
 
 		&:hover { border-color: $hover; }
 	}
 	.genre { min-width: 120px; }
-	.knob-select { height: 24px; font-size: 12px; }
+	.knob-select { height: 22px; font-size: $fs-small; }
 
 	// ── Panels (the vibe box, the playlist box) ──
 	.panel {
@@ -152,7 +173,7 @@ skafinitymusicpanel {
 		border: 1px solid $rule; border-radius: $radius;
 		gap: 8px;
 	}
-	.h2 { font-size: 11px; font-weight: bold; letter-spacing: 2px; white-space: nowrap; }
+	.h2 { font-size: $fs-tiny; font-weight: bold; letter-spacing: 2px; white-space: nowrap; }
 
 	// ── The mixer matrix — rows are voices, VOLUME leftmost ──
 	.matrix { flex-direction: column; gap: 8px; }
@@ -160,20 +181,20 @@ skafinitymusicpanel {
 	.mhead { align-items: center; }
 	.mvoice {
 		width: 68px; flex-shrink: 0; align-items: flex-start; justify-content: flex-start;
-		font-size: 12px; font-weight: bold; letter-spacing: 1px; color: white;
+		font-size: $fs-small; font-weight: bold; letter-spacing: 1px; color: white;
 	}
-	.mhlabel { font-size: 10px; letter-spacing: 2px; }
+	.mhlabel { font-size: 9px; letter-spacing: 2px; }
 	.mcell { width: 0; flex-grow: 1; flex-direction: column; }
 
 	// GLOBAL knobs: three compact columns under a rule.
-	.glabel { font-size: 10px; letter-spacing: 2px; padding-top: 8px; border-top: 1px solid $rule; }
+	.glabel { font-size: $fs-tiny; letter-spacing: 2px; padding-top: 8px; border-top: 1px solid $rule; }
 	.global-grid { flex-direction: row; flex-wrap: wrap; gap: 8px 14px; }
 	.knob-cell { width: 30%; }
 
 	.knob { flex-direction: column; gap: 3px; }
 	.knob-head { flex-direction: row; justify-content: space-between; align-items: center; gap: 6px; }
-	.knob-name { font-size: 10px; letter-spacing: 1px; white-space: nowrap; }
-	.knob-val { font-size: 10px; white-space: nowrap; }
+	.knob-name { font-size: 9px; letter-spacing: 1px; white-space: nowrap; }
+	.knob-val { font-size: 9px; white-space: nowrap; }
 
 	// ── The playlist ──
 	.playlist { flex-direction: column; gap: 2px; max-height: 260px; overflow: scroll; }
@@ -188,20 +209,20 @@ skafinitymusicpanel {
 		&.now { border-left-color: $pick; }
 	}
 	.pllabel {
-		min-width: 52px; font-size: 12px; color: white; white-space: nowrap;
+		min-width: 52px; font-size: $fs-small; color: white; white-space: nowrap;
 		cursor: pointer; pointer-events: all;
 
 		&:hover { color: #ffffff; text-decoration: underline; }
 	}
-	.plgenre { flex-grow: 1; font-size: 11px; letter-spacing: 1px; white-space: nowrap; }
-	.plstatus { min-width: 52px; font-size: 11px; white-space: nowrap; justify-content: flex-end; }
+	.plgenre { flex-grow: 1; font-size: $fs-tiny; letter-spacing: 1px; white-space: nowrap; }
+	.plstatus { min-width: 52px; font-size: $fs-tiny; white-space: nowrap; justify-content: flex-end; }
 	.pldl {
 		width: 24px; height: 22px; justify-content: center; align-items: center;
-		font-size: 12px; border-radius: $radius; cursor: pointer; pointer-events: all;
+		font-size: $fs-small; border-radius: $radius; cursor: pointer; pointer-events: all;
 
 		&:hover { background-color: rgba(255,255,255,0.12); }
 	}
-	.jump { font-size: 12px; }
+	.jump { font-size: $fs-small; }
 
 	// ── Progress bar (a playlist entry mid-render) ──
 	.bar {
@@ -210,5 +231,5 @@ skafinitymusicpanel {
 	}
 	.bar-fill { height: 5px; border-radius: $radius; }
 
-	.msg { font-size: 12px; letter-spacing: 1px; }
+	.msg { font-size: $fs-small; letter-spacing: 1px; }
 }

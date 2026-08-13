@@ -72,11 +72,10 @@
 
 				<div class="vol right" style="@LabelStyle">
 					@SkafinityBoard.Copy.Volume
-					<div class="slider" style="@AccentTextStyle">
-						<SliderControl Min="@(0f)" Max="@(1.5f)" Step="@(0.01f)"
-									   Value="@( Player?.Volume ?? 1f )"
-									   OnValueChanged="@( (float v) => SetVolume( v ) )" />
-					</div>
+					<SliderControl class="ska-slider vol-slider" style="@AccentTextStyle"
+								   Min="@(0f)" Max="@(1.5f)" Step="@(0.01f)" ShowValueTooltip="@(false)"
+								   Value="@( Player?.Volume ?? 1f )"
+								   OnValueChanged="@( (float v) => SetVolume( v ) )"></SliderControl>
 				</div>
 			</div>
 
@@ -86,11 +85,11 @@
 			   has been rendered and has a length worth stating. *@
 			<div class="seek">
 				<div class="time" style="@LabelStyle">@SkafinityBoard.Time( ShownTime( here ), known )</div>
-				<div class="slider grow @( known ? "" : "off" )" style="@AccentTextStyle" tooltip="@SkafinityBoard.Copy.SeekTitle">
-					<SliderControl Min="@(0f)" Max="@(1000f)" Step="@(1f)"
-								   Value="@( known ? ShownRatio( here ) * 1000f : 0f )"
-								   OnValueChanged="@( (float v) => Scrub( v / 1000f, here.Duration ) )" />
-				</div>
+				<SliderControl class="ska-slider seek-slider @( known ? "" : "off" )" style="@AccentTextStyle"
+							   tooltip="@SkafinityBoard.Copy.SeekTitle"
+							   Min="@(0f)" Max="@(1000f)" Step="@(1f)" ShowValueTooltip="@(false)"
+							   Value="@( known ? ShownRatio( here ) * 1000f : 0f )"
+							   OnValueChanged="@( (float v) => Scrub( v / 1000f, here.Duration ) )"></SliderControl>
 				<div class="time total" style="@LabelStyle">@SkafinityBoard.Time( here.Duration, known )</div>
 			</div>
 		</div>
@@ -430,11 +429,11 @@
 			{
 				@* Snapped to the same discrete grid the seed encodes (one level per base-36 char), so
 				   the slider can only land on values the vibe can actually represent. *@
-				<div class="slider" style="@AccentTextStyle">
-					<SliderControl Min="@(0f)" Max="@( (float)(VibeCodec.Levels - 1) )" Step="@(1f)"
-								   Value="@( MathF.Round( norm * (VibeCodec.Levels - 1) ) )"
-								   OnValueChanged="@( (float v) => SetVibe( idx, v / (VibeCodec.Levels - 1) ) )" />
-				</div>
+				<SliderControl class="ska-slider" style="@AccentTextStyle"
+							   Min="@(0f)" Max="@( (float)(VibeCodec.Levels - 1) )" Step="@(1f)"
+							   ShowValueTooltip="@(false)"
+							   Value="@( MathF.Round( norm * (VibeCodec.Levels - 1) ) )"
+							   OnValueChanged="@( (float v) => SetVibe( idx, v / (VibeCodec.Levels - 1) ) )"></SliderControl>
 			}
 		</div>
 	</text>;
