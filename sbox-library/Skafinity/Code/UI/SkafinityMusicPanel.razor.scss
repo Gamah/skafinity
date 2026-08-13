@@ -212,8 +212,11 @@ skafinitymusicpanel {
 	.h2 { font-size: $fs-tiny; font-weight: bold; letter-spacing: 2px; white-space: nowrap; }
 
 	// ── The mixer matrix — rows are voices, VOLUME leftmost ──
-	.matrix { flex-direction: column; gap: 8px; }
-	.mrow { flex-direction: row; align-items: flex-start; gap: 10px; }
+	// Five columns across the board is not much per knob, so the cells are given room in the only
+	// two ways that do not cost a column: a wider gutter between them, and a header that reads as
+	// one thing (below).
+	.matrix { flex-direction: column; gap: 10px; }
+	.mrow { flex-direction: row; align-items: flex-start; gap: 16px; }
 	.mhead { align-items: center; }
 	.mvoice {
 		width: 68px; flex-shrink: 0; align-items: flex-start; justify-content: flex-start;
@@ -227,8 +230,14 @@ skafinitymusicpanel {
 	.global-grid { flex-direction: row; flex-wrap: wrap; gap: 8px 14px; }
 	.knob-cell { width: 30%; }
 
-	.knob { flex-direction: column; gap: 3px; }
-	.knob-head { flex-direction: row; justify-content: space-between; align-items: center; gap: 6px; }
+	.knob { flex-direction: column; gap: 2px; }
+	// Name and value TOGETHER at the left, not pushed to opposite ends. Spread across a narrow cell
+	// they stop reading as one label and start reading as two: a value hard against the right edge
+	// sits closer to the next column's name than to its own, so "40%" and "BUSY" — one the tone of
+	// the drums, the other the name of their character knob — look like a single caption.
+	.knob-head { flex-direction: row; justify-content: flex-start; align-items: baseline; gap: 5px; }
+	// Empty in the columns whose header already names the knob (VOLUME, TONE) — the value then
+	// simply starts the line rather than floating mid-cell.
 	.knob-name { font-size: 9px; letter-spacing: 1px; white-space: nowrap; }
 	.knob-val { font-size: 9px; white-space: nowrap; }
 
