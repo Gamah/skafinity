@@ -10,11 +10,10 @@
 //   * Hover feedback is therefore a border, not a fill — the fill is themed.
 // Both are neutral white alphas, which read against any accent the host passes in.
 //
-// The same split settles a control this library did not write. SliderControl assembles its track
-// and thumb in C# and no inline style reaches another component's panels, so those are NEUTRAL
-// here, alongside the borders, rather than themed — and they are sized here too, because the
-// control brings no size of its own. See `.ska-slider`, which is the only description of a slider
-// this board has.
+// The split has one edge worth naming: a control this library did not write cannot be dressed
+// from here AT ALL — not by a rule, which does not cross a component boundary, and not by an
+// inline style, which cannot reach a panel it did not create. That is why the board's slider is
+// its own (SkafinitySlider) and is painted from C# rather than from this file.
 //
 // web/palette.js reads the six alphas below out of THIS FILE (test/palette.mjs asserts it), so the
 // widget and the board cannot drift into two schemes. Keep the `$name: rgba(255,255,255,a)` shape.
@@ -118,69 +117,9 @@ skafinitymusicpanel {
 	.time.total { justify-content: flex-end; }
 
 	// ── Sliders ──
-	// SliderControl's WHOLE appearance is drawn here, geometry included, and that is deliberate
-	// rather than thorough. A control assembles its panels in C# — `.inner > .track >
-	// .track-active`/`.thumb`, whose position and width the control sets inline — but it arrives
-	// carrying none of its own size, and a track with no height paints nothing however it is
-	// coloured. That is the whole of the bug this replaces: the board sized the control (so it laid
-	// out, and so it dragged, and so songs scrubbed) while every part INSIDE it stayed at zero.
-	//
-	// So nothing here may be left to the base stylesheet. Where that sheet does apply these rules
-	// simply win — every one of them is a class deeper than its `.slidercontrol > …` equivalent,
-	// and the whole block is scoped under the panel's own element besides — and where it does not,
-	// this is the only description of a slider there is.
-	//
-	// The insides are NEUTRAL white alphas, alongside the borders and for a harder reason than
-	// taste: no inline style reaches another component's panels, so the runtime accent cannot get
-	// in here at all. White reads against any accent a host passes in.
-	.ska-slider {
-		width: 100%; height: 24px;
-		flex-direction: row; align-items: center;
-		pointer-events: all;
-
-		// The built-in value bubble is a bare black box (hardcoded background) and the knob header
-		// already prints the value. ShowValueTooltip="false" turns it off; this is the belt to that
-		// pair of braces.
-		.value-tooltip { display: none; }
-
-		> .inner {
-			flex-direction: column; justify-content: center;
-			flex-grow: 1; height: 100%;
-		}
-
-		// The horizontal inset is not decoration: the thumb is centred on its position, so at 0%
-		// and 100% half of it hangs off the end of the track and needs somewhere to hang.
-		> .inner > .track {
-			position: relative;
-			height: 6px; margin: 0 8px;
-			align-items: center;
-			border-radius: 3px;
-			background-color: $hover;
-		}
-		// Width comes from the control, inline, as a percentage.
-		> .inner > .track > .track-active {
-			position: absolute; left: 0; height: 100%;
-			border-radius: 3px;
-			background-color: $pick;
-		}
-		// …and `left`, likewise; the translate is what centres it on that point.
-		> .inner > .track > .thumb {
-			position: relative;
-			width: 14px; height: 14px;
-			border-radius: 100px;
-			transform: translateX( -50% );
-			background-color: $pick;
-		}
-
-		// Unknown length — the bar is inert rather than drawn against a guess.
-		&.off { opacity: 0.4; pointer-events: none; }
-	}
-	// A fixed strip on the transport row…
-	.vol-slider { width: 120px; flex-grow: 0; flex-shrink: 0; }
-	// …and the one that takes whatever the two time labels leave. `width: auto` matters: the base
-	// sheet marks the control flex-shrink: 0, so a 100%-wide one in a row would push the row wider
-	// than the board.
-	.seek-slider { width: auto; flex-grow: 1; }
+	// There are none here. SkafinitySlider builds and paints its own three panels from C#, because
+	// a stylesheet cannot reach into another component's insides and a static class attribute never
+	// arrived on one — see the remarks on that class for what the live panel tree showed.
 
 	// ── Text entries ──
 	.seed-input, .jump-input {

@@ -53,6 +53,16 @@ public static class SkafinityTheme
 	/// <summary>Labels and secondary lines.</summary>
 	public static string TextDim => Rgba( Mix( Hue, 0.72f ), 0.7f );
 
+	// ── The same palette, as colours ──
+	// Everything above is a CSS string because the razor spends it in a style= attribute. Panels this
+	// library builds and styles from C# (SkafinitySlider) need the value itself, so the two that one
+	// needs are exposed here as well. Same source, so they cannot drift.
+	/// <summary>The accent itself. What a slider's fill and thumb are painted with.</summary>
+	public static Color AccentColor => Hue;
+	/// <summary>A slider's trough — neutral, like the stylesheet's borders, so it reads against any
+	/// accent a host passes in.</summary>
+	public static Color TrackColor => new Color( 1f, 1f, 1f, 0.18f );
+
 	// Component-wise helpers (avoid relying on Color operators), matching the sibling repos' style.
 	static Color Scale( Color c, float f ) => new Color( c.r * f, c.g * f, c.b * f );
 	static Color Mix( Color c, float towardWhite ) => new Color(
