@@ -144,6 +144,8 @@ h2 {
   margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
 h2 select, h2 button { text-transform: none; letter-spacing: 0; font-size: 11px; padding: 3px 8px; }
+/* The buttons that act on the sliders sit under them, after the thing they change. */
+.vibe-actions { margin-top: 10px; }
 
 /* ── Playlist ── */
 .playlist { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
@@ -377,6 +379,9 @@ export class SkafinityPlayerElement extends HTMLElement {
     board.setAttribute('part', 'board');
     this.root.append(style, board);
     this.els.board = board;
+    // A section is not always one node: `vibe` is a strip of buttons AND the panel of sliders they
+    // act on, and `controls="…"` has to hide or show the pair together.
+    this.sectionNodes = new Map(SECTIONS.map((n) => [n, []]));
 
     this.player = new SkafinityPlayer({
       ...SkafinityPlayerElement.playerDefaults,
@@ -390,6 +395,7 @@ export class SkafinityPlayerElement extends HTMLElement {
     this.buildTransport(board);
     this.buildBoot(board);
     this.buildSeedBar(board);
+    this.buildVibeControls(board);
     this.buildVibe(board);
     this.buildPlaylist(board);
     const msg = document.createElement('p');
@@ -403,11 +409,18 @@ export class SkafinityPlayerElement extends HTMLElement {
     this.wirePlayer();
   }
 
+  /** Register `el` as part of the named section, so `controls` can hide it with its siblings. */
+  markSection(el, name) {
+    el.dataset.section = name;
+    if (this.sectionNodes.has(name)) this.sectionNodes.get(name).push(el);
+    return el;
+  }
+
   section(parent, name, title) {
     const sec = document.createElement('section');
     sec.className = 'panel';
     sec.setAttribute('part', `panel ${name}`);
-    sec.dataset.section = name;
+    this.markSection(sec, name);
     if (title) {
       const h = document.createElement('h2');
       h.append(document.createTextNode(title));
@@ -423,7 +436,7 @@ export class SkafinityPlayerElement extends HTMLElement {
     // buttons and the bar that says where in the song they are acting.
     const wrap = document.createElement('div');
     wrap.className = 'transport';
-    wrap.dataset.section = 'transport';
+    this.markSection(wrap, 'transport');
     wrap.setAttribute('part', 'transport');
     const bar = document.createElement('div');
     bar.className = 'row';
@@ -522,7 +535,7 @@ export class SkafinityPlayerElement extends HTMLElement {
   buildSeedBar(board) {
     const bar = document.createElement('div');
     bar.className = 'row';
-    bar.dataset.section = 'seed';
+    this.markSection(bar, 'seed');
     bar.setAttribute('part', 'seed-bar');
     const input = document.createElement('input');
     input.type = 'text';
@@ -608,8 +621,16 @@ export class SkafinityPlayerElement extends HTMLElement {
     if (this.els.copyStationBtn) this.els.copyStationBtn.textContent = link ? 'copy station link' : 'copy station';
   }
 
-  buildVibe(board) {
-    const sec = this.section(board, 'vibe', 'vibe');
+  // The controls that decide WHAT PLAYS live on the board itself, in a row of their own. They are
+  // not knob controls: genre, reroll and shuffle change the seed, and tinker only opens the box.
+  // Putting them in the panel's header made them look like part of the mixer, and left them on
+  // screen for the many visitors who never open it.
+  buildVibeControls(board) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.setAttribute('part', 'vibe-controls');
+    this.markSection(row, 'vibe');
+
     // The genre dropdown IS the seed's genre part: "Random" takes it out of the string (every song
     // rolls its own again), any other option writes it in.
     const genreLabel = document.createElement('label');
@@ -633,46 +654,65 @@ export class SkafinityPlayerElement extends HTMLElement {
     shuffle.setAttribute('part', 'button shuffle-button');
     shuffle.onclick = () => { this.player.setShuffle(!this.player.shuffle); this.syncShuffle(); };
 
-    // The knobs live behind this. They are the deep end of the toy, and a wall of sliders is the
-    // first thing a visitor sees otherwise.
+    // The knobs live behind this. They are the deep end of the toy, and a wall of sliders is
+    // otherwise the first thing a visitor meets.
     const tinker = document.createElement('button');
+    tinker.className = 'right';
     tinker.setAttribute('part', 'button tinker-button');
     tinker.onclick = () => { this.setTinkering(!this._tinkering); };
 
-    sec._head.append(genreLabel, reroll, shuffle, tinker);
+    row.append(genreLabel, reroll, shuffle, tinker);
+    board.append(row);
+    Object.assign(this.els, { vibeControls: row, genre, shuffle, tinker });
+  }
 
-    const body = document.createElement('div');
-    body.setAttribute('part', 'vibe-body');
-    body.hidden = true;
+  // The box the sliders live in, and only what acts on the sliders.
+  buildVibe(board) {
+    const sec = this.section(board, 'vibe', 'vibe');
+    sec.hidden = true;                 // opened by the tinker button, not by default
 
-    // Dragging a knob pins the whole vibe, so the vibe needs its own way back to rolling — without
-    // one, one accidental drag turns an endless station into one song forever.
+    // The matrix is rebuilt on every vibe change, so it gets its own host — the buttons under it
+    // must survive that.
+    const matrixHost = document.createElement('div');
+
+    // 🎲 THROW THE KNOBS SOMEWHERE NEW. Always moves every slider, because it draws a fresh vibe
+    // and pins it — which is what a die on a mixer is expected to do.
+    const roll = document.createElement('button');
+    roll.textContent = '🎲 randomize';
+    roll.title = 'Throw every knob somewhere new and keep it — the seed carries these values';
+    roll.setAttribute('part', 'button vibe-roll');
+    roll.onclick = () => this.player.rerollVibe();
+
+    // …and the way back OUT. Dragging a knob (or pressing the die) pins the whole vibe into the
+    // seed, so without this one accidental drag turns an endless station into one song forever.
+    // It is not a second randomize: it hands the vibe back to the station, so what it changes is
+    // the songs AFTER this one — hence the wording, and hence it being disabled when nothing is
+    // pinned rather than looking like a die that did nothing.
     const clear = document.createElement('button');
-    clear.textContent = '🎲 random vibe';
+    clear.textContent = '↺ random each song';
     clear.title = 'Stop pinning these knobs — let every song roll its own again';
     clear.setAttribute('part', 'button vibe-random');
     clear.onclick = () => this.player.rollVibe();
-    const clearRow = document.createElement('div');
-    clearRow.className = 'row';
-    clearRow.append(clear);
-    // The matrix is rebuilt on every vibe change, so it gets its own host — the button above it
-    // must survive that.
-    const matrixHost = document.createElement('div');
-    body.append(clearRow, matrixHost);
 
-    sec.append(body);
+    const actions = document.createElement('div');
+    actions.className = 'row vibe-actions';
+    actions.setAttribute('part', 'vibe-actions');
+    actions.append(roll, clear);
+
+    sec.append(matrixHost, actions);
     this._tinkering = false;
-    Object.assign(this.els, { vibeSec: sec, vibeBody: body, vibeMatrix: matrixHost, genre, shuffle, tinker, vibeRandom: clear });
+    Object.assign(this.els, { vibeSec: sec, vibeBody: sec, vibeMatrix: matrixHost, vibeRoll: roll, vibeRandom: clear });
     this.syncTinker();
   }
 
   setTinkering(on) {
     this._tinkering = !!on;
-    if (this.els.vibeBody) this.els.vibeBody.hidden = !this._tinkering;
     this.syncTinker();
     if (this._tinkering) this.buildVibeEditor();
   }
   syncTinker() {
+    const open = !!this._tinkering && this._wantVibe !== false;
+    if (this.els.vibeSec) this.els.vibeSec.hidden = !open;
     if (this.els.tinker) this.els.tinker.textContent = this._tinkering ? 'hide knobs' : '🎛 tinker';
   }
 
@@ -707,10 +747,12 @@ export class SkafinityPlayerElement extends HTMLElement {
   applyControls() {
     const raw = (this.getAttribute('controls') || '').trim().toLowerCase();
     const wanted = !raw || raw === 'all' ? SECTIONS : raw.split(/[\s,]+/).filter(Boolean);
-    for (const name of SECTIONS) {
-      const el = this.root.querySelector(`[data-section="${name}"]`);
-      if (el) el.hidden = !wanted.includes(name);
-    }
+    this._wantVibe = wanted.includes('vibe');
+    for (const name of SECTIONS)
+      for (const el of this.sectionNodes.get(name) || []) el.hidden = !wanted.includes(name);
+    // The slider box answers to BOTH: `controls` says whether the vibe exists at all, tinker says
+    // whether it is open. One `hidden` flag, two reasons to set it, so it is settled in one place.
+    this.syncTinker();
   }
 
   // ── Player events → UI ─────────────────────────────────────────────────────

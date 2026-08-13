@@ -153,8 +153,8 @@ The shadow root keeps the host page's CSS out (and the widget's out of the page)
 want to restyle has to be a part: `board` `transport` `transport-button` `play-button` `now-playing`
 `buffer-state` `volume` `volume-slider` `seek` `seek-slider` `time-elapsed` `time-total`
 `progress` `progress-bar` `seed-bar` `seed-input` `seed-go`
-`seed-copy` `seed-copy-station` `panel` `vibe` `vibe-body` `genre-select` `reroll-button`
-`shuffle-button` `tinker-button` `vibe-random` `knob-slider`
+`seed-copy` `seed-copy-station` `vibe-controls` `genre-select` `reroll-button` `shuffle-button`
+`tinker-button` `panel` `vibe` `vibe-actions` `vibe-roll` `vibe-random` `knob-slider`
 `knob-select` `playlist` `playlist-row` `playlist-row-now` `jump` `jump-input` `jump-go`
 `export-button` `button` `slider` `message`.
 

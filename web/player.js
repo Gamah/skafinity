@@ -555,7 +555,17 @@ export class SkafinityPlayer extends EventTarget {
     this.restartFromSeed();
   }
 
-  /** Hand the vibe back to the station — the way out of a dragged knob. */
+  /** Throw the knobs somewhere new and PIN them there — the 🎲 over the sliders. Distinct from
+   *  `rollVibe` below, and the difference is the whole reason both exist: this one always moves
+   *  every slider, because it draws a fresh vibe and writes it into the seed. */
+  rerollVibe() {
+    this.pinnedVibe = this.mod.rollVibe();
+    this.restartFromSeed();
+  }
+
+  /** Hand the vibe back to the station: every song rolls its own again. The way out of a dragged
+   *  knob — and it may well move nothing on screen, because the song already playing keeps the
+   *  vibe it resolved to; what changes is what comes NEXT. */
   rollVibe() {
     this.pinnedVibe = '';
     this.restartFromSeed();

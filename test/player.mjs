@@ -396,9 +396,18 @@ function invariantHolds(p, pool) {
   check('…and pins the genre into the seed', p.seed === `gamah:0:3:${heldVibe}`, p.seed);
   check('…so nothing rolls any more', p.resolve(9).genre === 3 && p.resolve(9).vibe === heldVibe);
 
+  // The die over the sliders is a THROW, not an unpin: it must move the knobs every time it is
+  // pressed, including when nothing was pinned — which is what an unpin does not do.
+  p.rollVibe();
+  const rolling = p.vibe;
+  p.rerollVibe();
+  check('the die over the sliders actually moves them', p.vibe !== rolling, `${rolling} -> ${p.vibe}`);
+  check('…and pins what it threw', p.seed.endsWith(`:${p.vibe}`), p.seed);
+
   // …and both pins have a way back out.
+  const thrown = p.vibe;
   p.rollGenre();
-  check('rolling the genre takes it back out of the seed', p.seed === `gamah:0:${heldVibe}`, p.seed);
+  check('rolling the genre takes it back out of the seed', p.seed === `gamah:0:${thrown}`, p.seed);
   p.rollVibe();
   check('rolling the vibe takes it back out too', p.seed === 'gamah:0', p.seed);
   p.destroy();
