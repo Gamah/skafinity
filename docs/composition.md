@@ -111,6 +111,17 @@ hold it up:
   only how it is answered, `Varied` keeps its rhythm and sings a fresh contour, `Contrasting` brings
   a phrase of its own. **The weights are authored, not measured** (there is no melodic corpus here),
   and they are one table rather than six because nothing found says a genre has an opinion about it.
+  They are TWO tables, though, and the split is on phrase LENGTH rather than on genre: at
+  `MinPhraseBars` only `Contrasting` puts a second rhythm into a tune, so the other two shapes hand
+  the most exposed voice one two-bar rhythm to sing four times — the shape the period exists to be
+  bigger than, arriving one level up. `Melody.ShortShapeWeights` leans a floor-length tune toward
+  `Contrasting` without forbidding a parallel period, which is a real shape at two bars too.
+- **A parallel period varies only how it answers, so the answer has to actually vary.** The
+  consequent's `AnswerOp` is drawn WITHOUT REPLACEMENT against the antecedent's (by zeroing a
+  weight, so it stays one draw and the stream does not shift). The same operator over the same call
+  is the same phrase but for its last note, and a period whose second half is its first half with a
+  different landing is a two-phrase tune wearing four — which is what it was, on any song where
+  those two draws agreed.
 - **The tune is a WHOLE NUMBER OF HARMONIC CYCLES, capped at 8 bars.** The cap was never about
   length — it is that a tune's statements must land over the chords they were drawn against, and two
   cycles do, bar for bar. So punk and pop (`ChordBars` 1 × a four-chord progression) double a 4-bar
@@ -123,7 +134,14 @@ hold it up:
 
 `--seed` prints whether a song's tune is a period and how long a phrase of it is; `--stats` prints
 **distinct phrase rhythms and contours WITHIN one tune**, which is the number this moved — 1.00 and
-2.00 by construction before, 1.28–1.34 and 3.36–3.47 after. Its across-song `distinct` counts are
+2.00 by construction before the period, 1.25–1.42 and 3.35–3.49 with it, and 1.46–1.57 and
+3.64–3.73 once the answer was drawn without replacement and a floor-length tune leaned toward
+`Contrasting` (100 songs × 6 genres). A period has at most two rhythms in it, so the rhythm figure
+is reading the `Contrasting` rate almost directly: half of tunes now, a quarter before.
+**A verse is already sparser than its chorus** and does not need a mechanism of its own — `move`
+(1 for the chorus, 0.8 for the verse) leans the length draw toward the long end, which is what the
+`LongFrom` split in `Melody.Lengths` is for. One song where the verse has more notes than the
+chorus is the draw, not the rule. Its across-song `distinct` counts are
 measured over the CALL, so they shrank for the four genres whose call went from four bars to two
 (a shorter string collides more often); punk and pop, whose call was already two bars, are
 byte-identical on that line. The band's own cohesion numbers moved by at most a point, which is

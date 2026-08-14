@@ -104,6 +104,9 @@ static class Melody
 		AnswerOp.Transpose, AnswerOp.NewTail, AnswerOp.SequenceUp, AnswerOp.SequenceUp2, AnswerOp.Invert,
 	};
 
+	/// <summary>No operator to avoid — what an antecedent passes, having nothing before it.</summary>
+	const AnswerOp NoOp = (AnswerOp)(-1);
+
 	/// <summary>How the CONSEQUENT opens — the one decision that makes a period a period.
 	///
 	/// A period is two call/answer pairs: an antecedent that leaves the line open and a consequent
@@ -138,6 +141,21 @@ static class Melody
 	/// about it; a genre that turns out to want one puts weights in <see cref="TuneVocab"/>, the
 	/// way <see cref="Answers"/> already does.</summary>
 	static readonly int[] ShapeWeights = { 4, 3, 3 };
+
+	/// <summary>The same judgement for a tune whose phrases are at <see cref="MinPhraseBars"/>.
+	///
+	/// A NEW RHYTHM ENTERS A TUNE AT THE CONSEQUENT'S CALL OR NOWHERE, and only
+	/// <see cref="PeriodShape.Contrasting"/> brings one — so at the floor phrase length the other two
+	/// shapes hand the most exposed voice in the mix ONE two-bar rhythm to sing four times, which is
+	/// the shape the period exists to be bigger than, arriving one level up. It lands hardest on the
+	/// genres whose harmonic cycle is shortest (pop and punk: <c>ChordBars</c> 1 × a four-chord loop
+	/// puts every phrase at the floor), i.e. the two the period work was written for.
+	///
+	/// A lean rather than a rule: a parallel period is a real and common shape and stays drawable at
+	/// two bars, it just stops being the likeliest one there. Longer phrases keep the table above,
+	/// because a four-bar phrase restated is a tune with room to be recognised rather than a loop.
+	/// </summary>
+	static readonly int[] ShortShapeWeights = { 2, 3, 5 };
 
 	/// <summary>Where an ANTECEDENT lands: a chord tone that is not the tonic, which is what leaves
 	/// the line open. The fifth is the half cadence proper and takes most of the weight; the third
@@ -248,11 +266,13 @@ static class Melody
 		// on a chord tone that is not the tonic and stays open; with only two phrases there is
 		// nothing after it, so it resolves the way it always did.
 		int open = phrases == 4 ? HalfCadence[rng.WeightedIndex( HalfCadenceWeights )] : 0;
-		Emit( ticks, degrees, phraseTicks, callRhythm, Answer( rng, callDegrees, v, open ) );
+		Emit( ticks, degrees, phraseTicks,
+			callRhythm, Answer( rng, callDegrees, v, open, NoOp, out var anteOp ) );
 
 		if ( phrases == 4 )
 		{
-			var shape = rng.PickWeighted( Shapes, ShapeWeights );
+			var shape = rng.PickWeighted( Shapes,
+				phraseTicks <= MinPhraseBars * barTicks ? ShortShapeWeights : ShapeWeights );
 			// BOTH DRAWN FOR EVERY SHAPE, so swapping one shape for another does not shift the rest
 			// of the tune's stream — the discipline PickOrNull keeps in the composer. A parallel
 			// consequent pays for a phrase it does not sing.
@@ -263,8 +283,12 @@ static class Melody
 
 			Emit( ticks, degrees, 2 * phraseTicks, conRhythm, conDegrees );
 			// The consequent answers with its own operator — that is what a parallel period varies,
-			// and it is the only thing it varies.
-			Emit( ticks, degrees, 3 * phraseTicks, conRhythm, Answer( rng, conDegrees, v, 0 ) );
+			// and it is the only thing it varies, so it must ACTUALLY vary: drawn without replacement
+			// against the antecedent's, because the same operator over the same call is the same
+			// phrase but for its last note, and a period whose second half is its first half with a
+			// different landing is a two-phrase tune wearing four.
+			Emit( ticks, degrees, 3 * phraseTicks,
+				conRhythm, Answer( rng, conDegrees, v, 0, anteOp, out _ ) );
 		}
 
 		// A held final note, so the tune breathes before it comes round again.
@@ -387,9 +411,31 @@ static class Melody
 	/// closes the tune, an open chord tone where it is an antecedent handing over to a consequent.
 	/// Every operator answers the same question and every one of them lands in the same place.
 	/// </summary>
-	static List<int> Answer( Rng rng, List<int> call, in TuneVocab v, int last )
+	/// <param name="avoid">An operator this phrase may not take — the one the phrase before it took,
+	/// or <see cref="NoOp"/> where there is nothing before it.</param>
+	/// <param name="used">The operator drawn, for the next phrase to avoid.</param>
+	static List<int> Answer( Rng rng, List<int> call, in TuneVocab v, int last, AnswerOp avoid,
+		out AnswerOp used )
 	{
-		var op = rng.PickWeighted( Answers, v.AnswerWeights );
+		// WITHOUT REPLACEMENT, by zeroing a weight rather than by re-drawing: one draw either way,
+		// so which operator the phrase before it took cannot shift the rest of the tune's stream.
+		// A genre that weights a single operator keeps it — an answer it would never write is worse
+		// than an answer heard twice.
+		var weights = v.AnswerWeights;
+		int i0 = Array.IndexOf( Answers, avoid );
+		if ( i0 >= 0 && weights != null && weights.Length == Answers.Length )
+		{
+			int rest = 0;
+			for ( int i = 0; i < weights.Length; i++ ) if ( i != i0 ) rest += Math.Max( 0, weights[i] );
+			if ( rest > 0 )
+			{
+				var w = new int[weights.Length];
+				Array.Copy( weights, w, weights.Length );
+				w[i0] = 0;
+				weights = w;
+			}
+		}
+		var op = used = rng.PickWeighted( Answers, weights );
 		// Drawn for every operator, so swapping one for another does not shift the rest of the
 		// tune's stream — the same discipline PickOrNull keeps in the composer.
 		int approach = rng.Chance( 0.65f ) ? 1 : -1;

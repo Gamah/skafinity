@@ -67,7 +67,13 @@ public sealed partial class MusicGen
 		_fast = rng.Chance( prof.FastChance );
 		int bpm = _bpm = prof.DrawBpm( rng, _fast );
 		_scale = rng.PickWeighted( prof.Scales, prof.ScaleWeights );
-		_prog = rng.Pick( prof.Progressions );
+		// THE CHANGES ARE DRAWN AGAINST THE MODE, not just alongside it. A progression row is a
+		// roman numeral written as a degree, and a degree means a different chord in each of a
+		// genre's scales — including, on one degree per mode, a chord that cannot be rooted at all
+		// (see Harmony.PlayableProgressions). Substituting here rather than at the point of use is
+		// what lets the bass, the voice-leading plan and the tune's chord-tone snap all read the
+		// same changes; one draw either way, so the draw count still cannot depend on the scale.
+		_prog = rng.Pick( Harmony.PlayableProgressions( _scale, prof.Progressions ) );
 		// The song's chord vocabulary — a triad, a 7th, a sus, a bare power chord. Every chordal
 		// voice reads this one voicing, so the guitar and the keys agree about what the chord IS
 		// while still playing different rhythms.
