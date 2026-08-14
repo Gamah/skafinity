@@ -1652,7 +1652,7 @@ static class Program
 			Melody.PhraseCount( 4 ) == 2 && Melody.PhraseCount( 2 ) == 2 );
 
 		int ph = Melody.MinPhraseBars * bar;
-		int drawn = 0, open = 0, home = 0, pairsRepeat = 0, freshRhythm = 0, freshContour = 0;
+		int drawn = 0, open = 0, home = 0, pairsRepeat = 0, freshRhythm = 0, freshContour = 0, restated = 0;
 		for ( int g = 0; g < GenreProfile.Count; g++ )
 			for ( int i = 0; i < 80; i++ )
 			{
@@ -1669,6 +1669,16 @@ static class Program
 				if ( p[3][^1].Value == 0 ) home++;
 				if ( !SameRhythm( p[0], p[2], 2 * ph ) ) freshRhythm++;
 				if ( !SameContour( p[0], p[2] ) ) freshContour++;
+				// A PARALLEL PERIOD RESTATES ITS CALL, SO THE ANSWER IS ALL IT VARIES — and the two
+				// answers drawing the same operator over the same call is the whole tune collapsing
+				// to two phrases with a different landing, which is the shape the period replaced.
+				// Only counted where the consequent IS a restatement; a varied or contrasting one
+				// has already moved.
+				if ( !SameContour( p[0], p[2] ) ) continue;
+				bool tailOnly = p[1].Count == p[3].Count;
+				for ( int k = 0; tailOnly && k + 1 < p[1].Count; k++ )
+					tailOnly &= p[1][k].Value == p[3][k].Value;
+				if ( tailOnly ) restated++;
 			}
 		Check( "an answer still repeats its own call's rhythm, in both halves of a period",
 			drawn > 400 && pairsRepeat == drawn, $"{pairsRepeat} of {drawn}" );
@@ -1680,6 +1690,10 @@ static class Program
 			freshRhythm > drawn / 10 && freshRhythm < drawn * 0.6, $"{freshRhythm} of {drawn}" );
 		Check( "…and changes its notes more often than its rhythm",
 			freshContour > freshRhythm && freshContour < drawn, $"{freshContour} of {drawn}" );
+		// The answer is drawn without replacement against the antecedent's, so a period whose
+		// consequent restates the call still cannot be that call answered the same way twice.
+		Check( "a parallel period never answers itself the same way twice", restated == 0,
+			$"{restated} of {drawn} tunes end on two answers that differ only in their last note" );
 
 		// And the songs actually get one: every genre's harmonic cycle is four or eight bars, so
 		// every genre's tune is eight — punk and pop by stating their four-chord loop twice, which
