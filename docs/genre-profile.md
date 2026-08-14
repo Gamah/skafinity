@@ -95,6 +95,29 @@ voice calling `ScaleMidi` over it, that voice is spelling its chords wrong. The 
 the invariant over every genre × scale × voicing × progression degree, and separately asserts that
 the diatonic spelling really does break somewhere — otherwise the first check is vacuous.
 
+**AND THAT IS WHY NOTHING MAY ROOT A CHORD ON THE ONE DEGREE WHOSE FIFTH IS A TRITONE.** Forcing the
+fifth perfect is right for the SHAPE and it buys that shape, on that one degree, by importing a
+pitch from **outside the scale** — so the chord arrives consonant, confident and in another key,
+which is worse than the tritone it replaced rather than better, and `NearestSoundingTone` then snaps
+the tune onto it. **The progression tables are roman numerals wearing degree numbers**: a row
+commented `I–IV–vi–V` is that in the genre's home mode and something else in the mode beside it —
+lydian's degree 3 is the ♯4, not the 4th; major's degree 6 is the leading tone, not the ♭VII; aeolian's
+degree 1 is the ♮2, not the ♭II. So the changes go through `Harmony.PlayableProgressions(scale, progs)`
+as they are drawn, which moves each root back two degrees until its fifth is perfect.
+
+**The law is that the substitute is the chord CONTAINING the degree it replaces**, and it holds for
+every scale this engine draws: lydian's ♯4 is II's third, dorian's ♮6 is the major IV's, phrygian's
+5th is ♭III's, major's leading tone is V's. That is not a coincidence to be tuned — a mode's
+characteristic note lives in a chord, and rooting a chord on it is the mistake. The consequence
+worth carrying: **a mode is a TRANSFORMATION of the progression table, not a filter over it.** One
+table reads as a different playable loop under each of a genre's scales, so per-mode tables would
+be both more work and less variety. A row is dropped only where the move makes two adjacent chords
+the same where the written row changed chord (a four-chord loop that has become three is not the
+row that was authored), or where it lands on an earlier row's substitution. Adding a scale or a
+progression means re-reading the note above `Harmony.Rootable`; the engine test asserts that no
+drawn chord sits on an unrootable degree, that the substitute really does contain the degree it
+replaces, and that no substitution turns a changing loop into a pedal.
+
 **A driven guitar does not play thirds.** Distortion is a non-linearity, so it generates sum and
 difference tones between everything fed into it; a root and a fifth are a simple enough ratio to
 survive that and a third is not. That is why guitarists play power chords through a driven amp and

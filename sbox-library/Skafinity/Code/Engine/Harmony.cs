@@ -13,6 +13,11 @@ namespace Skafinity;
 /// octaves rather than clamping, so running off either end of a scale still lands on a sane
 /// pitch. That is what lets a progression be any length — nothing here assumes four.
 ///
+/// A ROW'S ROMAN NUMERALS ARE TRUE IN THE GENRE'S HOME MODE AND READ DIFFERENTLY IN THE OTHERS,
+/// which is the point of writing them as degrees — but one degree per mode cannot carry a chord at
+/// all, so the changes are put through <see cref="PlayableProgressions"/> as they are drawn. Read
+/// the note above it before adding a scale or a progression.
+///
 /// Stateless by design: every entry point takes the scale it should read. MusicGen keeps thin
 /// instance wrappers that supply the song's own scale. Which table a genre draws from is
 /// <see cref="GenreProfile"/>'s business, not this file's — these are just the tables.
@@ -436,6 +441,89 @@ static class Harmony
 		if ( offset == Fourth ) return root + 5;
 		if ( offset == Fifth ) return root + 7;
 		return ScaleMidi( baseMidi, scale, rootDegree + offset );
+	}
+
+	// ── Which degrees a mode can root a chord on ──
+	// EVERY SEVEN-NOTE MODE HAS EXACTLY ONE DEGREE WHOSE FIFTH IS A TRITONE, and a chord cannot be
+	// rooted there. VoicedTone forces the fourth and the fifth perfect — right for the shape a
+	// guitarist frets, and on that one degree it imports a pitch from OUTSIDE the scale, so the
+	// chord arrives consonant, confident and in another key. It is the loudest thing in the song
+	// that can be wrong, because the chordal voices sound it and NearestSoundingTone then snaps the
+	// tune onto it.
+	//
+	// THE PROGRESSION TABLES ARE ROMAN NUMERALS WEARING DEGREE NUMBERS. A row commented I–IV–vi–V
+	// is that in the genre's home mode and something else in the mode beside it: lydian's degree 3
+	// is the ♯4, not the 4th; major's degree 6 is the leading tone, not the ♭VII. The answer is not
+	// a table per mode — it is to move the ROOT to the chord that already contains that degree:
+	//
+	//     root -= 2 degrees, repeated until the fifth is perfect
+	//
+	// which lands on a triad containing the original degree as a chord TONE in every scale this
+	// engine draws. That is not a coincidence to be tuned away; it is what a mode's characteristic
+	// chord IS — lydian's ♯4 lives in II as its third, dorian's ♮6 in the major IV, phrygian's 5th
+	// in ♭III, major's leading tone in V. So a mode stops being a filter that breaks rows and
+	// becomes a TRANSFORMATION: one progression table reads as a different, playable loop under
+	// each of a genre's scales, which is more variety than the table holds on its own and not less.
+
+	/// <summary>Can a chord be rooted on this degree — does the scale give it a perfect fifth?
+	/// </summary>
+	public static bool Rootable( int[] scale, int degree )
+		=> ScaleMidi( 0, scale, degree + Fifth ) - ScaleMidi( 0, scale, degree ) == 7;
+
+	/// <summary>The degree this one must be played from: itself where the mode can root it, else
+	/// the nearest degree below whose triad contains it. Walks rather than stepping once, because
+	/// a scale with two unrootable degrees (harmonic minor has three) can land on another.</summary>
+	public static int RootableDegree( int[] scale, int degree )
+	{
+		int n = scale.Length;
+		degree = ((degree % n) + n) % n;
+		for ( int i = 0; i < n && !Rootable( scale, degree ); i++ )
+			degree = (degree + n - 2) % n;
+		return degree;
+	}
+
+	/// <summary>A genre's progression table as this SCALE can play it: every root moved onto a
+	/// degree the mode can root, and the rows that do not survive the move dropped.
+	///
+	/// A row is dropped when the move makes two ADJACENT chords the same where the written row
+	/// changed chord — a four-chord loop that has become a three-chord one is not the loop that was
+	/// authored. A row that was written as a pedal keeps its repeats. A row that lands on an
+	/// earlier row's substitution goes too, so one mode cannot draw the same changes twice under
+	/// two names. Called once per song, so the allocation is a rounding error against a render.
+	///
+	/// It never returns empty: a genre whose whole table collapsed under some mode would take the
+	/// draw down with it, and a loop with one chord repeated is a far smaller defect than a song
+	/// that does not exist.</summary>
+	public static int[][] PlayableProgressions( int[] scale, int[][] progs )
+	{
+		var kept = new List<int[]>();
+		foreach ( var p in progs )
+		{
+			var q = new int[p.Length];
+			for ( int i = 0; i < p.Length; i++ ) q[i] = RootableDegree( scale, p[i] );
+
+			bool drop = false;
+			for ( int i = 0; i < p.Length; i++ )
+			{
+				int j = (i + 1) % p.Length;
+				if ( q[i] == q[j] && p[i] != p[j] ) drop = true;
+			}
+			foreach ( var k in kept )
+			{
+				if ( k.Length != q.Length ) continue;
+				bool same = true;
+				for ( int i = 0; i < q.Length; i++ ) if ( k[i] != q[i] ) { same = false; break; }
+				if ( same ) drop = true;
+			}
+			if ( !drop ) kept.Add( q );
+		}
+		if ( kept.Count == 0 )
+		{
+			var q = new int[progs[0].Length];
+			for ( int i = 0; i < q.Length; i++ ) q[i] = RootableDegree( scale, progs[0][i] );
+			kept.Add( q );
+		}
+		return kept.ToArray();
 	}
 
 	/// <summary>How far one voice may be octave-shifted to stay near the chord before it. An

@@ -234,6 +234,119 @@ static class Program
 					- Harmony.ScaleMidi( 48, scale, deg ) != 7;
 		Check( "a diatonic fifth really is diminished on some degree", diatonicBreaks );
 
+		// ── no song roots a chord on a degree its mode cannot carry ──
+		// Forcing the fourth and the fifth perfect (above) is right for the SHAPE, and on the one
+		// degree per mode whose fifth is a tritone it buys that shape by importing a pitch from
+		// outside the scale — a chord that is consonant, confident and in another key, with the
+		// tune snapped onto it by NearestSoundingTone. Harmony.PlayableProgressions moves the root
+		// instead; this is the guard that says no drawn progression still lands there.
+		bool rootable = true, substituted = false;
+		string rootAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			for ( int s = 0; s < prof.Scales.Length; s++ )
+			{
+				var scale = prof.Scales[s];
+				var playable = Harmony.PlayableProgressions( scale, prof.Progressions );
+				Check( $"genre {g} keeps changes to draw in mode {s}", playable.Length > 0 );
+				foreach ( var prog in playable )
+					foreach ( var deg in prog )
+					{
+						if ( Harmony.Rootable( scale, deg ) ) continue;
+						rootable = false;
+						rootAt = $"genre {g} degree {deg}";
+					}
+				foreach ( var prog in prof.Progressions )
+					foreach ( var deg in prog )
+						substituted |= Harmony.RootableDegree( scale, deg ) != deg;
+			}
+		}
+		Check( "every drawn chord sits on a degree the mode can root", rootable, rootAt );
+		// …and some written row really does name a degree its mode cannot root, or the guard above
+		// is vacuous and would keep passing with the substitution deleted.
+		Check( "a written progression really does name an unrootable degree", substituted );
+
+		// ── the substitute is the chord that CONTAINS the degree it replaces ──
+		// This is the law rather than a lookup table: walking the root back two degrees lands on a
+		// triad holding the original degree as a chord TONE, which is what a mode's characteristic
+		// chord is (lydian's ♯4 is II's third, dorian's ♮6 is the major IV's, phrygian's 5th is
+		// ♭III's). A scale added to a genre table that does not obey it needs looking at rather
+		// than accepting — the substitution would be moving the harmony somewhere arbitrary.
+		bool contains = true;
+		string containsAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+			foreach ( var scale in GenreProfile.For( g ).Scales )
+				for ( int deg = 0; deg < scale.Length; deg++ )
+				{
+					if ( Harmony.Rootable( scale, deg ) ) continue;
+					int sub = Harmony.RootableDegree( scale, deg );
+					int want = ((Harmony.ScaleMidi( 48, scale, deg ) % 12) + 12) % 12;
+					bool found = false;
+					foreach ( var off in Harmony.Triad )
+						found |= ((Harmony.VoicedTone( 48, scale, sub, off ) % 12) + 12) % 12 == want;
+					if ( found ) continue;
+					contains = false;
+					containsAt = $"genre {g} degree {deg} -> {sub}";
+				}
+		Check( "an unrootable degree's substitute contains it as a chord tone", contains, containsAt );
+
+		// ── a substituted loop is still the loop that was authored ──
+		// Moving a root can land it on the chord beside it, and a four-chord loop that has become a
+		// three-chord one is not what the row says. Those rows are dropped rather than played; a
+		// row WRITTEN as a pedal keeps its repeats, so this asks only that no repeat is new.
+		bool intact = true;
+		string intactAt = "";
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			foreach ( var scale in prof.Scales )
+			{
+				int written = 0;
+				foreach ( var prog in prof.Progressions )
+				{
+					bool pedal = false;
+					for ( int i = 0; i < prog.Length; i++ )
+						pedal |= prog[i] == prog[(i + 1) % prog.Length];
+					if ( pedal ) written++;
+				}
+				int pedals = 0;
+				foreach ( var prog in Harmony.PlayableProgressions( scale, prof.Progressions ) )
+				{
+					bool pedal = false;
+					for ( int i = 0; i < prog.Length; i++ )
+						pedal |= prog[i] == prog[(i + 1) % prog.Length];
+					if ( pedal ) pedals++;
+				}
+				if ( pedals <= written ) continue;
+				intact = false;
+				intactAt = $"genre {g}: {pedals} pedal rows drawn, {written} written";
+			}
+		}
+		Check( "substitution never turns a changing loop into a pedal", intact, intactAt );
+
+		// A DIAGNOSTIC, NOT A RULE. The written tables keep the no-two-genres-share-more-than-one
+		// cap (asserted below); a mode's substitution can still land two genres on the same
+		// REALISED changes — metal's ♭II rows read as rock's ♭VII vamp under aeolian, because that
+		// is what those degrees are in aeolian. Whether that matters is a judgement about how much
+		// tempo, kit and voicing already separate two genres, so this prints the number rather than
+		// failing on it.
+		var realised = new Dictionary<int, HashSet<string>>();
+		for ( int g = 0; g < VibeCodec.GenreCount; g++ )
+		{
+			var prof = GenreProfile.For( g );
+			realised[g] = new HashSet<string>();
+			foreach ( var scale in prof.Scales )
+				foreach ( var prog in Harmony.PlayableProgressions( scale, prof.Progressions ) )
+					realised[g].Add( string.Join( " ", prog ) );
+		}
+		int sharedRows = 0;
+		for ( int a = 0; a < VibeCodec.GenreCount; a++ )
+			for ( int b = a + 1; b < VibeCodec.GenreCount; b++ )
+				foreach ( var row in realised[a] )
+					if ( realised[b].Contains( row ) ) sharedRows++;
+		Console.WriteLine( $"    realised changes shared between genre pairs: {sharedRows}" );
+
 		// ── a bend lands ON a note of the key ──
 		// A player bends TO a note, not BY an interval: the string arrives at the next tone of the
 		// scale, a whole step in some places and a semitone in others. Bent by a fixed depth it
