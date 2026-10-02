@@ -164,7 +164,9 @@ storage key belongs above it, not in it, and `test/player.mjs` asserts exactly t
   intro → chorus → verse(0) → chorus → verse(1) → chorus → ending (see `BuildStructure` in
   `MusicGen.cs`). PCM stays in wasm memory and comes back as a MemoryView the worker copies
   into two `Float32Array`s (valid only synchronously — copy immediately).
-- JS wraps each song in an `AudioBuffer`. Because the song has an intro/ending it **plays
+- JS wraps each song in an `AudioBuffer`, **copied in time-budgeted slices** (`_onRender`): one
+  whole-song `copyToChannel` stalls the host page 60–130 ms at every song boundary (#54). While it
+  copies, the claim is already released and `landing` is what keeps the index from re-rendering. Because the song has an intro/ending it **plays
   once** (`LoopsPerSong` = 1, `src.loop = false`), then **equal-power crossfades** into the
   pre-rendered next song (seed `tag:(n+1)`).
 - **Look-ahead:** keep `AheadCount` songs pre-rendered in a **Web Worker** (its own runtime

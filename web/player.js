@@ -44,6 +44,14 @@ const SCHEDULE_HORIZON = 12;  // seconds: schedule the next song once it's withi
 // Radius of the rendered-PCM cache kept around the audible song, so Prev/Next within the window is
 // instant; anything further is dropped and regenerated from the ledger on demand.
 const PCM_RADIUS = 5;
+// A landed song is copied into its AudioBuffer a slice at a time, yielding between bursts of at
+// most COPY_BUDGET_MS. Done in one go it is a whole song of PCM and a 60–130 ms stall of the host
+// page at every song boundary; a look-ahead song is not needed for seconds, so it can wait.
+const COPY_SLICE = 16384;      // frames per copyToChannel call
+const COPY_BUDGET_MS = 4;
+const yieldTask = globalThis.scheduler?.postTask
+  ? (f) => globalThis.scheduler.postTask(f)
+  : (f) => setTimeout(f, 0);
 // Pool of generation workers. Each boots its own .NET runtime (memory cost — hence the cap), and
 // the pool lets look-ahead songs render in parallel instead of serializing through one worker.
 //
@@ -292,6 +300,7 @@ export class SkafinityPlayer extends EventTarget {
 
     this.ledger = new Map();    // n -> frozen cfg (the shuffle line)
     this.rendered = new Map();  // n -> { buffer, info }
+    this.landing = new Set();   // n whose PCM is still being copied into its AudioBuffer
     this.gen = new GenQueue();
     this.bufferingN = -1;
     // Two counters, because a seek and a restart invalidate different things. `seq` is the AUDIO
@@ -631,7 +640,7 @@ export class SkafinityPlayer extends EventTarget {
 
   // ── Generation ───────────────────────────────────────────────────────────────
   requestSong(nn) {
-    if (this.rendered.has(nn)) return;
+    if (this.rendered.has(nn) || this.landing.has(nn)) return;
     if (this.gen.want(nn)) this.pool.dispatch();
   }
 
@@ -653,13 +662,30 @@ export class SkafinityPlayer extends EventTarget {
     if (m.type === 'error') { this.emit('error', { error: m.error, n: m.n }); this.emit('timeline', {}); return; }
     if (m.mySeq !== undefined && m.mySeq !== this.renderSeq) return;
     if (!this.ctx) return;
-    const buf = this.ctx.createBuffer(2, m.left.length, m.sampleRate);
-    buf.copyToChannel(m.left, 0);
-    buf.copyToChannel(m.right, 1);
-    this.rendered.set(m.n, { buffer: buf, info: m.info });
-    this.pump();
-    this.emit('timeline', {});
-    this.emitBuffer();
+    // The claim is released already, so `landing` is what stops the song being requested again
+    // while it copies. A hard restart clears `landing` and bumps the seq, and a copy that sees the
+    // seq move just stops: the index may already be landing again for the new timeline.
+    const seq = this.renderSeq, frames = m.left.length;
+    const buf = this.ctx.createBuffer(2, frames, m.sampleRate);
+    this.landing.add(m.n);
+    let at = 0;
+    const step = () => {
+      if (this.destroyed || seq !== this.renderSeq) return;
+      const until = performance.now() + COPY_BUDGET_MS;
+      do {
+        const end = Math.min(frames, at + COPY_SLICE);
+        buf.copyToChannel(m.left.subarray(at, end), 0, at);
+        buf.copyToChannel(m.right.subarray(at, end), 1, at);
+        at = end;
+      } while (at < frames && performance.now() < until);
+      if (at < frames) { yieldTask(step); return; }
+      this.landing.delete(m.n);
+      this.rendered.set(m.n, { buffer: buf, info: m.info });
+      this.pump();
+      this.emit('timeline', {});
+      this.emitBuffer();
+    };
+    step();
   }
 
   // Drop rendered PCM outside the ±PCM_RADIUS window around `center` (the audible song by default;
@@ -891,6 +917,7 @@ export class SkafinityPlayer extends EventTarget {
     this.renderSeq++;      // the cfg behind every index may have changed; nothing in flight survives
     this.gen.clear();      // paired with abandoning every in-flight render below — see queue.js
     this.rendered.clear();
+    this.landing.clear();
     this.pool.abandon(this, () => false);
     this.ledger.clear();
     this.bufferingN = -1;
@@ -968,7 +995,7 @@ export class SkafinityPlayer extends EventTarget {
         tag: s.tag,
         now: k === this.displayN,
         cached,
-        generating: this.gen.has(k) || (this.bufferingN === k && !cached),
+        generating: this.gen.has(k) || this.landing.has(k) || (this.bufferingN === k && !cached),
         past: k < this.displayN,
         genre: this.mod ? this.mod.genreName(this.genreForN(k)) : '',
       });

@@ -464,6 +464,43 @@ function invariantHolds(p, pool) {
   p.destroy();
 }
 
+// ── A landed song is copied in slices, not in one stall ────────────────────────
+// A whole song's PCM copied in one task blocks the host page at every song boundary. With a copy
+// that costs real time, the render must return before the buffer exists, the copy must cover every
+// frame exactly once, and a hard restart mid-copy must drop it rather than land a stale song.
+{
+  allWorkers.length = 0;
+  const spans = [];
+  class SlowCtx extends FakeCtx {
+    createBuffer(ch, frames, rate) {
+      return { duration: frames / rate, numberOfChannels: ch, copyToChannel(src, c, at) {
+        if (c === 0) spans.push([at, src.length]);
+        const t = performance.now() + 1; while (performance.now() < t);
+      } };
+    }
+  }
+  const pool = new RenderPool(() => new FakeWorker(), 1);
+  const p = makePlayer({ pool, audioContext: new SlowCtx() });
+  await p.play();
+  liveWorkers()[0].finishOne();
+  check('the render returns before its copy is done', !p.rendered.has(0) && p.landing.has(0));
+  check('a landing song is not requested again', !p.gen.has(0));
+  for (let i = 0; i < 100 && !p.rendered.has(0); i++) await wait(5);
+  check('the copy lands', p.rendered.has(0) && !p.landing.has(0));
+  let next = 0;
+  for (const [at, len] of spans) { if (at !== next) break; next += len; }
+  check('the slices cover every frame once, in order', next === FRAMES && spans.length > 1,
+    `${spans.length} slices reaching ${next}/${FRAMES}`);
+
+  liveWorkers()[0].finishOne();
+  const n = [...p.landing][0];
+  p.startSequence();
+  for (let i = 0; i < 40; i++) await wait(5);
+  check('a hard restart drops the copy in progress', n !== undefined && !p.rendered.has(n) && !p.landing.has(n),
+    `n=${n}`);
+  p.destroy();
+}
+
 // ── It is genuinely headless ───────────────────────────────────────────────────
 // The extraction is only worth anything if the transport stayed out of the document and out of the
 // address bar; a single `document.` creeping back in is what would make a second widget impossible.
