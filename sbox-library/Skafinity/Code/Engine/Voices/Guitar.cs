@@ -84,7 +84,7 @@ public sealed partial class MusicGen
 	/// string" is 5 ms at metal tempo and 25 ms at country's — which is a guitar audibly out of
 	/// time, not a strum. Anything that is a physical gesture rather than a musical position
 	/// belongs in real time (the kit's push/lay-back is in samples for the same reason).</param>
-	void EmitGuitar( int tick, int durTicks, int midi, float vel, bool ring, int voices,
+	internal void EmitGuitar( int tick, int durTicks, int midi, float vel, bool ring, int voices,
 		float nudgeMs = 0f )
 	{
 		var (drive, cutEnv, reso, level) = RhythmGtrTone();

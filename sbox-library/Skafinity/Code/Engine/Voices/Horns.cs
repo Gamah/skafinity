@@ -11,6 +11,25 @@ namespace Skafinity;
 
 public sealed partial class MusicGen
 {
+	/// <summary>The section's voice. Everything the figure decides (how many tones share the stab,
+	/// the ornament's own trim, the section trim, the accent) arrives as the four trailing factors
+	/// and the timbre is here. Named rather than inline so the tone audition plays THIS definition
+	/// and not a copy of it. The four are separate arguments rather than one product because they
+	/// multiply in the order the renderer multiplied them, and float multiplication is not
+	/// associative — folding them would move the render digest without changing the sound.
+	/// </summary>
+	internal Patch HornPatch( double dec, float pan, int tones, float gain, float sectionGain, float velGain )
+		=> new Patch
+	{
+		Osc = 1, Voices = 3, Detune = _c.Detune,
+		Amp = _c.HornVol * _c.HornBalance * _midMul / tones * gain * sectionGain * velGain,
+		Attack = 0.008f, Decay = dec,
+		Sustain = 0.2f, Sustained = false,
+		Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
+		Drive = _c.HornDrive, Pan = pan,
+		Vibrato = _c.MelodyVibrato,
+	};
+
 	// ── Backing horns (panned spread) ──
 	// The figure is a TWO-BAR call and response (see MusicGen.HornFigure): the section states a
 	// line and then answers it, which is what a horn section does and what a single reused
@@ -37,18 +56,9 @@ public sealed partial class MusicGen
 		// one chord-tone voice
 		void Note( int at, int dur, int k, double dec, float gain )
 		{
-			var horn = new Patch
-			{
-				Osc = 1, Voices = 3, Detune = _c.Detune,
-				Amp = _c.HornVol * _c.HornBalance * _midMul / tones.Length * gain * sectionGain
-					* NoteGain( gainNow ),
-				Attack = 0.008f, Decay = dec,
-				Sustain = 0.2f, Sustained = false,
-				Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
-				Drive = _c.HornDrive,
-				Pan = spread * (k / (float)Math.Max( 1, tones.Length - 1 ) * 2f - 1f),
-				Vibrato = _c.MelodyVibrato,
-			};
+			var horn = HornPatch( dec,
+				spread * (k / (float)Math.Max( 1, tones.Length - 1 ) * 2f - 1f),
+				tones.Length, gain, sectionGain, NoteGain( gainNow ) );
 			ApplyVoicing( ref horn, hornVc );
 			RenderPatch( at, dur, Midi( tones[k] ), horn );
 		}

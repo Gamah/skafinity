@@ -346,7 +346,7 @@ public sealed partial class MusicGen
 
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,
 	// otherwise the ska horn (RenderLead → trumpet).
-	void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
+	internal void RenderLeadNote( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
 	{
 		amp *= LeadLevel();
 		if ( !_hornLead )
@@ -356,24 +356,11 @@ public sealed partial class MusicGen
 			// guitar even at the slider minimum. The base is genre-set: rock = 3 (overdriven),
 			// metal = 4 hot (heavy), country = clean (the bite comes from the twang snap + bends,
 			// not gain). The bends (BENDINESS knob → bend-in + scoop) come in via the voicing.
-			float driveAmt = _genre switch
-			{
-				3 => 4f + MathF.Max( 1f, _c.LeadGtrDrive ),         // metal: heavy
-				2 => 0.8f + 0.3f * MathF.Max( 1f, _c.LeadGtrDrive ),// country: clean twang
-				4 => 2f + MathF.Max( 1f, _c.LeadGtrDrive ),         // punk: bright, lightly driven
-				5 => 0.6f + 0.2f * MathF.Max( 1f, _c.LeadGtrDrive ),// pop: clean synth pluck/lead
-				_ => 3f + MathF.Max( 1f, _c.LeadGtrDrive ),         // rock
-			};
-			// Country/pop get a brighter cutoff snap — country for telecaster twang, pop for a
-			// plucky synth attack.
-			float cutEnv = _genre == 2 ? 3000f : _genre == 5 ? 3500f : 2200f;
-			var gtr = new Patch
-			{
-				Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
-				Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
-				Cutoff = _c.LeadGtrCutoff, CutEnv = cutEnv, Reso = 0.65f,
-				Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
-			};
+			// Metal is heavy, country's twang comes from the snap and the bends rather than from
+			// gain, pop is a clean plucky synth. Country/pop also get a brighter cutoff snap. See
+			// LeadGtrTone for the numbers.
+			var (driveAmt, cutEnv) = LeadGtrTone();
+			var gtr = LeadGtrPatch( amp, decaySec, driveAmt, cutEnv );
 			ApplyVoicing( ref gtr, vc );
 			// The lead is monophonic — a single clean take at its per-song pan (_leadPan). It is NOT
 			// double-tracked: splitting a solo line into two detuned, hard-panned, time-offset takes
@@ -384,6 +371,31 @@ public sealed partial class MusicGen
 		}
 		RenderLead( at, dur, midi, amp, decaySec, drive, vc );
 	}
+
+	/// <summary>The lead guitar's voice. Named rather than inline so the tone audition plays THIS
+	/// definition and not a copy of it; the two genre-dependent numbers stay with the caller
+	/// because they are the genre's decision, not the instrument's.</summary>
+	internal Patch LeadGtrPatch( float amp, double decaySec, float driveAmt, float cutEnv ) => new Patch
+	{
+		Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
+		Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
+		Cutoff = _c.LeadGtrCutoff, CutEnv = cutEnv, Reso = 0.65f,
+		Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
+	};
+
+	/// <summary>Which genre's lead guitar drive and cutoff snap — the pair the caller hands
+	/// <see cref="LeadGtrPatch"/>, exposed so the audition asks the same question the renderer
+	/// does.</summary>
+	internal (float Drive, float CutEnv) LeadGtrTone() => (
+		_genre switch
+		{
+			3 => 4f + MathF.Max( 1f, _c.LeadGtrDrive ),
+			2 => 0.8f + 0.3f * MathF.Max( 1f, _c.LeadGtrDrive ),
+			4 => 2f + MathF.Max( 1f, _c.LeadGtrDrive ),
+			5 => 0.6f + 0.2f * MathF.Max( 1f, _c.LeadGtrDrive ),
+			_ => 3f + MathF.Max( 1f, _c.LeadGtrDrive ),
+		},
+		_genre == 2 ? 3000f : _genre == 5 ? 3500f : 2200f );
 
 	// Which voice takes the ska lead — a weighted draw, or the config's override. The draw is
 	// taken either way: a knob that decides WHAT plays must not also decide how many values the
@@ -405,8 +417,23 @@ public sealed partial class MusicGen
 
 	void RenderLead( int at, int dur, int midi, float amp, double decaySec, float drive, in Voicing vc )
 	{
-		Patch p; int m = midi;
-		switch ( _lead )
+		var p = LeadHornPatch( _lead, amp, decaySec, drive, out int shift );
+		int m = midi + shift;
+		ApplyVoicing( ref p, vc );
+		// Single clean take at _leadPan — the ska horn/organ lead is monophonic, so it is not
+		// double-tracked (see the guitar-lead note in RenderLeadNote: doubling a solo line smears
+		// pitch). Only chordal/strummed voices get the width.
+		RenderPatch( at, dur, Midi( m ), p, mono: true );
+	}
+
+	/// <summary>The four ska lead voices. Named rather than inline so the tone audition plays
+	/// THESE definitions and not copies of them. <paramref name="shift"/> is the transposition the
+	/// instrument itself carries — a trombone reads an octave below the line it is handed.
+	/// </summary>
+	internal Patch LeadHornPatch( Instrument inst, float amp, double decaySec, float drive, out int shift )
+	{
+		Patch p; shift = 0;
+		switch ( inst )
 		{
 			case Instrument.Trumpet:
 				p = new Patch
@@ -418,7 +445,7 @@ public sealed partial class MusicGen
 				};
 				break;
 			case Instrument.Trombone:
-				m = midi - 12;
+				shift = -12;
 				p = new Patch
 				{
 					Osc = 1, Voices = 3, Detune = _c.Detune * 0.7f, Amp = amp * 1.1f,
@@ -446,10 +473,6 @@ public sealed partial class MusicGen
 				};
 				break;
 		}
-		ApplyVoicing( ref p, vc );
-		// Single clean take at _leadPan — the ska horn/organ lead is monophonic, so it is not
-		// double-tracked (see the guitar-lead note in RenderLeadNote: doubling a solo line smears
-		// pitch). Only chordal/strummed voices get the width.
-		RenderPatch( at, dur, Midi( m ), p, mono: true );
+		return p;
 	}
 }

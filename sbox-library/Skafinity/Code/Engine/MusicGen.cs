@@ -300,6 +300,24 @@ public sealed partial class MusicGen
 		return g;
 	}
 
+	/// <summary>Set the instance up so a PITCHED voice can be driven: the genre (its profile, and
+	/// whether its lead is a horn section or a guitar) and which ska lead instrument to use.
+	/// <see cref="ForAudition"/> leaves these at genre 1 defaults because the kit does not read
+	/// them. Centred lead — position is not what a tone audition is asking about.</summary>
+	internal void AuditionBand( int genre, int instrument = -1 )
+	{
+		_genre = Math.Clamp( genre, 0, GenreProfile.Count - 1 );
+		_prof = GenreProfile.For( _genre );
+		_hornLead = _prof.HornLead;
+		if ( instrument >= 0 ) { _lead = (Instrument)instrument; _hornLead = true; }
+		_leadPan = 0f;
+	}
+
+	/// <summary>Harness-only: applied to every pitched Patch on its way into the queue, so the
+	/// TONE AUDITION can play a candidate through the real voice rather than through a copy of
+	/// it. See RenderPatch. Null in every real render.</summary>
+	internal Func<Patch, Patch> AuditionPatch;
+
 	/// <summary>The audition's raw, pre-master buffers.</summary>
 	internal (float[] L, float[] R) AuditionBuffers() => (_bufL, _bufR);
 

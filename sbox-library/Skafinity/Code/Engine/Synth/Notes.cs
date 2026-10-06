@@ -19,9 +19,16 @@ public sealed partial class MusicGen
 	// During ComposePlan this only enqueues; the synthesis happens in RenderPitchedRange.
 	// When DoubleTrack is on, every (non-drum) note is widened into two decorrelated takes
 	// panned apart — see the Config "width" block. `lead` selects the wider lead spread.
-	void RenderPatch( int start, int dur, float freq, Patch p, bool lead = false, bool mono = false )
+	internal void RenderPatch( int start, int dur, float freq, Patch p, bool lead = false, bool mono = false )
 	{
 		if ( start < 0 || dur <= 0 || p.Voices < 1 ) return;
+		// THE TONE AUDITION's one reach into the engine. A candidate timbre has to be heard
+		// through the voice that will carry it — the real amp, the real filter, the real figure —
+		// and every voice builds its own Patch inline, so the alternative is six copies of six
+		// patches in the harness drifting away from the six in the engine. A last-chance edit here
+		// is instead ONE place that says "what I would change about this patch", which is also the
+		// shape the approved change takes when it lands. Null in every real render.
+		if ( AuditionPatch != null ) p = AuditionPatch( p );
 		// Bass stays centred (mono): doubling/detuning low frequencies smears the low end and
 		// cancels in mono, so the bass is the one voice kept dead-centre regardless of width.
 		if ( mono || _c.DoubleTrack < 0.5f )

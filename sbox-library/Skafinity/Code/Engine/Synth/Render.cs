@@ -24,6 +24,11 @@ public sealed partial class MusicGen
 		if ( to <= from ) return;
 		var ph = new double[8];
 		var inc = new double[8];
+		// Pluck-comb scratch: one delay line per WINDOW, long enough for a full period of the
+		// lowest note any voice plays (4096 samples is 10.8 Hz at 44.1 kHz), cleared per note.
+		// Window-owned for the same reason ph/inc are — RenderPitchedRange's windows run on
+		// different threads and synthesis must stay a pure function of the event.
+		var comb = new float[4096];
 		var events = _events;
 		for ( int k = 0; k < events.Count; k++ )
 		{
@@ -35,7 +40,7 @@ public sealed partial class MusicGen
 			if ( ev.P.Amp <= 0f ) continue;
 			int end = Math.Min( _bufL.Length, ev.Start + ev.Dur );
 			if ( end <= from || ev.Start >= to ) continue; // no overlap with this window
-			RenderEvent( ev, from, to, ph, inc );
+			RenderEvent( ev, from, to, ph, inc, comb );
 		}
 	}
 
@@ -43,7 +48,8 @@ public sealed partial class MusicGen
 	// state can't be resumed mid-note) but writes only within [clipFrom, clipTo), and
 	// stops once past clipTo since later windows own those samples. ph/inc are caller-
 	// owned scratch (per-thread → no shared state).
-	void RenderEvent( in NoteEvent ev, int clipFrom, int clipTo, double[] ph, double[] inc )
+	void RenderEvent( in NoteEvent ev, int clipFrom, int clipTo, double[] ph, double[] inc,
+		float[] comb )
 	{
 		int start = ev.Start, dur = ev.Dur;
 		float freq = ev.Freq;
@@ -64,6 +70,23 @@ public sealed partial class MusicGen
 		float low = 0, band = 0;
 		float reso = Math.Clamp( p.Reso, 0.2f, 2f );
 		float dnorm = p.Drive > 1f ? 1f / (float)Math.Tanh( p.Drive ) : 1f;
+		// THE PLUCK. A string pinned at both ends and displaced at a fraction beta of its length
+		// cannot excite any mode that has a node at beta, so its nth harmonic arrives scaled by
+		// sin(pi n beta). A one-tap comb x[n] - x[n - beta.T] has magnitude 2|sin(pi n beta)| at
+		// the nth harmonic of period T, so the comb IS that initial condition — not an imitation
+		// of it. Halved to keep the peak where an un-plucked note's was. The delay is fractional
+		// and read with linear interpolation: rounding it to a whole sample detunes the comb by
+		// up to half a sample, which at the top of the register moves the nulls by a whole
+		// harmonic. T is the NOMINAL period: a pluck happens once, at the start, so the comb must
+		// not follow the vibrato or the bend that come after it.
+		float combDelay = 0f;
+		int cw = 0;
+		if ( p.Pluck > 0f )
+		{
+			combDelay = Math.Clamp( p.Pluck, 0.02f, 0.98f ) * (_sr / Math.Max( 20f, freq ));
+			if ( combDelay > comb.Length - 2 ) combDelay = comb.Length - 2;
+			Array.Clear( comb, 0, comb.Length );
+		}
 		float hpA = p.Highpass > 0f ? (float)(1.0 / (1.0 + 2 * Math.PI * p.Highpass / _sr)) : 0f;
 		float hpInPrev = 0f, hpOutPrev = 0f;
 		uint bn = 0x9E3779B9u;
@@ -76,6 +99,7 @@ public sealed partial class MusicGen
 		// constant, so it is computed once here instead of a Sin() every sample — the same value,
 		// not an approximation of it.
 		bool cutMoves = p.CutEnv > 0f;
+		bool dutyMoves = p.Osc == 4 && p.DutyEnv != 0f;
 		float fixedF = cutMoves ? 0f
 			: (float)(2 * Math.Sin( Math.PI * Math.Min( p.Cutoff, _sr * 0.16f ) / _sr ));
 		// Both envelopes decay at the same rate, so both are walked as a running multiply rather
@@ -83,6 +107,11 @@ public sealed partial class MusicGen
 		// The accumulators are double: over the ~10^6 samples of the longest note that is a
 		// relative drift on the order of 10^-13, which is below the 16-bit output's last bit.
 		double decStep = Math.Exp( -1.0 / decSamp );
+		// The cutoff envelope gets its OWN time constant when the patch asks for one. Damping in
+		// a real body grows with mode number, so the brightness outruns the loudness; sharing one
+		// decay forces them equal, which is audibly a filter closing rather than a note dying.
+		double cutStep = p.CutEnvSec > 0f
+			? Math.Exp( -1.0 / Math.Max( 1.0, p.CutEnvSec * _sr ) ) : decStep;
 		double ampDecay = 1.0;   // exp( -(i - atk) / decSamp ), advanced once past the attack
 		double cutDecay = 1.0;   // exp( -i / decSamp ), advanced from the note's start
 		int vibDelay = (int)(0.18f * _sr);
@@ -150,13 +179,28 @@ public sealed partial class MusicGen
 				}
 			}
 			float bendMul = bendSemis != 0f ? (float)Math.Pow( 2.0, bendSemis / 12.0 ) : 1f;
+			// Pulse width, swept by the same note-start exponential the cutoff envelope uses, so
+			// a PWM voice relaxes toward its nominal duty as the note settles.
+			float duty = p.Osc == 4 ? p.Duty + p.DutyEnv * (float)cutDecay : 0f;
 			for ( int v = 0; v < voices; v++ )
 			{
 					double dt = inc[v] * vib * bendMul;
-					s += BlepOsc( p.Osc, ph[v] - Math.Floor( ph[v] ), dt );
+					double pv = ph[v] - Math.Floor( ph[v] );
+					s += p.Osc == 4 ? PulseOsc( pv, dt, duty ) : BlepOsc( p.Osc, pv, dt );
 					ph[v] += dt;
 			}
 			s /= voices;
+			if ( combDelay > 0f )
+			{
+				comb[cw] = s;
+				float rp = cw - combDelay;
+				if ( rp < 0 ) rp += comb.Length;
+				int r0 = (int)rp;
+				float fr = rp - r0;
+				int r1 = r0 + 1 == comb.Length ? 0 : r0 + 1;
+				s = 0.5f * (s - (comb[r0] + (comb[r1] - comb[r0]) * fr));
+				if ( ++cw == comb.Length ) cw = 0;
+			}
 			if ( p.Breath > 0f )
 			{
 				bn = unchecked( bn * 1664525u + 1013904223u );
@@ -174,15 +218,30 @@ public sealed partial class MusicGen
 			if ( cutMoves )
 			{
 				float cut = p.Cutoff + p.CutEnv * (float)cutDecay;
-				cutDecay *= decStep;
 				f = (float)(2 * Math.Sin( Math.PI * Math.Min( cut, _sr * 0.16f ) / _sr ));
 			}
+			// Advanced here, AFTER both readers (the duty sweep above and the cutoff just now),
+			// so the envelope's first sample is 1.0 for each of them.
+			if ( cutMoves || dutyMoves ) cutDecay *= cutStep;
 			float high = s - low - reso * band;
 			band += f * high;
 			low += f * band;
 			float outp = low;
 
-			if ( p.Drive > 1f ) outp = (float)Math.Tanh( outp * p.Drive ) * dnorm;
+			if ( p.DriveEnv > 0f && p.Drive > 0f )
+			{
+				// A tanh's harmonic ladder steepens with input level: loud is BRIGHT, not merely
+				// louder. So the drive rides the amp envelope, which is what a blown horn and a
+				// pushed valve amp both do. Normalising by the RUNNING drive rather than by a
+				// fixed one keeps the gesture spectral: the amp envelope still owns loudness, and
+				// without it a dull quiet note would also be an attenuated one and the attack
+				// would soften twice. That costs a second tanh per sample, which is why this
+				// branch exists at all rather than the drive simply always tracking env.
+				double dr = p.Drive * (1f + p.DriveEnv * env);
+				double th = Math.Tanh( dr );
+				outp = th > 1e-6 ? (float)(Math.Tanh( outp * dr ) / th) : outp;
+			}
+			else if ( p.Drive > 1f ) outp = (float)Math.Tanh( outp * p.Drive ) * dnorm;
 			float val = outp * env * p.Amp;
 			int idx = start + i;
 			if ( idx >= clipFrom )

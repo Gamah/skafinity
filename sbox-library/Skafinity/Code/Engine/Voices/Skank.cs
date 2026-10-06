@@ -11,6 +11,32 @@ namespace Skafinity;
 
 public sealed partial class MusicGen
 {
+	/// <summary>The chop's voice. Named rather than inline so the tone audition plays THIS
+	/// definition and not a copy of it.</summary>
+	internal Patch SkankPatch( float vel, int tones ) => new Patch
+	{
+		Osc = 1, Voices = 3, Detune = _c.Detune,
+		Amp = _c.SkankVol * _c.SkankBalance * _midMul / tones
+			* NoteGain( vel ) * _compTrim,
+		Attack = 0.002f, Decay = 0.10,
+		Sustain = 0f, Sustained = false,
+		Cutoff = _c.SkankCutoff, CutEnv = 1500f, Reso = 0.8f,
+		Highpass = _c.SkankHighpass, Drive = _c.SkankDrive, Pan = 0f,
+	};
+
+	/// <summary>The bubble's voice, under the chop. Named for the same reason as
+	/// <see cref="SkankPatch"/>.</summary>
+	internal Patch OrganBubblePatch( float vel, int tones ) => new Patch
+	{
+		Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
+		Amp = _c.OrganVol * _c.OrganBalance * _midMul / tones
+			* NoteGain( vel ) * _compTrim,
+		Attack = 0.004f, Decay = 0.16,
+		Sustain = 0.3f, Sustained = false,
+		Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,
+		Vibrato = _c.OrganVibrato,
+	};
+
 	// ── Skank guitar (the signature) + reggae organ bubble — offbeats, centered ──
 	// The chop lands where the figure says (CompFigure.SkaPunk), which is normally every offbeat but
 	// may be a two-bar figure that pushes into the next bar. The rocksteady 7th/9th voicings the
@@ -32,31 +58,13 @@ public sealed partial class MusicGen
 
 			// bright, thin, short guitar chop
 			foreach ( var m in tones )
-				RenderPatch( at, chop, Midi( m ), new Patch
-				{
-					Osc = 1, Voices = 3, Detune = _c.Detune,
-					Amp = _c.SkankVol * _c.SkankBalance * _midMul / tones.Length
-					* NoteGain( h.Vel ) * _compTrim,
-					Attack = 0.002f, Decay = 0.10,
-					Sustain = 0f, Sustained = false,
-					Cutoff = _c.SkankCutoff, CutEnv = 1500f, Reso = 0.8f,
-					Highpass = _c.SkankHighpass, Drive = _c.SkankDrive, Pan = 0f,
-				} );
+				RenderPatch( at, chop, Midi( m ), SkankPatch( h.Vel, tones.Length ) );
 
 			// reggae organ "bubble": a softer, rounder offbeat under the guitar
 			if ( !_organBubble ) continue;
 			foreach ( var m in tones )
 			{
-				var organ = new Patch
-				{
-					Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
-					Amp = _c.OrganVol * _c.OrganBalance * _midMul / tones.Length
-						* NoteGain( h.Vel ) * _compTrim,
-					Attack = 0.004f, Decay = 0.16,
-					Sustain = 0.3f, Sustained = false,
-					Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,
-					Vibrato = _c.OrganVibrato,
-				};
+				var organ = OrganBubblePatch( h.Vel, tones.Length );
 				ApplyVoicing( ref organ, organVc );
 				RenderPatch( at, (int)(chop * 1.1f), Midi( m - 12 ), organ );
 			}

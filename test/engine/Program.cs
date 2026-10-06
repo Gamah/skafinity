@@ -41,6 +41,18 @@ static class Program
 			Audition.Run( only, wav, Path.ChangeExtension( wav, ".txt" ) );
 			return 0;
 		}
+		// --tone [voice] [wavPath]: the PITCHED voices' audition — same doctrine as --audition, the
+		// other half of the band. See ToneAudition.
+		int ti = Array.IndexOf( args, "--tone" );
+		if ( ti >= 0 )
+		{
+			string only = ti + 1 < args.Length && !args[ti + 1].StartsWith( "-" ) ? args[ti + 1] : null;
+			string wav = ti + 2 < args.Length && !args[ti + 2].StartsWith( "-" ) ? args[ti + 2]
+				: Path.Combine( Environment.GetFolderPath( Environment.SpecialFolder.UserProfile ),
+					"tone.wav" );
+			ToneAudition.Run( only, wav, Path.ChangeExtension( wav, ".txt" ) );
+			return 0;
+		}
 		// --cymbal [dir]: one dry hit of each cymbal, for tools/spectool to re-measure. See
 		// Audition.Cymbals — a fitted spectrum is not fitted until the RESULT is measured too.
 		int cy = Array.IndexOf( args, "--cymbal" );

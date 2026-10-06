@@ -133,7 +133,7 @@ public sealed partial class MusicGen
 		}
 	}
 
-	void EmitBass( int at, int dur, int midi, double decaySec, float gain, in Voicing vc )
+	internal void EmitBass( int at, int dur, int midi, double decaySec, float gain, in Voicing vc )
 	{
 		var (osc, sustain, cutoff, drive, level) = BassTone();
 		// Triangle body for a round, deep reggae/dub bass (saw alone read as too buzzy) — but

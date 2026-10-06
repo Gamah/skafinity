@@ -23,7 +23,7 @@ public sealed partial class MusicGen
 	/// far more energy into the mix than country's stabs at the same balance.</summary>
 	float KeysLevel() => _genre == 5 ? 0.75f : 1f;
 
-	void EmitKeys( int tick, int durTicks, int midi, float vel, bool ring, int voices, Voicing vc )
+	internal void EmitKeys( int tick, int durTicks, int midi, float vel, bool ring, int voices, Voicing vc )
 	{
 		int dur = _time.SpanSamples( tick, durTicks );
 		double dec = _time.SpanSeconds( tick, durTicks ) * (ring ? 0.9 : 0.4);
