@@ -40,6 +40,23 @@ namespace Skafinity;
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
+public sealed partial class MusicGen
+{
+	/// <summary>Point a patch at the string model. The cutoff ENVELOPE goes with it: it was the
+	/// subtractive voice's stand-in for high partials dying first, and the loop filter now does
+	/// that for real, so leaving it on would describe the same thing twice. The static cutoff
+	/// stays — that one is the instrument's body and the amp, which are downstream of the string.
+	/// </summary>
+	static void AsString( ref Patch p, float t60, float damp, float beta, float width,
+		float noise = 0.03f )
+	{
+		p.Model = Model.String;
+		p.StringDecay = t60; p.StringDamp = damp;
+		p.Pluck = beta; p.PickWidth = width; p.PickNoise = noise;
+		p.CutEnv = 0f;
+	}
+}
+
 /// <summary>One plucked string. Owns a slice of the window's delay line; holds no reference to
 /// anything shared, so it is safe inside a parallel render window.</summary>
 struct PluckedString

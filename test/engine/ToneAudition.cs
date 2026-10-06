@@ -89,12 +89,11 @@ static class ToneAudition
 		var L = new List<float>();
 		var R = new List<float>();
 		var script = new StringBuilder();
-		script.AppendLine( "TONE AUDITION — skafinity pitched voices, round 2: NEW BASELINE SYNTHESIS" );
+		script.AppendLine( "TONE AUDITION — skafinity pitched voices, round 3: THE SHIPPED VOICES" );
 		script.AppendLine();
-		script.AppendLine( "Round 1 added four parameters to a subtractive synth. It was still a" );
-		script.AppendLine( "subtractive synth: one envelope over the whole spectrum, a spectrum fixed" );
-		script.AppendLine( "by the choice of waveform, and the only motion available a filter sweeping" );
-		script.AppendLine( "across it. This round replaces the SOURCE instead, by physical class:" );
+		script.AppendLine( "The physical models are now what the band plays, so \"as it stands\" below is" );
+		script.AppendLine( "the voice in the engine and the lines under it are what is still on the table" );
+		script.AppendLine( "for that instrument. Three methods, chosen by physical class:" );
 		script.AppendLine();
 		script.AppendLine( "  STRING  bass, both guitars, the skank. A delay line and a loss filter are" );
 		script.AppendLine( "          the travelling-wave solution of the string equation — not an" );
@@ -116,11 +115,12 @@ static class ToneAudition
 		script.AppendLine( "          squares of the cos.cosh = 1 solutions), which fuse into no pitch;" );
 		script.AppendLine( "          a piano string is sharp by sqrt(1 + B.n^2)." );
 		script.AppendLine();
-		script.AppendLine( "THE KNOBS ARE UNCHANGED. Every candidate below is the voice\'s REAL patch" );
-		script.AppendLine( "with its source swapped, so Amp, Pan, the tone/cutoff knobs, the drive and" );
-		script.AppendLine( "the whole BENDINESS layer (bend-in, scoop, bend-up, vibrato) still apply and" );
-		script.AppendLine( "still mean one thing across the band — a bend shortens a delay line, scales" );
-		script.AppendLine( "an FM pair, and retunes a modal bank. The lead guitar line bends on purpose." );
+		script.AppendLine( "THE KNOBS ARE UNCHANGED. Amp, pan, the tone/cutoff knobs, the drive and the" );
+		script.AppendLine( "whole BENDINESS layer (bend-in, scoop, bend-up, vibrato) all still apply and" );
+		script.AppendLine( "still mean one thing across the band — a bend shortens a delay line, scales an" );
+		script.AppendLine( "FM pair, and retunes a modal bank. CHUG is now the palm: a mute is an" );
+		script.AppendLine( "absorbent termination, so it goes short AND dull rather than merely short." );
+		script.AppendLine( "Every per-voice level was re-measured with --levels so the mix did not move." );
 		script.AppendLine();
 		script.AppendLine( "Dry: no master bus, no reverb, no normalize per line, double-tracking off." );
 		script.AppendLine( "One gain over the whole file, so levels between lines mean something." );
@@ -268,7 +268,7 @@ static class ToneAudition
 		// hand — which is why 0.2 rather than a round number: it nulls the 5th harmonic and leaves
 		// the 2nd and 3rd intact, and those two ARE the growl. 0.5 is the other interesting place:
 		// a centre pluck has no even harmonics at all, which is round and dub-like.
-		b.Cands.Add( Today( "triangle body + square sub, low-pass at 380 Hz" ) );
+		b.Cands.Add( Today( "SHIPPED: fingered string — fingertip 12% wide, plucked at 0.20, rings 1.1 s" ) );
 		// A fingered electric bass: plucked a fifth up from the bridge by the thumb-anchored hand,
 		// a fingertip's worth of contact width, a wound string's absorbent termination.
 		b.Cands.Add( Edit( "string, fingered", "delay line + loss filter. Fingertip 12% of the string, plucked at 0.20, rings 1.2 s", Str( 1.2f, 0.52f, 0.20f, 0.12f ) ) );
@@ -303,7 +303,7 @@ static class ToneAudition
 			Chord( 4, 0.9, 1f ); Chug( 5, 0.7f ); Chug( 5.5, 0.6f );
 			Chord( 6, 1.4, 0.95f ); Chord( 8, 1.0, 1f );
 		};
-		b.Cands.Add( Today( "saw, low-pass 2600 Hz, fixed tanh drive" ) );
+		b.Cands.Add( Today( "SHIPPED: string, CHUG 0.5 — so T60 1.1 s and a half-absorbent palm, into drive" ) );
 		// THE CHUG KNOB IS WHAT THIS BLOCK IS ABOUT. RhythmGtrChug is today a note-length multiplier
 		// — a palm mute faked by playing shorter. A muted string is a DAMPED string: the palm is an
 		// absorbent termination, so the note is short AND dull, and the ringing chords either side
@@ -339,7 +339,7 @@ static class ToneAudition
 			held.BendUpSemis = 2f; held.BendUpStart = 0.18f; held.BendUpTime = 0.14f;
 			t.G.RenderPatch( t.At( 4 ), t.Beat * 4, Osc.Midi( 69 ), held, mono: true );
 		};
-		b.Cands.Add( Today( "saw, one voice, drive 8, cutoff snap 2200 Hz" ) );
+		b.Cands.Add( Today( "SHIPPED: string, barely damped, picked at 0.14, then the amp's drive 8" ) );
 		// The bend is the point: on a string model it shortens the delay line, which is what a bend
 		// physically is, so BENDINESS drives the real gesture rather than a pitch offset.
 		b.Cands.Add( Edit( "string, into the amp", "picked at 0.15, rings 2.5 s, then the patch's own drive 8 — string first, amp second", Str( 2.5f, 0.16f, 0.15f, 0.02f, 0.05f ) ) );
@@ -368,7 +368,7 @@ static class ToneAudition
 			foreach ( int m in triad )
 				t.G.EmitKeys( t.Tick( 8 ), t.Tick( 1 ), m, 1f, true, triad.Length, default );
 		};
-		b.Cands.Add( Today( "saw, low-pass 1700 Hz, drive 3.2" ) );
+		b.Cands.Add( Today( "SHIPPED: 9 tone wheels, sustained, into drive 3.2 — a dirty organ" ) );
 		// Rock's keys are a dirty organ, so: tone wheels, which do not decay, through the patch's
 		// own drive. Then the two other things this one voice is asked to be in other genres.
 		b.Cands.Add( Edit( "modal, tone wheels", "9 sines at whole-number ratios, no decay, into drive 3.2 — the schematic of an organ", Modal( ModalBank.Harmonic, 9, 1f, sustain: true ) ) );
@@ -395,13 +395,13 @@ static class ToneAudition
 					t.G.RenderPatch( t.At( beat ), (int)(t.Beat * 0.22), Osc.Midi( m ),
 						t.G.SkankPatch( 1f, tones.Length ) );
 		};
-		b.Cands.Add( Today( "saw, high-pass 500, low-pass 3000, cutoff snap 1500" ) );
+		b.Cands.Add( Today( "SHIPPED: string ringing 0.42 s, cut at the SKANK CHOP window — the hand ends it" ) );
 		// A SKANK IS A DAMPED CHORD — the hand mutes the strings immediately, which is the whole
 		// gesture. On a string model that is one damping number; on an oscillator it was a 100 ms
 		// amplitude window over a sound that was not decaying for any reason.
 		b.Cands.Add( Edit( "string, chopped", "hand down at once: 70 ms, absorbent, picked at 0.3", Str( 0.07f, 0.5f, 0.3f, 0.03f, 0.05f ) ) );
-		b.Cands.Add( Edit( "string, chopped tight", "40 ms and darker — the chop as pure rhythm", Str( 0.04f, 0.62f, 0.3f, 0.04f, 0.06f ) ) );
-		b.Cands.Add( Edit( "string, chopped bright", "70 ms but a hard narrow pick near the bridge: all bite", Str( 0.07f, 0.34f, 0.16f, 0.012f, 0.08f ) ) );
+		b.Cands.Add( Edit( "ring 0.9 s", "a longer one: the chop as a chord being cut rather than a click", Str( 0.9f, 0.32f, 0.3f, 0.030f, 0.05f ) ) );
+		b.Cands.Add( Edit( "ring 0.42 s, bridge", "the shipped ring but a hard narrow pick near the bridge: all bite", Str( 0.42f, 0.30f, 0.16f, 0.012f, 0.08f ) ) );
 		into.Add( b );
 	}
 
@@ -424,7 +424,7 @@ static class ToneAudition
 					t.G.RenderPatch( t.At( beat ), (int)(t.Beat * 0.26), Osc.Midi( m ),
 						t.G.OrganBubblePatch( 1f, tones.Length ) );
 		};
-		b.Cands.Add( Today( "sine, low-pass 1400 Hz, vibrato" ) );
+		b.Cands.Add( Today( "SHIPPED: 4 tone wheels, sustained — a dark registration, felt under the chop" ) );
 		b.Cands.Add( Edit( "modal, 4 wheels", "the bubble is a dark registration: four whole-number wheels, no decay", Modal( ModalBank.Harmonic, 4, 1f, sustain: true ) ) );
 		b.Cands.Add( Edit( "modal, 8 wheels", "the full drawbar stack — brighter, more of the chord audible under the chop", Modal( ModalBank.Harmonic, 8, 1f, sustain: true ) ) );
 		into.Add( b );
@@ -454,7 +454,7 @@ static class ToneAudition
 					t.G.HornPatch( 0.6, 0.5f * (k / (float)(tones.Length - 1) * 2f - 1f),
 						tones.Length, 1f, 1f, 1f ) );
 		};
-		b.Cands.Add( Today( "saw x3 detuned, low-pass 3200, cutoff snap 1200, fixed drive" ) );
+		b.Cands.Add( Today( "SHIPPED: FM brass to the 8th, index to 45% in 80 ms, still three players" ) );
 		// Chowning's brass, and the three detuned players kept (see the unison note in Models.cs).
 		// The top harmonic is the thing stated; the index follows from it.
 		b.Cands.Add( Edit( "fm brass, 8 harmonics", "ratio 1, sidebands to the 8th, index falling to 45% in 80 ms — the stab's blat", Fm( 1f, 8f, 0.45f, 0.08f ) ) );
@@ -473,7 +473,7 @@ static class ToneAudition
 			Figure = "an eight-note ska lead line, last note held",
 		};
 		b.Play = t => LeadLine( t, 1 );
-		b.Cands.Add( Today( "triangle x2, breath noise, low-pass 3200, cutoff snap 1400" ) );
+		b.Cands.Add( Today( "SHIPPED: FM reed to the 7th with 0.35 feedback, breath noise kept" ) );
 		// A reed is a pressure-controlled valve and buzzes rather than blats, so the carrier gets
 		// feedback — which pushes an FM spectrum toward a saw and is the cheapest honest stand-in
 		// for the reed's own hard non-linearity. The patch keeps its breath noise either way.
@@ -493,7 +493,7 @@ static class ToneAudition
 			Figure = "the same eight-note line, on the trumpet voice",
 		};
 		b.Play = t => LeadLine( t, 0 );
-		b.Cands.Add( Today( "saw x3 detuned, low-pass 3200, cutoff snap 1800" ) );
+		b.Cands.Add( Today( "SHIPPED: FM brass to the 10th, index to 40% in 60 ms" ) );
 		b.Cands.Add( Edit( "fm brass, lead", "ratio 1 to the 10th, index falling to 40% in 60 ms — a solo trumpet's attack", Fm( 1f, 10f, 0.40f, 0.06f ) ) );
 		b.Cands.Add( Edit( "fm brass, 2:1", "the modulator an octave up: only odd-ish sidebands reinforced, more muted", Fm( 2f, 10f, 0.45f, 0.07f ) ) );
 		b.Cands.Add( Edit( "fm brass, open", "to the 16th: the top of a lead line, blown wide open", Fm( 1f, 16f, 0.35f, 0.07f ) ) );

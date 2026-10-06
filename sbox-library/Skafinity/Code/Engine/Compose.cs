@@ -687,6 +687,10 @@ public sealed partial class MusicGen
 						Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f, Drive = _c.HornDrive,
 						Pan = 0f, Vibrato = _c.MelodyVibrato,
 					};
+					// A HELD chord, not a stab, so the index settles higher and slower than the
+					// section's blat (see HornPatch): the players are leaning on the last note of
+					// the song rather than punching it.
+					AsFm( ref p, 1f, 7f, 0.6f, 0.18f );
 					break;
 				case CompStyle.Pad:     // pop: the synth
 					p = new Patch
@@ -710,6 +714,10 @@ public sealed partial class MusicGen
 						Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso, Drive = drive,
 						Pan = 0f,
 					};
+					// The last chord rings out, so the hand is off the bridge whatever CHUG says —
+					// and the ritard is already stretching it (see RitardAmount in ComposePlan).
+					var (beta, width, bright) = RhythmGtrPick();
+					AsString( ref p, 2.2f * bright, 0.16f, beta, width, 0.04f );
 					break;
 			}
 			// Pop's ending is the keys voice, and the keys are not double-tracked (see EmitKeys).

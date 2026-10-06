@@ -28,11 +28,13 @@ public sealed partial class MusicGen
 		// the chorus lands as power chords while the clean skank keeps the song's 7ths and 9ths.
 		// Level sits above punk's because the loud figures are placed hits rather than a wall of
 		// downstrokes — fewer onsets carrying the same section.
-		0 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2400f, 0.75f, 0.45f),       // ska-punk chorus
-		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 2600f, 0.8f, 0.55f), // country strum
-		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1100f, 0.7f, 0.80f),          // metal riff
-		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2000f, 0.75f, 0.35f),       // punk downstrokes
-		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1400f, 0.8f, 0.50f),        // rock riff
+		// Levels re-measured for the string model (`--levels`); see the note in BassTone for why a
+		// duller instrument needs more of this rather than less.
+		0 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2400f, 0.75f, 0.535f),      // ska-punk chorus
+		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 2600f, 0.8f, 0.967f),// country strum
+		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1100f, 0.7f, 0.898f),         // metal riff
+		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2000f, 0.75f, 0.384f),      // punk downstrokes
+		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1400f, 0.8f, 0.707f),       // rock riff
 	};
 
 	/// <summary>Effective drive at which the rhythm guitar stops playing thirds. Rock reaches this
@@ -88,10 +90,19 @@ public sealed partial class MusicGen
 		float nudgeMs = 0f )
 	{
 		var (drive, cutEnv, reso, level) = RhythmGtrTone();
+		var (beta, width, bright) = RhythmGtrPick();
 		int dur = _time.SpanSamples( tick, durTicks );
 		double dec = _time.SpanSeconds( tick, durTicks ) * (ring ? 0.8 : 0.3);
 		int at = _time.TickToSample( tick ) + (int)(nudgeMs * 0.001f * _sr);
-		RenderPatch( at, dur, Midi( midi ), new Patch
+		// THE CHUG KNOB IS NOW THE PALM. It used to shorten the note and nothing else, so a muted
+		// chug was a ringing chord cut off — short, but just as bright. A palm on the bridge is an
+		// absorbent TERMINATION: the note goes short AND dull, and the open chords either side of
+		// it are the same string with the hand lifted. One knob, because on a real guitar it is
+		// one hand. A mute cell (ring == false) is that hand pressing harder still.
+		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
+		float t60 = ring ? (1.6f - 1.0f * chug) * bright : 0.10f;
+		float damp = ring ? 0.18f + 0.34f * chug : 0.58f;
+		var gtr = new Patch
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / Math.Max( 1, voices )
@@ -99,8 +110,24 @@ public sealed partial class MusicGen
 			Attack = 0.002f, Decay = dec, Sustain = ring ? 0.45f : 0f, Sustained = ring,
 			Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso,
 			Drive = drive, Pan = 0f,
-		} );
+		};
+		AsString( ref gtr, t60, damp, beta, width, 0.04f );
+		RenderPatch( at, dur, Midi( midi ), gtr );
 	}
+
+	/// <summary>Where the pick crosses the strings and how wide it is, per genre, plus a multiplier
+	/// on how long an un-muted chord rings. A narrow hard plectrum near the bridge is bright and
+	/// clanky; a thumb or a fingerpick further up is round. Country's clean strum rings far longer
+	/// than a driven rock chord — gain is compression, so a driven chord only SOUNDS sustained.
+	/// </summary>
+	(float Beta, float Width, float Ring) RhythmGtrPick() => _genre switch
+	{
+		0 => (0.24f, 0.030f, 1.0f),  // ska-punk chorus: plectrum
+		2 => (0.30f, 0.060f, 1.5f),  // country: softer contact, long clean ring
+		3 => (0.16f, 0.018f, 0.7f),  // metal: hard by the bridge, tight
+		4 => (0.22f, 0.022f, 0.8f),  // punk: hard and fast
+		_ => (0.25f, 0.030f, 1.0f),  // rock
+	};
 
 	// ── Rock: a two-bar riff motif ──
 	// Placed hits that ring, not an every-eighth chug. RhythmGtrChug shortens the ringing hits

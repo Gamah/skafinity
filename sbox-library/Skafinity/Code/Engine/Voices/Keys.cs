@@ -21,7 +21,16 @@ public sealed partial class MusicGen
 
 	/// <summary>Per-genre level (measured with `--levels`). Pop's pad is a held chord and pours
 	/// far more energy into the mix than country's stabs at the same balance.</summary>
-	float KeysLevel() => _genre == 5 ? 0.75f : 1f;
+	float KeysLevel() => _genre switch
+	{
+		// Re-measured for the modal voices (`--levels`). Rock's tone wheels do not decay at all,
+		// so a held stab pours far more energy into the mix than a saw with an amplitude envelope
+		// on it — the organ came back 4.2 dB hot and this is that taken off again.
+		1 => 0.617f,  // rock: tone wheels, sustained
+		2 => 0.902f,  // country: struck piano strings
+		5 => 0.75f,   // pop: still a synth pad / arp
+		_ => 1f,
+	};
 
 	internal void EmitKeys( int tick, int durTicks, int midi, float vel, bool ring, int voices, Voicing vc )
 	{
@@ -35,6 +44,16 @@ public sealed partial class MusicGen
 			Cutoff = _c.KeysCutoff, CutEnv = 250f, Reso = 1.0f,
 			Drive = KeysDriveFor(), Pan = 0f,
 		};
+		// WHICH INSTRUMENT THE KEYS ARE depends on the genre, and so does whether a physical model
+		// is even the right answer. Rock's is a dirty organ: tone wheels, which do not decay, and
+		// the DISTORTION knob after them. Country's is an upright piano: struck strings, so stiff
+		// and therefore inharmonic. Pop's is a PAD and an arpeggio — a synthesiser, genuinely, so
+		// it keeps the subtractive voice rather than being handed a body it does not have.
+		switch ( _genre )
+		{
+			case 1: AsModal( ref keys, ModalBank.Harmonic, 9, 1f, sustain: true ); break;
+			case 2: AsModal( ref keys, ModalBank.StiffString, 16, ring ? 1.8f : 0.9f, 4e-4f ); break;
+		}
 		ApplyVoicing( ref keys, vc );
 		// NOT double-tracked. The keys already sound their whole voicing as simultaneous notes, each
 		// a 2-voice detuned unison; doubling that put four detuned oscillators on every chord tone

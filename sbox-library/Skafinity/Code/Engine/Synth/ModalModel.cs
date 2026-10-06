@@ -42,6 +42,21 @@ namespace Skafinity;
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
+public sealed partial class MusicGen
+{
+	/// <summary>Point a patch at the modal bank. A SUSTAINED bank ignores the decay, because a
+	/// tone wheel does not decay — the note ends when the key is released and not before.
+	/// </summary>
+	static void AsModal( ref Patch p, int set, int count, float decay, float inharm = 0f,
+		bool sustain = false )
+	{
+		p.Model = Model.Modal;
+		p.ModalSet = set; p.ModalCount = count; p.ModalDecay = decay;
+		p.ModalInharm = inharm; p.ModalSustain = sustain;
+		p.CutEnv = 0f;
+	}
+}
+
 /// <summary>A bank of decaying modes. Each is advanced as a complex rotation whose magnitude is
 /// the per-sample decay — four multiplies a mode, no transcendental in the inner loop, and
 /// unconditionally stable because the rotation contracts.</summary>

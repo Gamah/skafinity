@@ -169,10 +169,18 @@ public sealed partial class MusicGen
 		// Melodic-voice peak balance — the instrument analog of the kit balances above (same
 		// equal-peak-then-tune workflow). Bass measured the same peak across genres, so one value.
 		public float BassBalance = 0.733f;
-		public float SkankBalance = 1.223f;
-		public float OrganBalance = 1.237f;
+		// Re-measured when the skank became a damped string (`--levels`): a chop that is a string
+		// losing energy carries ~7 dB less than an oscillator held at level for 100 ms and then
+		// cut, which is most of what made the old chop read as a stab.
+		public float SkankBalance = 2.738f;
+		// DERIVED, NOT MEASURED, and flagged as such: the organ bubble is drawn per song
+		// (OrganBubbleChance) so `--levels` cannot solo it reliably. Four tone wheels normalised to
+		// unit peak have an RMS of 0.405 against a sine's 0.707, i.e. 4.8 dB down, and this is that
+		// put back. Re-measure by ear or with a forced bubble before trusting it as tuned.
+		public float OrganBalance = 2.150f;
 		public float MelodyBalance = 0.896f;  // ska horn lead
-		public float HornBalance = 1.142f;    // backing horn section
+		// FM brass came back 1.6 dB hot against the filtered saw it replaced (`--levels`).
+		public float HornBalance = 0.950f;    // backing horn section
 		// Re-measured when the keys stopped being double-tracked: one take instead of two summed
 		// cost the voice ~2.5 dB, which is a mix change nobody asked for hiding inside a timbre fix.
 		public float KeysBalance = 1.390f;    // rock offbeat keys

@@ -13,29 +13,55 @@ public sealed partial class MusicGen
 {
 	/// <summary>The chop's voice. Named rather than inline so the tone audition plays THIS
 	/// definition and not a copy of it.</summary>
-	internal Patch SkankPatch( float vel, int tones ) => new Patch
+	/// <summary>How long the chopped string would ring IF THE HAND LET IT.
+	///
+	/// This is deliberately LONGER than the chop, and that is the whole subtlety of modelling a
+	/// damped instrument. The skank's length is a performance decision — it is the SKANK CHOP knob,
+	/// a fraction of an eighth, and the note is cut there. So the string's own decay must outlast
+	/// that cut, or the string dies first and the knob stops doing anything: at 160 bpm the chop is
+	/// about 95 ms, so a 70 ms T60 is already silent before the hand moves, and SKANK CHOP would
+	/// control nothing but a trailing silence. Set past the longest chop, the model supplies the
+	/// TIMBRE and the knob supplies the LENGTH, which is the correct division of labour between an
+	/// instrument and the person playing it.</summary>
+	const float SkankRing = 0.42f;
+
+	internal Patch SkankPatch( float vel, int tones )
 	{
-		Osc = 1, Voices = 3, Detune = _c.Detune,
-		Amp = _c.SkankVol * _c.SkankBalance * _midMul / tones
-			* NoteGain( vel ) * _compTrim,
-		Attack = 0.002f, Decay = 0.10,
-		Sustain = 0f, Sustained = false,
-		Cutoff = _c.SkankCutoff, CutEnv = 1500f, Reso = 0.8f,
-		Highpass = _c.SkankHighpass, Drive = _c.SkankDrive, Pan = 0f,
-	};
+		var p = new Patch
+		{
+			Osc = 1, Voices = 3, Detune = _c.Detune,
+			Amp = _c.SkankVol * _c.SkankBalance * _midMul / tones
+				* NoteGain( vel ) * _compTrim,
+			Attack = 0.002f, Decay = 0.10,
+			Sustain = 0f, Sustained = false,
+			Cutoff = _c.SkankCutoff, CutEnv = 1500f, Reso = 0.8f,
+			Highpass = _c.SkankHighpass, Drive = _c.SkankDrive, Pan = 0f,
+		};
+		// Struck a third of the way up with a plectrum, lightly damped — a chord being chopped
+		// rather than a note being sustained.
+		AsString( ref p, SkankRing, 0.38f, 0.30f, 0.030f, 0.05f );
+		return p;
+	}
 
 	/// <summary>The bubble's voice, under the chop. Named for the same reason as
 	/// <see cref="SkankPatch"/>.</summary>
-	internal Patch OrganBubblePatch( float vel, int tones ) => new Patch
+	internal Patch OrganBubblePatch( float vel, int tones )
 	{
-		Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
-		Amp = _c.OrganVol * _c.OrganBalance * _midMul / tones
-			* NoteGain( vel ) * _compTrim,
-		Attack = 0.004f, Decay = 0.16,
-		Sustain = 0.3f, Sustained = false,
-		Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,
-		Vibrato = _c.OrganVibrato,
-	};
+		var p = new Patch
+		{
+			Osc = 0, Voices = 2, Detune = _c.Detune * 0.5f,
+			Amp = _c.OrganVol * _c.OrganBalance * _midMul / tones
+				* NoteGain( vel ) * _compTrim,
+			Attack = 0.004f, Decay = 0.16,
+			Sustain = 0.3f, Sustained = false,
+			Cutoff = _c.OrganCutoff, CutEnv = 0f, Reso = 1.0f, Drive = 1.1f, Pan = 0f,
+			Vibrato = _c.OrganVibrato,
+		};
+		// Four tone wheels, which is a dark registration — the bubble sits UNDER the chop and is
+		// felt more than heard, so the upper drawbars would only fight the guitar.
+		AsModal( ref p, ModalBank.Harmonic, 4, 1f, sustain: true );
+		return p;
+	}
 
 	// ── Skank guitar (the signature) + reggae organ bubble — offbeats, centered ──
 	// The chop lands where the figure says (CompFigure.SkaPunk), which is normally every offbeat but

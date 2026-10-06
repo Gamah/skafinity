@@ -107,6 +107,44 @@ and takes its profile for exactly this reason. Prefer arithmetic over the tables
 genuinely needs a composed song, one plan per song and never two (the second is re-testing
 determinism, which its own section owns).
 
+**`--tone` is the pitched half of `--audition`.** `dotnet run --project test/engine -c Release --
+--tone [voice]` writes `~/tone.wav`, `.txt` and `.tsv`: nine instruments, each playing one short
+figure once per candidate timbre, dry — no master bus, no reverb, no per-line normalize, and
+double-tracking off, with ONE gain over the whole file so levels between lines still mean
+something. Same doctrine as the kit's audition (no baseline: a default is only there as a candidate
+in its own right), and the same voice filter, which is what makes a second round cheap.
+
+A candidate is stated as an EDIT to the voice's real `Patch`, applied through
+`MusicGen.AuditionPatch` on its way into the queue. That matters more than it looks: every voice
+builds its patch inline, so the alternative is nine copies of nine patches in the harness drifting
+away from the nine in the engine — and an approved line then lands as that same edit inside the
+voice. The `.tsv` carries each line's start and length in SAMPLES, because anything that A/Bs two
+candidates (a player page, a DFT pointed at one onset, ffmpeg cutting the lines apart) needs the
+boundaries exactly and a printed `m:ss.s` is a rounding error per line.
+
+**The `synth models` suite section asserts what listening cannot hear.** A delay-line string is
+tuned by its own length, so every term inside the loop is part of the pitch — the fractional read,
+the loop filter's phase delay, and the size of the ring buffer the read is clamped to. Get one
+wrong and the instrument is not broken, it is a few cents off across its whole range, under a drive
+stage and inside a chord. Three real bugs lived in exactly that gap (a buffer sized to the nominal
+period, so the clamp truncated its fractional part; the loop filter's phase delay not subtracted;
+then subtracted at DC instead of at the note's own frequency, which is 60 cents at the top of the
+register and invisible at the bottom because the error scales with the correction). So the section
+measures tuning across the register AND the damping range, and asserts the model's whole reason for
+existing: that high partials decay faster than low ones, in both directions, since "the 8th partial
+dies first" is also true of a patch that has no 8th partial.
+
+**Measuring a decaying tone is where that check will mislead you.** A peak-picked DFT has one bin
+of resolution, which is tens of cents at the bottom of the bass. Autocorrelation is worse and
+quieter about it: the decay envelope makes later lags smaller and drags the correlation peak toward
+shorter lags, so every note reads SHARP by an amount proportional to how fast it decays — which
+looks exactly like a tuning bug that gets worse with damping. The suite instead correlates against
+the expected frequency in two windows a known distance apart and reads the frequency off the
+residual phase drift, which no envelope can bias. **Correlate against a GLOBAL time origin**: restart
+the reference at each window's own t = 0 and the difference measures the note's whole accumulated
+phase instead of its drift, which reads as a large constant error at every pitch. Validate an
+estimator on a synthetic tone of known detuning before believing what it says about the engine.
+
 **Balancing the mix is a measurement, not a guess.** `dotnet run --project test/engine -c Release
 -- --levels` renders every genre with one voice soloed and prints its level in dB relative to that
 genre's drums. It reads `MusicGen.RawLevels()` — **pre-master**, because the master bus
@@ -124,6 +162,14 @@ rings too long" is `KitNuance.OpenHatDurMin/Max`, not `HatTone.Default.openDur` 
 latter compiles, reads correctly, and moves nothing a listener hears. **The digests are what catch
 it**: a deliberate audible change that leaves every hash untouched has not happened. Treat an
 unmoved digest after an intended timbre edit as a failed edit, not as a lucky no-op.
+
+**EQUAL RMS IS NOT EQUAL PEAK, and the physical models widened the gap.** `--levels` prints RMS,
+and that is what the per-genre `Level` entries are matched on — but a plucked string has a far
+sharper transient than a filtered saw, so restoring a voice's RMS leaves its PEAK higher than
+before (country's lead measured peak 1.34 before and 3.15 after at the same RMS). The master bus
+peak-normalizes, so a higher crest factor means the whole mix is pulled down and the soft-clip
+works harder, and that is a mix change that does not show up anywhere in the dB column. Read both
+numbers the tool prints, not just the one it sorts by.
 
 **But `--levels` is ONE SEED PER GENRE, and a single seed varies about 4 dB around its target** (the
 suite's own ceiling is written to allow for exactly that). So the tool answers "did this change move

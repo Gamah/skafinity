@@ -23,12 +23,18 @@ public sealed partial class MusicGen
 	// a bass pattern or its sustain.
 	(int Osc, float Sustain, float Cutoff, float Drive, float Level) BassTone() => _genre switch
 	{
-		0 => (3, 0.60f, 1.0f, 1.0f, 1.00f),   // ska: round, deep, legato
-		1 => (3, 0.50f, 1.15f, 1.15f, 1.05f), // rock: fingered, a touch brighter
-		2 => (3, 0.35f, 0.95f, 0.9f, 1.00f),  // country: short, plummy, out of the way
-		3 => (1, 0.45f, 1.45f, 1.6f, 2.20f),  // metal: a saw with bite, so it cuts under the riff
-		4 => (1, 0.40f, 1.35f, 1.4f, 2.10f),  // punk: picked and clanky
-		_ => (2, 0.30f, 1.25f, 1.05f, 0.70f), // pop: a tight square synth sub
+		// RE-MEASURED FOR THE STRING MODEL (`--levels`), and the spread got WIDER rather than
+		// narrower, for a physical reason worth keeping in mind before touching these: a dull
+		// sound radiates less energy. Country's bass is damped and plucked with a wide fingertip,
+		// so it measured 12.8 dB under the oscillator it replaced; metal's is picked hard and
+		// narrow and measured a dB OVER it. The timbre decisions are in BassString, these are
+		// purely the gain that puts each of them back where the mix had it.
+		0 => (3, 0.60f, 1.0f, 1.0f, 2.37f),   // ska: round, deep, legato
+		1 => (3, 0.50f, 1.15f, 1.15f, 2.38f), // rock: fingered, a touch brighter
+		2 => (3, 0.35f, 0.95f, 0.9f, 4.37f),  // country: short, plummy, out of the way
+		3 => (1, 0.45f, 1.45f, 1.6f, 1.96f),  // metal: picked, so it cuts under the riff
+		4 => (1, 0.40f, 1.35f, 1.4f, 2.01f),  // punk: picked and clanky
+		_ => (2, 0.30f, 1.25f, 1.05f, 0.70f), // pop: a tight square synth sub — still an oscillator
 	};
 
 	// ── Bass ──
@@ -133,6 +139,28 @@ public sealed partial class MusicGen
 		}
 	}
 
+	/// <summary>How the bass is PLAYED, per genre, as the string model's four numbers: how long it
+	/// rings, how absorbent its termination is, where it is plucked, and how wide the thing
+	/// plucking it is. These are the same four facts the tone table above was approximating with an
+	/// oscillator choice and a sustain level.
+	///
+	/// POP IS NOT HERE, and that is what returning null is for. Pop's bass is a tight square synth
+	/// sub — an oscillator, genuinely, not a string — so it keeps the subtractive voice. A physical
+	/// model is only the right answer where there is a physical object.</summary>
+	(float T60, float Damp, float Beta, float Width, float Noise)? BassString() => _genre switch
+	{
+		// Fingered: the thumb-anchored hand plucks about a fifth up from the bridge, and a
+		// fingertip is a wide soft contact — which is most of why a fingered bass is round.
+		0 => (1.10f, 0.55f, 0.22f, 0.14f, 0.02f),  // ska: round, deep, legato
+		1 => (1.10f, 0.42f, 0.21f, 0.10f, 0.03f),  // rock: fingered, a touch brighter
+		2 => (0.60f, 0.60f, 0.26f, 0.20f, 0.01f),  // country: short, plummy, out of the way
+		// Picked: a plectrum is a narrow hard contact nearer the bridge, so the initial shape keeps
+		// a sharp corner and the spectrum reaches much further up. That IS the clank.
+		3 => (0.90f, 0.26f, 0.13f, 0.025f, 0.06f), // metal: picked, with bite
+		4 => (0.80f, 0.22f, 0.12f, 0.02f, 0.07f),  // punk: picked and clanky
+		_ => null,                                  // pop: a synth, so no string
+	};
+
 	internal void EmitBass( int at, int dur, int midi, double decaySec, float gain, in Voicing vc )
 	{
 		var (osc, sustain, cutoff, drive, level) = BassTone();
@@ -157,6 +185,19 @@ public sealed partial class MusicGen
 			Cutoff = _c.BassCutoff * cutoff, CutEnv = 350f, Reso = 0.9f,
 			Drive = _c.BassDrive * drive, Pan = 0f,
 		};
+		var str = BassString();
+		if ( str != null )
+		{
+			// ONE STRING, NOT A STACK. The body + sub pair existed because a triangle alone read as
+			// too subtle and a saw alone as too buzzy — two oscillators approximating one spectrum.
+			// A string has that spectrum, its own fundamental included, so a second layer would
+			// just be a second bass a little out of phase with the first.
+			var (t60, damp, beta, width, noise) = str.Value;
+			AsString( ref body, t60, damp, beta, width, noise );
+			ApplyVoicing( ref body, vc );
+			RenderPatch( at, dur, Midi( midi ), body, mono: true );
+			return;
+		}
 		ApplyVoicing( ref body, vc ); ApplyVoicing( ref sub, vc );
 		RenderPatch( at, dur, Midi( midi ), body, mono: true );
 		RenderPatch( at, dur, Midi( midi ), sub, mono: true );

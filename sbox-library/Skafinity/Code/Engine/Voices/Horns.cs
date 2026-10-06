@@ -18,17 +18,25 @@ public sealed partial class MusicGen
 	/// multiply in the order the renderer multiplied them, and float multiplication is not
 	/// associative — folding them would move the render digest without changing the sound.
 	/// </summary>
-	internal Patch HornPatch( double dec, float pan, int tones, float gain, float sectionGain, float velGain )
-		=> new Patch
+	internal Patch HornPatch( double dec, float pan, int tones, float gain, float sectionGain,
+		float velGain )
 	{
-		Osc = 1, Voices = 3, Detune = _c.Detune,
-		Amp = _c.HornVol * _c.HornBalance * _midMul / tones * gain * sectionGain * velGain,
-		Attack = 0.008f, Decay = dec,
-		Sustain = 0.2f, Sustained = false,
-		Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
-		Drive = _c.HornDrive, Pan = pan,
-		Vibrato = _c.MelodyVibrato,
-	};
+		var p = new Patch
+		{
+			Osc = 1, Voices = 3, Detune = _c.Detune,
+			Amp = _c.HornVol * _c.HornBalance * _midMul / tones * gain * sectionGain * velGain,
+			Attack = 0.008f, Decay = dec,
+			Sustain = 0.2f, Sustained = false,
+			Cutoff = _c.HornCutoff, CutEnv = 1200f, Reso = 1.0f,
+			Drive = _c.HornDrive, Pan = pan,
+			Vibrato = _c.MelodyVibrato,
+		};
+		// A section stab blats: the index peaks on the attack and falls back hard, which is three
+		// players hitting a note together and then settling onto it. Voices/Detune survive on the
+		// FM path precisely so this stays three players (see the unison note in Models.cs).
+		AsFm( ref p, 1f, 8f, 0.45f, 0.08f );
+		return p;
+	}
 
 	// ── Backing horns (panned spread) ──
 	// The figure is a TWO-BAR call and response (see MusicGen.HornFigure): the section states a

@@ -336,12 +336,16 @@ public sealed partial class MusicGen
 	/// than +2 since well before it, and a fresh measurement is what turned that up.</summary>
 	float LeadLevel() => _genre switch
 	{
-		0 => 1.19f,   // ska horn — the third-wave kit is brighter and louder than the one before it
-		1 => 0.80f,   // rock
-		2 => 0.67f,   // country: one note, with the odd double-stop under it
-		3 => 1.21f,   // metal: it is supposed to be on top
-		4 => 0.81f,   // punk: it doubles the guitar, and two of everything is loud
-		_ => 1.25f,   // pop: the hook IS the song
+		// Re-measured once more for the physical models. The two big movers are the two voices
+		// whose instrument changed most: country's lead is a clean twang, so the string has none
+		// of the gain-compression the saw was getting for free, and pop's is a plucky synth lead
+		// that is now a plucked string.
+		0 => 0.967f,  // ska horn — FM brass, and a blown note carries more than a filtered saw
+		1 => 1.156f,  // rock
+		2 => 1.826f,  // country: one clean note, with the odd double-stop under it
+		3 => 1.311f,  // metal: it is supposed to be on top
+		4 => 0.930f,  // punk: it doubles the guitar, and two of everything is loud
+		_ => 3.177f,  // pop: the hook IS the song
 	};
 
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,
@@ -375,13 +379,23 @@ public sealed partial class MusicGen
 	/// <summary>The lead guitar's voice. Named rather than inline so the tone audition plays THIS
 	/// definition and not a copy of it; the two genre-dependent numbers stay with the caller
 	/// because they are the genre's decision, not the instrument's.</summary>
-	internal Patch LeadGtrPatch( float amp, double decaySec, float driveAmt, float cutEnv ) => new Patch
+	internal Patch LeadGtrPatch( float amp, double decaySec, float driveAmt, float cutEnv )
 	{
-		Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
-		Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
-		Cutoff = _c.LeadGtrCutoff, CutEnv = cutEnv, Reso = 0.65f,
-		Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
-	};
+		var p = new Patch
+		{
+			Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
+			Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
+			Cutoff = _c.LeadGtrCutoff, CutEnv = cutEnv, Reso = 0.65f,
+			Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
+		};
+		// A lead string rings LONG and is barely damped — that is what a lead guitar is for, and
+		// what the drive after it then sustains. Picked near the bridge so single notes have
+		// somewhere to cut through from; country nearer the middle, where the twang is the snap of
+		// the pick rather than the gain.
+		var (beta, width) = _genre == 2 ? (0.22f, 0.030f) : (0.14f, 0.018f);
+		AsString( ref p, 3.0f, 0.12f, beta, width, 0.05f );
+		return p;
+	}
 
 	/// <summary>Which genre's lead guitar drive and cutoff snap — the pair the caller hands
 	/// <see cref="LeadGtrPatch"/>, exposed so the audition asks the same question the renderer
@@ -443,6 +457,8 @@ public sealed partial class MusicGen
 					Cutoff = _c.LeadCutoff, CutEnv = 1800f, Reso = 1.0f, Drive = drive,
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato,
 				};
+				// Lips into a narrow bore: bright, and the attack brighter still.
+				AsFm( ref p, 1f, 10f, 0.40f, 0.06f );
 				break;
 			case Instrument.Trombone:
 				shift = -12;
@@ -453,6 +469,9 @@ public sealed partial class MusicGen
 					Cutoff = _c.LeadCutoff * 0.7f, CutEnv = 900f, Reso = 1.0f, Drive = MathF.Max( 1f, drive * 0.8f ),
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato * 0.7f,
 				};
+				// A wider, longer bore radiates far less of the top: fewer sidebands, softer
+				// attack. Same lips, same model, a different instrument around them.
+				AsFm( ref p, 1f, 6f, 0.55f, 0.09f );
 				break;
 			case Instrument.Sax:
 				p = new Patch
@@ -462,6 +481,11 @@ public sealed partial class MusicGen
 					Cutoff = _c.LeadCutoff, CutEnv = 1400f, Reso = 0.7f, Drive = MathF.Max( 1.2f, drive ),
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato, Breath = 0.03f,
 				};
+				// A REED BUZZES, IT DOES NOT BLAT. Feedback on the carrier pushes the spectrum
+				// toward a saw, which is the cheapest honest stand-in for the reed's own hard
+				// non-linearity — a brass index envelope alone reads as a muted trumpet. The
+				// patch keeps its breath noise either way; that part was never the problem.
+				AsFm( ref p, 1f, 7f, 0.60f, 0.12f, feedback: 0.35f );
 				break;
 			default: // Organ
 				p = new Patch
@@ -471,6 +495,9 @@ public sealed partial class MusicGen
 					Cutoff = 2600f, CutEnv = 0f, Reso = 1.0f, Drive = 1.15f,
 					Pan = _leadPan, Vibrato = _c.MelodyVibrato * 0.9f,
 				};
+				// Six tone wheels, held: the one voice here that is additive by construction
+				// rather than by modelling, because that is literally what the instrument is.
+				AsModal( ref p, ModalBank.Harmonic, 6, 1f, sustain: true );
 				break;
 		}
 		return p;

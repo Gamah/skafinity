@@ -30,6 +30,29 @@ namespace Skafinity;
 //
 // Part of the MusicGen engine — see MusicGen.cs.
 
+public sealed partial class MusicGen
+{
+	/// <summary>Point a patch at the FM model, stating the BANDWIDTH rather than the index.
+	///
+	/// Sidebands sit at fc +- k.fm, so with the modulator at <paramref name="ratio"/> times the
+	/// carrier the kth lands on harmonic 1 + k.ratio, and there are about I + 1 of them (Carson).
+	/// The top harmonic is therefore 1 + ratio.(I+1), which inverts to the index below. Stating it
+	/// this way is what keeps the model legible: "this instrument sounds up to its 10th harmonic"
+	/// is a claim about an instrument, where an index of 8 is a claim about nothing.
+	///
+	/// The cutoff envelope goes, as with the string — the index envelope IS the brightness
+	/// envelope here, and a filter sweeping on top of it is the thing being replaced.</summary>
+	static void AsFm( ref Patch p, float ratio, float topHarmonic, float sustain, float idxSec,
+		float feedback = 0f )
+	{
+		p.Model = Model.Fm;
+		p.FmRatio = ratio;
+		p.FmIndex = MathF.Max( 0.2f, (topHarmonic - 1f) / ratio - 1f );
+		p.FmIndexSus = sustain; p.FmIndexSec = idxSec; p.FmFeedback = feedback;
+		p.CutEnv = 0f;
+	}
+}
+
 /// <summary>A two-operator FM voice: carrier, modulator, and an index envelope. Optional carrier
 /// feedback, which drives the spectrum toward a saw and is how a reed's harder, buzzier tone is
 /// reached without a second modulator.</summary>
