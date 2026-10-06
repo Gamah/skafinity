@@ -26,9 +26,9 @@ public sealed partial class MusicGen
 		// Re-measured for the modal voices (`--levels`). Rock's tone wheels do not decay at all,
 		// so a held stab pours far more energy into the mix than a saw with an amplitude envelope
 		// on it — the organ came back 4.2 dB hot and this is that taken off again.
-		1 => 0.617f,  // rock: tone wheels, sustained
-		2 => 0.902f,  // country: struck piano strings
-		5 => 0.75f,   // pop: still a synth pad / arp
+		1 => 0.661f,  // rock: tone wheels, sustained
+		2 => 0.871f,  // country: struck piano strings
+		5 => 0.891f,   // pop: still a synth pad / arp
 		_ => 1f,
 	};
 

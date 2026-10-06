@@ -29,11 +29,18 @@ public sealed partial class MusicGen
 		// so it measured 12.8 dB under the oscillator it replaced; metal's is picked hard and
 		// narrow and measured a dB OVER it. The timbre decisions are in BassString, these are
 		// purely the gain that puts each of them back where the mix had it.
-		0 => (3, 0.60f, 1.0f, 1.0f, 2.37f),   // ska: round, deep, legato
-		1 => (3, 0.50f, 1.15f, 1.15f, 2.38f), // rock: fingered, a touch brighter
-		2 => (3, 0.35f, 0.95f, 0.9f, 4.37f),  // country: short, plummy, out of the way
-		3 => (1, 0.45f, 1.45f, 1.6f, 1.96f),  // metal: picked, so it cuts under the riff
-		4 => (1, 0.40f, 1.35f, 1.4f, 2.01f),  // punk: picked and clanky
+		// THE CUTOFF MULTIPLIER IS NOW A SPEAKER, AND IT HAD TO MOVE A LONG WAY. At the old
+		// values the bass cabinet cornered at 360-550 Hz, which on an E1 is the NINTH harmonic —
+		// and the pluck-position comb and the pick-width rolloff, which are what separates a
+		// thumb from a plectrum, both live above it. Five genres were differentiated on axes the
+		// filter then deleted, which is why they all came out as one dark bass. A real bass
+		// cabinet rolls off between 2 and 5 kHz; these corner between 530 Hz and 2.1 kHz, which
+		// is dark for a bass and still well clear of where the instrument's character is.
+		0 => (3, 0.60f, 1.60f, 1.0f, 1.80f),  // ska: round, deep, legato
+		1 => (3, 0.50f, 2.60f, 1.15f, 2.05f), // rock: fingered, a touch brighter
+		2 => (3, 0.35f, 1.40f, 0.9f, 4.27f),  // country: short, plummy, out of the way
+		3 => (1, 0.45f, 5.50f, 1.6f, 1.85f),  // metal: picked, so it cuts under the riff
+		4 => (1, 0.40f, 4.50f, 1.4f, 1.83f),  // punk: picked and clanky
 		_ => (2, 0.30f, 1.25f, 1.05f, 0.70f), // pop: a tight square synth sub — still an oscillator
 	};
 
@@ -149,16 +156,23 @@ public sealed partial class MusicGen
 	/// model is only the right answer where there is a physical object.</summary>
 	(float T60, float Damp, float Beta, float Width, float Noise)? BassString() => _genre switch
 	{
-		// Fingered: the thumb-anchored hand plucks about a fifth up from the bridge, and a
-		// fingertip is a wide soft contact — which is most of why a fingered bass is round.
-		0 => (1.10f, 0.55f, 0.22f, 0.14f, 0.02f),  // ska: round, deep, legato
-		1 => (1.10f, 0.42f, 0.21f, 0.10f, 0.03f),  // rock: fingered, a touch brighter
-		2 => (0.60f, 0.60f, 0.26f, 0.20f, 0.01f),  // country: short, plummy, out of the way
-		// Picked: a plectrum is a narrow hard contact nearer the bridge, so the initial shape keeps
-		// a sharp corner and the spectrum reaches much further up. That IS the clank.
-		3 => (0.90f, 0.26f, 0.13f, 0.025f, 0.06f), // metal: picked, with bite
-		4 => (0.80f, 0.22f, 0.12f, 0.02f, 0.07f),  // punk: picked and clanky
-		_ => null,                                  // pop: a synth, so no string
+		// PLUCK POSITION IS THE AXIS THESE ARE SPREAD ON, because it is the only one that changes
+		// the SHAPE of the spectrum rather than its slope. Where it lands, harmonic n is scaled by
+		// sin(n.pi.beta), so beta picks which harmonics are absent: 0.5 deletes every even one and
+		// 0.105 deletes almost nothing. Two basses differing only in damping are the same bass at
+		// two tone settings; two basses plucked in different places are different instruments, and
+		// no cutoff can imitate either of them.
+		//
+		// Reggae/dub is a CENTRE pluck — the roundest sound a string has, with no even harmonics
+		// in it at all. Country is an upright: a wide soft fingertip over a quarter of the way up,
+		// heavily damped, and short. Metal and punk are a hard plectrum almost at the bridge,
+		// where every harmonic survives and the attack noise is part of the sound.
+		0 => (1.30f, 0.52f, 0.500f, 0.160f, 0.015f), // ska: round, deep, legato
+		1 => (1.10f, 0.34f, 0.210f, 0.090f, 0.030f), // rock: fingered, a touch brighter
+		2 => (0.45f, 0.62f, 0.330f, 0.260f, 0.008f), // country: upright, plummy, out of the way
+		3 => (0.90f, 0.14f, 0.105f, 0.015f, 0.090f), // metal: picked at the bridge, with bite
+		4 => (0.75f, 0.18f, 0.150f, 0.020f, 0.070f), // punk: picked and clanky
+		_ => null,                                    // pop: a synth, so no string
 	};
 
 	internal void EmitBass( int at, int dur, int midi, double decaySec, float gain, in Voicing vc )

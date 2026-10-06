@@ -340,12 +340,12 @@ public sealed partial class MusicGen
 		// whose instrument changed most: country's lead is a clean twang, so the string has none
 		// of the gain-compression the saw was getting for free, and pop's is a plucky synth lead
 		// that is now a plucked string.
-		0 => 0.967f,  // ska horn — FM brass, and a blown note carries more than a filtered saw
-		1 => 1.156f,  // rock
-		2 => 1.826f,  // country: one clean note, with the odd double-stop under it
-		3 => 1.311f,  // metal: it is supposed to be on top
-		4 => 0.930f,  // punk: it doubles the guitar, and two of everything is loud
-		_ => 3.177f,  // pop: the hook IS the song
+		0 => 0.795f,  // ska horn — FM brass, and a blown note carries more than a filtered saw
+		1 => 0.984f,  // rock
+		2 => 1.468f,  // country: one clean note, with the odd double-stop under it
+		3 => 1.091f,  // metal: it is supposed to be on top
+		4 => 0.782f,  // punk: it doubles the guitar, and two of everything is loud
+		_ => 2.411f,  // pop: the hook IS the song
 	};
 
 	// Dispatch a lead note to the genre's lead voice: a distorted single-note guitar for rock,
@@ -360,11 +360,11 @@ public sealed partial class MusicGen
 			// guitar even at the slider minimum. The base is genre-set: rock = 3 (overdriven),
 			// metal = 4 hot (heavy), country = clean (the bite comes from the twang snap + bends,
 			// not gain). The bends (BENDINESS knob → bend-in + scoop) come in via the voicing.
-			// Metal is heavy, country's twang comes from the snap and the bends rather than from
-			// gain, pop is a clean plucky synth. Country/pop also get a brighter cutoff snap. See
+			// Metal is heavy, country's twang comes from the pick and the bends rather than from
+			// gain, pop is a clean plucky lead. Country/pop also get a more open cabinet. See
 			// LeadGtrTone for the numbers.
-			var (driveAmt, cutEnv) = LeadGtrTone();
-			var gtr = LeadGtrPatch( amp, decaySec, driveAmt, cutEnv );
+			var (driveAmt, cab) = LeadGtrTone();
+			var gtr = LeadGtrPatch( amp, decaySec, driveAmt, cab );
 			ApplyVoicing( ref gtr, vc );
 			// The lead is monophonic — a single clean take at its per-song pan (_leadPan). It is NOT
 			// double-tracked: splitting a solo line into two detuned, hard-panned, time-offset takes
@@ -379,13 +379,13 @@ public sealed partial class MusicGen
 	/// <summary>The lead guitar's voice. Named rather than inline so the tone audition plays THIS
 	/// definition and not a copy of it; the two genre-dependent numbers stay with the caller
 	/// because they are the genre's decision, not the instrument's.</summary>
-	internal Patch LeadGtrPatch( float amp, double decaySec, float driveAmt, float cutEnv )
+	internal Patch LeadGtrPatch( float amp, double decaySec, float driveAmt, float cab )
 	{
 		var p = new Patch
 		{
 			Osc = 1, Voices = 1, Detune = 0f, Amp = amp,
 			Attack = 0.002f, Decay = decaySec, Sustain = 0.55f, Sustained = true,
-			Cutoff = _c.LeadGtrCutoff, CutEnv = cutEnv, Reso = 0.65f,
+			Cutoff = _c.LeadGtrCutoff * cab, Reso = 0.65f,
 			Drive = driveAmt, Pan = _leadPan, Vibrato = _c.MelodyVibrato,
 		};
 		// A lead string rings LONG and is barely damped — that is what a lead guitar is for, and
@@ -400,7 +400,7 @@ public sealed partial class MusicGen
 	/// <summary>Which genre's lead guitar drive and cutoff snap — the pair the caller hands
 	/// <see cref="LeadGtrPatch"/>, exposed so the audition asks the same question the renderer
 	/// does.</summary>
-	internal (float Drive, float CutEnv) LeadGtrTone() => (
+	internal (float Drive, float Cab) LeadGtrTone() => (
 		_genre switch
 		{
 			3 => 4f + MathF.Max( 1f, _c.LeadGtrDrive ),
@@ -409,7 +409,10 @@ public sealed partial class MusicGen
 			5 => 0.6f + 0.2f * MathF.Max( 1f, _c.LeadGtrDrive ),
 			_ => 3f + MathF.Max( 1f, _c.LeadGtrDrive ),
 		},
-		_genre == 2 ? 3000f : _genre == 5 ? 3500f : 2200f );
+		// Was a cutoff-envelope height, i.e. the pick attack the subtractive voice had to fake; the
+		// string makes that now, so this is the CABINET multiplier. Country and pop are not being
+		// driven, so their speaker is the brightest thing in their chain and wants to stay open.
+		_genre == 2 ? 1.35f : _genre == 5 ? 1.50f : 1.00f );
 
 	// Which voice takes the ska lead — a weighted draw, or the config's override. The draw is
 	// taken either way: a knob that decides WHAT plays must not also decide how many values the

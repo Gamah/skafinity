@@ -21,7 +21,7 @@ public sealed partial class MusicGen
 	// downstrokes put 5 dB more energy into the mix than rock's placed riff at the same balance,
 	// which is exactly the "the backing is too loud" the comp rewrite exposed. The comp is meant
 	// to sit UNDER the kit — it is the bed, not the song.
-	(float Drive, float CutEnv, float Reso, float Level) RhythmGtrTone() => _genre switch
+	(float Drive, float Cab, float Reso, float Level) RhythmGtrTone() => _genre switch
 	{
 		// Ska-punk plays this voice only in its LOUD sections (the verses are the skank), so this is the
 		// third-wave chorus tone specifically: brighter than punk's and driven past DirtyChord, so
@@ -30,11 +30,17 @@ public sealed partial class MusicGen
 		// downstrokes — fewer onsets carrying the same section.
 		// Levels re-measured for the string model (`--levels`); see the note in BassTone for why a
 		// duller instrument needs more of this rather than less.
-		0 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2400f, 0.75f, 0.535f),      // ska-punk chorus
-		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 2600f, 0.8f, 0.967f),// country strum
-		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1100f, 0.7f, 0.898f),         // metal riff
-		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 2000f, 0.75f, 0.384f),      // punk downstrokes
-		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1400f, 0.8f, 0.707f),       // rock riff
+		// The second number WAS a cutoff-envelope height — the snap the subtractive voice faked a
+		// pick attack with. The string's own loss filter does that now, so the slot would have
+		// been dead; it is the CABINET multiplier instead, which is the thing the genres actually
+		// differ by once the distortion comes before the speaker rather than after it. Metal is a
+		// closed-back 4x12 and dark; country is an open-back combo and bright because it is not
+		// being driven in the first place.
+		0 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1.10f, 0.75f, 0.511f),      // ska-punk chorus
+		2 => (0.8f + 0.3f * MathF.Max( 1f, _c.RhythmGtrDrive ), 1.40f, 0.8f, 0.862f),// country strum
+		3 => (4f + MathF.Max( 1f, _c.RhythmGtrDrive ), 0.80f, 0.7f, 0.878f),         // metal riff
+		4 => (2.2f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1.15f, 0.75f, 0.375f),      // punk downstrokes
+		_ => (1.5f + MathF.Max( 1f, _c.RhythmGtrDrive ), 1.00f, 0.8f, 0.691f),       // rock riff
 	};
 
 	/// <summary>Effective drive at which the rhythm guitar stops playing thirds. Rock reaches this
@@ -89,7 +95,7 @@ public sealed partial class MusicGen
 	internal void EmitGuitar( int tick, int durTicks, int midi, float vel, bool ring, int voices,
 		float nudgeMs = 0f )
 	{
-		var (drive, cutEnv, reso, level) = RhythmGtrTone();
+		var (drive, cab, reso, level) = RhythmGtrTone();
 		var (beta, width, bright) = RhythmGtrPick();
 		int dur = _time.SpanSamples( tick, durTicks );
 		double dec = _time.SpanSeconds( tick, durTicks ) * (ring ? 0.8 : 0.3);
@@ -101,14 +107,19 @@ public sealed partial class MusicGen
 		// one hand. A mute cell (ring == false) is that hand pressing harder still.
 		float chug = Math.Clamp( _c.RhythmGtrChug, 0f, 1f );
 		float t60 = ring ? (1.6f - 1.0f * chug) * bright : 0.10f;
-		float damp = ring ? 0.18f + 0.34f * chug : 0.58f;
+		// LESS ABSORBENT THAN IT WAS, because the amp needs something to chew on. The loop filter
+		// strips the upper partials in milliseconds at 0.35, and a cascade fed a dull signal makes
+		// dull dirt — the rasp of a driven amp is harmonics of harmonics, so the harmonics have to
+		// reach it. A muted string stays dull, but not silent up top: a palm-muted power chord
+		// through a cranked amp still buzzes, which is the entire appeal of one.
+		float damp = ring ? 0.10f + 0.30f * chug : 0.46f;
 		var gtr = new Patch
 		{
 			Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 			Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / Math.Max( 1, voices )
 				* NoteGain( vel ) * _compTrim,
 			Attack = 0.002f, Decay = dec, Sustain = ring ? 0.45f : 0f, Sustained = ring,
-			Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso,
+			Cutoff = _c.RhythmGtrCutoff * cab, Reso = reso,
 			Drive = drive, Pan = 0f,
 		};
 		AsString( ref gtr, t60, damp, beta, width, 0.04f );

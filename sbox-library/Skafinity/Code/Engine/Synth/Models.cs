@@ -125,20 +125,16 @@ public sealed partial class MusicGen
 				break;
 		}
 
-		// The body / amp stage: the same resonant SVF and soft drive the subtractive voice ends
-		// with. Kept because it is the only part of that chain that was ever modelling anything —
-		// an instrument's body and the amplifier it is played through are both filters, and they
-		// sit after the string, not instead of it.
-		float low = 0, band = 0;
-		float reso = Math.Clamp( p.Reso, 0.2f, 2f );
-		bool cutMoves = p.CutEnv > 0f;
-		double cutStep = Math.Exp( -1.0 / Math.Max( 1.0,
-			(p.CutEnvSec > 0f ? p.CutEnvSec : (float)p.Decay) * _sr ) );
-		double cutDecay = 1.0;
-		float f = (float)(2 * Math.Sin( Math.PI * Math.Min( p.Cutoff, _sr * 0.16f ) / _sr ));
-		float dnorm = p.Drive > 1f ? 1f / (float)Math.Tanh( p.Drive ) : 1f;
-		float hpA = p.Highpass > 0f ? (float)(1.0 / (1.0 + 2 * Math.PI * p.Highpass / _sr)) : 0f;
-		float hpInPrev = 0f, hpOutPrev = 0f;
+		// The amplifier the instrument is played through — cascaded asymmetric stages, a coupling
+		// capacitor, and the speaker cabinet LAST. See Amp.cs for why that order is the whole
+		// difference between a driven amp and a waveshaper, and why one symmetric tanh could only
+		// ever dirty the attack of a note.
+		//
+		// The model voices set CutEnv to 0 (see AsString/AsFm/AsModal), so the cabinet does not
+		// sweep: a speaker's corner is a property of the cone, not of how long ago the note was
+		// struck. The brightness that used to come from a cutoff envelope now comes from the
+		// string losing its upper partials, which is where it comes from on a guitar.
+		var amp = new AmpChain( p, _sr );
 		// FM alone keeps the amplitude envelope — see the summary above.
 		bool ownDecay = p.Model != Model.Fm;
 		double decStep = Math.Exp( -1.0 / Math.Max( 1.0, p.Decay * _sr ) );
@@ -169,27 +165,7 @@ public sealed partial class MusicGen
 			}
 			else s = p.Model == Model.String ? str.Next( ratio ) : mod.Next( ratio );
 
-			if ( hpA > 0f )
-			{
-				float hp = hpA * (hpOutPrev + s - hpInPrev);
-				hpInPrev = s; hpOutPrev = hp; s = hp;
-			}
-			if ( p.Cutoff > 0f )
-			{
-				if ( cutMoves )
-				{
-					f = (float)(2 * Math.Sin( Math.PI
-						* Math.Min( p.Cutoff + p.CutEnv * (float)cutDecay, _sr * 0.16f ) / _sr ));
-					cutDecay *= cutStep;
-				}
-				float high = s - low - reso * band;
-				band += f * high;
-				low += f * band;
-				s = low;
-			}
-			if ( p.Drive > 1f ) s = (float)Math.Tanh( s * p.Drive ) * dnorm;
-
-			float val = s * env * p.Amp;
+			float val = amp.Next( s ) * env * p.Amp;
 			int idx = start + i;
 			if ( idx >= clipFrom )
 			{

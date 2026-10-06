@@ -704,14 +704,14 @@ public sealed partial class MusicGen
 					};
 					break;
 				default:                // the guitar genres, through their own tone
-					var (drive, cutEnv, reso, level) = RhythmGtrTone();
+					var (drive, cab, reso, level) = RhythmGtrTone();
 					p = new Patch
 					{
 						Osc = 1, Voices = 2, Detune = _c.Detune * 0.5f,
 						Amp = _c.RhythmGtrVol * _c.RhythmGtrBalance * level * _midMul / tones.Length
 							* NoteGain( vel ),
 						Attack = 0.002f, Decay = decay, Sustain = ring ? 0.4f : 0f, Sustained = false,
-						Cutoff = _c.RhythmGtrCutoff, CutEnv = cutEnv, Reso = reso, Drive = drive,
+						Cutoff = _c.RhythmGtrCutoff * cab, Reso = reso, Drive = drive,
 						Pan = 0f,
 					};
 					// The last chord rings out, so the hand is off the bridge whatever CHUG says —

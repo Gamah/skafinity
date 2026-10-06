@@ -169,10 +169,26 @@ public sealed partial class MusicGen
 		// Melodic-voice peak balance — the instrument analog of the kit balances above (same
 		// equal-peak-then-tune workflow). Bass measured the same peak across genres, so one value.
 		public float BassBalance = 0.733f;
+		// THE BACKING TARGET MOVED, not just the measurement. These were set to restore each voice
+		// to the dB it had before the physical models; played back, the backing was still sitting
+		// under the mix. So the target is the old one plus 1 dB for the bass, plus 3.5 dB for the
+		// skank and the horn section, and plus 1.5 dB for the COMP voices — the rhythm guitar and
+		// the keys — with the leads unchanged.
+		//
+		// THE COMP GETS LESS THAN THE REST ON PURPOSE, and the suite is what decided it: at +3.5 dB
+		// the guitar and keys measured louder than the KIT, which "genre N comp sits under the kit"
+		// exists to stop, because a loud backing is what makes a repeated figure sound like the
+		// whole song. The rest of what the backing needed comes from the amplifier instead of from
+		// a fader: a cascade COMPRESSES (a driven lead note now measures a 4.9 dB crest factor over
+		// its first 300 ms), and a dense signal reads far louder than a peaky one at the same RMS —
+		// which is also most of why the backing sounded buried before, since the master normalizes
+		// to peak before it soft-clips, so peaky voices spend the headroom that would otherwise be
+		// saturating the mix together.
+		//
 		// Re-measured when the skank became a damped string (`--levels`): a chop that is a string
 		// losing energy carries ~7 dB less than an oscillator held at level for 100 ms and then
 		// cut, which is most of what made the old chop read as a stab.
-		public float SkankBalance = 2.738f;
+		public float SkankBalance = 3.108f;
 		// DERIVED, NOT MEASURED, and flagged as such: the organ bubble is drawn per song
 		// (OrganBubbleChance) so `--levels` cannot solo it reliably. Four tone wheels normalised to
 		// unit peak have an RMS of 0.405 against a sine's 0.707, i.e. 4.8 dB down, and this is that
@@ -180,7 +196,7 @@ public sealed partial class MusicGen
 		public float OrganBalance = 2.150f;
 		public float MelodyBalance = 0.896f;  // ska horn lead
 		// FM brass came back 1.6 dB hot against the filtered saw it replaced (`--levels`).
-		public float HornBalance = 0.950f;    // backing horn section
+		public float HornBalance = 1.169f;    // backing horn section
 		// Re-measured when the keys stopped being double-tracked: one take instead of two summed
 		// cost the voice ~2.5 dB, which is a mix change nobody asked for hiding inside a timbre fix.
 		public float KeysBalance = 1.390f;    // rock offbeat keys
