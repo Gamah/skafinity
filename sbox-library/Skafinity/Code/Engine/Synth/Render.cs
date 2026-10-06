@@ -22,13 +22,10 @@ public sealed partial class MusicGen
 		from = Math.Max( 0, from );
 		to = Math.Min( _bufL.Length, to );
 		if ( to <= from ) return;
-		var ph = new double[8];
-		var inc = new double[8];
-		// Pluck-comb scratch: one delay line per WINDOW, long enough for a full period of the
-		// lowest note any voice plays (4096 samples is 10.8 Hz at 44.1 kHz), cleared per note.
-		// Window-owned for the same reason ph/inc are — RenderPitchedRange's windows run on
-		// different threads and synthesis must stay a pure function of the event.
-		var comb = new float[4096];
+		// Window-owned scratch — phase, the string's delay line, the modal bank's state. The
+		// windows run on different threads and synthesis must stay a pure function of the event,
+		// so none of it may be shared or carried between notes. See SynthScratch.
+		var sc = new SynthScratch();
 		var events = _events;
 		for ( int k = 0; k < events.Count; k++ )
 		{
@@ -40,7 +37,8 @@ public sealed partial class MusicGen
 			if ( ev.P.Amp <= 0f ) continue;
 			int end = Math.Min( _bufL.Length, ev.Start + ev.Dur );
 			if ( end <= from || ev.Start >= to ) continue; // no overlap with this window
-			RenderEvent( ev, from, to, ph, inc, comb );
+			if ( ev.P.Model != Model.Subtractive ) RenderModelEvent( ev, from, to, sc );
+			else RenderEvent( ev, from, to, sc );
 		}
 	}
 
@@ -48,9 +46,9 @@ public sealed partial class MusicGen
 	// state can't be resumed mid-note) but writes only within [clipFrom, clipTo), and
 	// stops once past clipTo since later windows own those samples. ph/inc are caller-
 	// owned scratch (per-thread → no shared state).
-	void RenderEvent( in NoteEvent ev, int clipFrom, int clipTo, double[] ph, double[] inc,
-		float[] comb )
+	void RenderEvent( in NoteEvent ev, int clipFrom, int clipTo, SynthScratch sc )
 	{
+		var ph = sc.Ph; var inc = sc.Inc; var comb = sc.Delay;
 		int start = ev.Start, dur = ev.Dur;
 		float freq = ev.Freq;
 		var p = ev.P;
@@ -93,8 +91,6 @@ public sealed partial class MusicGen
 
 		int end = Math.Min( Math.Min( _bufL.Length, start + dur ), clipTo );
 		int relStart = dur - rel;
-		// Expression windows (samples): vibrato holds off then ramps in; the scoop is a quick
-		// attack gesture. Kept fixed/absolute so a long held note locks on pitch after them.
 		// The SVF coefficient only moves while the cutoff envelope does. Without one it is a
 		// constant, so it is computed once here instead of a Sin() every sample — the same value,
 		// not an approximation of it.
@@ -114,9 +110,6 @@ public sealed partial class MusicGen
 			? Math.Exp( -1.0 / Math.Max( 1.0, p.CutEnvSec * _sr ) ) : decStep;
 		double ampDecay = 1.0;   // exp( -(i - atk) / decSamp ), advanced once past the attack
 		double cutDecay = 1.0;   // exp( -i / decSamp ), advanced from the note's start
-		int vibDelay = (int)(0.18f * _sr);
-		int vibRamp = Math.Max( 1, (int)(0.16f * _sr) );
-		int scoopWin = Math.Max( 1, (int)(0.16f * _sr) );
 		for ( int i = 0; start + i < end; i++ )
 		{
 			float env;
@@ -131,54 +124,11 @@ public sealed partial class MusicGen
 			if ( env < 0.0006f && i > atk && !p.Sustained ) break;
 
 			float s = 0f;
-			// Vibrato: subtle, and DELAYED so the note locks on pitch first and only blooms a
-			// wobble if it's held — short notes stay dead-on. Depth is a small pitch fraction.
-			float vib = 1f;
-			if ( p.Vibrato > 0f && p.VibDepth > 0f )
-			{
-				float ramp = MathF.Max( 0f, (i - vibDelay) / (float)vibRamp );
-				if ( ramp > 1f ) ramp = 1f;
-				if ( ramp > 0f )
-					vib = (float)(1.0 + p.VibDepth * ramp * Math.Sin( i / (double)_sr * p.Vibrato * 2 * Math.PI ));
-			}
-			// Pitch-bend envelope (semitones) on top of vibrato. Both are QUICK gestures over a
-			// short fixed window so the note then sits locked on its target pitch (bendMul == 1):
-			// BendSemis snaps to 0 over BendTime seconds (bend-in / glide); ScoopSemis is a fast
-			// up-and-back hump confined to the attack (bend-and-release).
-			float bendSemis = 0f;
-			if ( p.BendSemis != 0f && p.BendTime > 0f )
-			{
-				int bt = Math.Min( dur, Math.Max( 1, (int)(p.BendTime * _sr) ) );
-				if ( i < bt ) { float u = i / (float)bt; bendSemis += p.BendSemis * (1f - u * u * (3f - 2f * u)); }
-			}
-			if ( p.ScoopSemis != 0f && i < scoopWin )
-				bendSemis += p.ScoopSemis * MathF.Sin( (float)(i / (float)Math.Min( dur, scoopWin ) * Math.PI) );
-			// The BEND. The two gestures above start off-pitch and resolve onto it inside a short
-			// window at the note's front; this one starts ON pitch and leaves it, part way in, and
-			// either stays up or comes back — which is why it reads as a bend rather than as an
-			// attack. Windows are absolute seconds for the same reason BendTime is: a bend is a
-			// hand moving a string, so it must not scale with tempo or with note length.
-			if ( p.BendUpSemis != 0f && p.BendUpTime > 0f )
-			{
-				int b0 = (int)(p.BendUpStart * _sr);
-				int rise = Math.Max( 1, (int)(p.BendUpTime * _sr) );
-				if ( i >= b0 )
-				{
-					float u = Math.Min( 1f, (i - b0) / (float)rise );
-					float amt = u * u * (3f - 2f * u);
-					if ( p.BendUpHold > 0f )
-					{
-						int r0 = b0 + rise + (int)(p.BendUpHold * _sr);
-						if ( i >= r0 )
-						{
-							float w = Math.Min( 1f, (i - r0) / (float)rise );
-							amt = 1f - w * w * (3f - 2f * w);
-						}
-					}
-					bendSemis += p.BendUpSemis * amt;
-				}
-			}
-			float bendMul = bendSemis != 0f ? (float)Math.Pow( 2.0, bendSemis / 12.0 ) : 1f;
+			// The pitch gestures — vibrato, the bend-in, the scoop, the bend — are knob-driven
+			// and shared with the physical models, so they live in one place (see PitchMod).
+			var pm = Pitch( p, i, dur );
+			float vib = pm.Vib;
+			float bendMul = pm.BendMul;
 			// Pulse width, swept by the same note-start exponential the cutoff envelope uses, so
 			// a PWM voice relaxes toward its nominal duty as the note settles.
 			float duty = p.Osc == 4 ? p.Duty + p.DutyEnv * (float)cutDecay : 0f;

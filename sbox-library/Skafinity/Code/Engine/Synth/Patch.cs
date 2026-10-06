@@ -71,6 +71,41 @@ struct Patch
 	public float BendUpStart; // seconds into the note where the bend begins
 	public float BendUpTime;  // seconds the bend takes to reach pitch (and to come back down)
 	public float BendUpHold;  // seconds held at pitch before releasing; 0 = held to the end
+	// ── Which synthesis method renders this patch (Synth/Models.cs) ──
+	// 0 keeps everything above: the subtractive voice. The others IGNORE Osc/Duty/Detune/Voices
+	// and the cutoff envelope — they are not oscillators being filtered — but they still read
+	// Amp, Pan, Cutoff, Reso, Highpass, Drive (the body and the amp the instrument is played
+	// through) and every pitch gesture in the block above, because a bend is a bend whatever is
+	// making the sound. That is what keeps BENDINESS, VIBRATO and the tone knobs meaning one
+	// thing across the band.
+	public int Model;
+	// ── Plucked string (Model 1) — StringModel.cs ──
+	public float StringDecay; // SECONDS for the fundamental to fall 60 dB. The one damping number:
+	                          // every partial's decay follows from it through the loop filter, so
+	                          // this is what a palm mute and a long open ring are two values of.
+	public float StringDamp;  // 0..1 loop low-pass. 0 = lossless and glassy, high = dull and
+	                          // short-lived up top. This is the TERMINATION, i.e. how absorbent
+	                          // the bridge and the nut are.
+	public float PickWidth;   // Contact length of the pick as a fraction of the string. A pick is
+	                          // not a point; a wide one rounds the corner off the initial shape,
+	                          // which is a moving average and therefore a low-pass with a reason.
+	public float PickNoise;   // 0..1 broadband content in the excitation — plectrum scrape.
+	// ── FM (Model 2) — FmModel.cs ──
+	public float FmRatio;     // modulator : carrier. Integer = harmonic and pitched; non-integer
+	                          // = inharmonic, metal and glass.
+	public float FmIndex;     // peak modulation index. Sidebands reach about (I+1).ratio
+	                          // harmonics, so this is chosen from a wanted bandwidth, not tasted.
+	public float FmIndexSec;  // seconds for the index to relax from peak to sustain
+	public float FmIndexSus;  // 0..1 of the peak held for the rest of the note. The gap between
+	                          // this and 1 IS "blown harder is brighter".
+	public float FmFeedback;  // 0..0.9 carrier phase fed back; pushes the spectrum toward a saw.
+	// ── Modal (Model 3) — ModalModel.cs ──
+	public int ModalSet;      // 0 harmonic (tone wheels), 1 stiff string, 2 free-free bar (tine)
+	public int ModalCount;    // partials (<= ModalBank.MaxPartials); modes past Nyquist are
+	                          // dropped rather than aliased
+	public float ModalDecay;  // SECONDS for the FUNDAMENTAL; the higher modes scale off it
+	public float ModalInharm; // stiff-string B: upper partials sharp by sqrt(1 + B.n^2)
+	public bool ModalSustain; // tone wheels do not decay — see ModalBank.Sustained
 	public float PhaseSeed;  // oscillator start phase (0..1); 0 = legacy in-phase start. Used to
 	                         // decorrelate the two double-tracking takes (see RenderPatch).
 }

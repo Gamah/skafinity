@@ -117,6 +117,7 @@ static class Program
 			( "vibe codec",         VibeTests ),
 			( "seed strings",       SeedTests ),
 			( "wav container",      WavTests ),
+			( "synth models",       () => SynthModelTests.Run( Check ) ),
 			( bless ? "render digest (blessing)" : "render digest", () => RenderDigestTests( bless ) ),
 		};
 
